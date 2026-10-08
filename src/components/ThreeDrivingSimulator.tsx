@@ -966,7 +966,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       {/* ========================================================== */}
       {/* BOTTOM ERGONOMIC LANDSCAPE CONTROLS (DR. DRIVING ARCHITECTURE) */}
       {/* ========================================================== */}
-      <div className="mt-auto relative z-30 p-2 sm:p-3 bg-stone-950/95 border-t border-stone-800 flex items-end justify-between backdrop-blur">
+      <div className="absolute bottom-0 left-0 w-full z-30 p-2 sm:p-3 bg-stone-950/95 border-t border-stone-800 flex items-end justify-between backdrop-blur pointer-events-auto">
         {/* LEFT: SMOOTH ROTARY STEERING WHEEL + BLINKERS */}
         <div className="flex items-center gap-3">
           <div

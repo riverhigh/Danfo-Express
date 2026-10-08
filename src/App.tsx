@@ -339,7 +339,7 @@ export default function App() {
   return (
     <div className="w-screen h-screen bg-stone-950 text-stone-100 flex flex-col overflow-hidden font-['Plus_Jakarta_Sans',sans-serif]">
       {/* HEADER NAV / STATUS BAR */}
-      <header className={`h-12 bg-stone-900/90 border-b border-stone-800 px-4 flex items-center justify-between z-50 shrink-0 ${gameState.screen === 'SHIFT_ACTIVE' ? 'absolute top-0 w-full pointer-events-auto bg-transparent border-none' : ''}`}>
+      <header className={`h-12 border-b px-4 flex items-center justify-between z-50 shrink-0 transition-colors ${gameState.screen === 'SHIFT_ACTIVE' ? 'absolute top-0 w-full pointer-events-auto bg-transparent border-transparent' : 'bg-stone-900/90 border-stone-800'}`}>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 bg-amber-400 rounded-lg flex items-center justify-center font-black font-['Bungee'] text-stone-950 text-base shadow-md">

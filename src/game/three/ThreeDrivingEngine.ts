@@ -1219,7 +1219,7 @@ export class ThreeDrivingEngine {
       const targetLookZ = eyeZ + 35; // Looking forward towards +Z down the expressway!
 
       this.camera.lookAt(targetLookX, targetLookY, targetLookZ);
-      this.camera.rotation.z = -steerFactor * 0.02; // subtle chassis roll into turn
+      this.camera.rotateZ(-steerFactor * 0.02); // subtle chassis roll into turn
       this.camera.fov = 70;
       this.camera.updateProjectionMatrix();
     }
