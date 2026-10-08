@@ -32,6 +32,10 @@ import { ThreeDrivingSimulator } from './components/ThreeDrivingSimulator';
 import { MissionSelector } from './components/MissionSelector';
 import { PhoneModal } from './components/PhoneModal';
 import { InventoryModal } from './components/InventoryModal';
+import { MainMap, MapLocation } from './components/MainMap';
+import { Dealership, VEHICLES } from './components/Dealership';
+import { CharacterCreation } from './components/CharacterCreation';
+import { AjoApp, KoloSystem } from './components/SavingsSystems';
 import { 
   Trophy, 
   Volume2, 
@@ -69,6 +73,12 @@ export default function App() {
   const [isConductorModalOpen, setIsConductorModalOpen] = useState<boolean>(false);
   const [isPhoneOpen, setIsPhoneOpen] = useState<boolean>(false);
   const [isInventoryOpen, setIsInventoryOpen] = useState<boolean>(false);
+  const [isMapOpen, setIsMapOpen] = useState<boolean>(false);
+  const [isDealershipOpen, setIsDealershipOpen] = useState<boolean>(false);
+  const [isKoloOpen, setIsKoloOpen] = useState<boolean>(false);
+  const [isAjoOpen, setIsAjoOpen] = useState<boolean>(false);
+  const [showCharacterCreation, setShowCharacterCreation] = useState<boolean>(!saveData.playerName || saveData.playerName === 'Driver');
+
 
   // Active driving feed
   const [actionFeed, setActionFeed] = useState<string[]>([
@@ -374,6 +384,15 @@ export default function App() {
           >
             <Package className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">INVENTORY</span>
+          </button>
+
+          <button
+            onClick={() => setIsMapOpen(true)}
+            className="px-2.5 py-1 rounded-lg bg-stone-800 hover:bg-stone-700 border border-stone-700 text-xs font-bold text-sky-300 flex items-center gap-1.5 transition-colors shadow"
+            title="Open Lagos City Map"
+          >
+            <MapPin className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">MAP</span>
           </button>
 
           <div className="flex items-center gap-1.5 bg-stone-950 px-2.5 py-1 rounded-lg border border-stone-800 text-xs font-bold text-emerald-400">
@@ -883,6 +902,102 @@ export default function App() {
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* CHARACTER CREATION - shows on first launch */}
+      {showCharacterCreation && (
+        <CharacterCreation
+          onComplete={(name, gender) => {
+            updateSave({ playerName: name, playerGender: gender });
+            setShowCharacterCreation(false);
+            addFeedMessage(`🎉 Welcome to Lagos, ${name}! Your hustle begins now!`);
+          }}
+        />
+      )}
+
+      {/* CITY MAP */}
+      <MainMap
+        isOpen={isMapOpen}
+        onClose={() => setIsMapOpen(false)}
+        walletNaira={walletNaira}
+        onNavigateTo={(loc) => {
+          if (loc.type === 'DEALERSHIP') {
+            setIsDealershipOpen(true);
+          } else if (loc.type === 'MARKET') {
+            setIsKoloOpen(true);
+          } else if (loc.type === 'GARAGE') {
+            setMenuTab('GARAGE_WORKSHOP');
+          }
+          addFeedMessage(`📍 Arrived at ${loc.name}`);
+        }}
+      />
+
+      {/* DEALERSHIP */}
+      <Dealership
+        isOpen={isDealershipOpen}
+        onClose={() => setIsDealershipOpen(false)}
+        walletNaira={walletNaira}
+        streetCred={streetCred}
+        ownedVehicles={saveData.ownedVehicles}
+        onPurchase={(vehicle) => {
+          updateSave({
+            walletNaira: walletNaira - vehicle.price,
+            ownedVehicles: [...saveData.ownedVehicles, vehicle.id],
+            selectedBusId: vehicle.id as any,
+          });
+          addFeedMessage(`🚗 PURCHASED: ${vehicle.name} added to your garage!`);
+        }}
+      />
+
+      {/* KOLO POT */}
+      {isKoloOpen && (
+        <div className="fixed inset-0 z-50 bg-black/85 flex items-end justify-center p-3">
+          <div className="w-full max-w-md bg-stone-900 border-2 border-amber-500/50 rounded-3xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-stone-800">
+              <h2 className="font-black text-amber-400 font-['Bungee']">🏺 KOLO SAVINGS POT</h2>
+              <button onClick={() => setIsKoloOpen(false)} className="p-1.5 bg-stone-800 rounded-lg text-stone-400 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <KoloSystem
+              walletNaira={walletNaira}
+              hasKolo={saveData.hasKolo}
+              koloBalanceNaira={saveData.koloBalanceNaira}
+              onBuyKolo={() => updateSave({ hasKolo: true, walletNaira: walletNaira - 500 })}
+              onDeposit={(amount) => updateSave({ koloBalanceNaira: saveData.koloBalanceNaira + amount, walletNaira: walletNaira - amount })}
+              onBreakKolo={() => {
+                const collected = saveData.koloBalanceNaira;
+                updateSave({ hasKolo: false, koloBalanceNaira: 0, walletNaira: walletNaira + collected });
+                addFeedMessage(`🔨 KOLO SMASHED! Collected ₦${collected.toLocaleString()}. Buy a new one from the market.`);
+                setIsKoloOpen(false);
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* AJO SAVINGS */}
+      {isAjoOpen && (
+        <div className="fixed inset-0 z-50 bg-black/85 flex items-end justify-center p-3">
+          <div className="w-full max-w-md bg-stone-900 border-2 border-purple-500/50 rounded-3xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-stone-800">
+              <h2 className="font-black text-purple-400 font-['Bungee']">👩🏾‍🤝‍👨🏾 AJO CIRCLE</h2>
+              <button onClick={() => setIsAjoOpen(false)} className="p-1.5 bg-stone-800 rounded-lg text-stone-400 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <AjoApp
+              walletNaira={walletNaira}
+              ajoBalanceNaira={saveData.ajoContributionsNaira}
+              onContribute={(amount) => updateSave({ ajoContributionsNaira: saveData.ajoContributionsNaira + amount, walletNaira: walletNaira - amount })}
+              onCollect={(amount) => {
+                updateSave({ ajoContributionsNaira: 0, walletNaira: walletNaira + amount });
+                addFeedMessage(`💰 AJO COLLECTED: ₦${amount.toLocaleString()} received from your savings circle!`);
+                setIsAjoOpen(false);
+              }}
+            />
           </div>
         </div>
       )}

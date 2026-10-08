@@ -5,6 +5,7 @@ interface SaveData {
   walletNaira: number;
   bankBalanceNaira: number;
   koloBalanceNaira: number;
+  hasKolo: boolean;
   ajoContributionsNaira: number;
   streetCred: number;
   playerName: string;
@@ -20,6 +21,7 @@ const DEFAULT_SAVE: SaveData = {
   walletNaira: 25000,
   bankBalanceNaira: 0,
   koloBalanceNaira: 0,
+  hasKolo: false,
   ajoContributionsNaira: 0,
   streetCred: 240,
   playerName: 'Driver',
