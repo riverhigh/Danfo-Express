@@ -339,7 +339,7 @@ export default function App() {
   return (
     <div className="w-screen h-screen bg-stone-950 text-stone-100 flex flex-col overflow-hidden font-['Plus_Jakarta_Sans',sans-serif]">
       {/* HEADER NAV / STATUS BAR */}
-      <header className={`h-12 bg-stone-900/90 border-b border-stone-800 px-4 flex items-center justify-between z-50 shrink-0 ${gameState.screen === \'SHIFT_ACTIVE\' ? \'absolute top-0 w-full pointer-events-auto bg-transparent border-none\' : \'\'}`}>
+      <header className={`h-12 bg-stone-900/90 border-b border-stone-800 px-4 flex items-center justify-between z-50 shrink-0 ${gameState.screen === 'SHIFT_ACTIVE' ? 'absolute top-0 w-full pointer-events-auto bg-transparent border-none' : ''}`}>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 bg-amber-400 rounded-lg flex items-center justify-center font-black font-['Bungee'] text-stone-950 text-base shadow-md">
@@ -416,7 +416,7 @@ export default function App() {
       </header>
 
       {/* MAIN CONTENT AREA */}
-      <main className={`relative overflow-hidden flex flex-col ${gameState.screen === \'SHIFT_ACTIVE\' ? \'absolute inset-0 w-full h-full\' : \'flex-1\'}`}>
+      <main className={`relative overflow-hidden flex flex-col ${gameState.screen === 'SHIFT_ACTIVE' ? 'absolute inset-0 w-full h-full' : 'flex-1'}`}>
         {/* MENU STATE */}
         {gameState.screen === 'MENU' && (
           <div className="flex-1 overflow-y-auto px-4 py-6 max-w-5xl mx-auto w-full space-y-6">
