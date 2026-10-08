@@ -660,8 +660,8 @@ export class ThreeDrivingEngine {
     // ANIMATED PASSENGER SLIDING SIDE DOOR (RIGHT)
     // ==========================================
     const slidingDoor = new THREE.Group();
-    const doorPanel = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.45, 1.15), yellowMat);
-    slidingDoor.add(doorPanel);
+    const slidingDoorPanel = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.45, 1.15), yellowMat);
+    slidingDoor.add(slidingDoorPanel);
     const doorGlass = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.65, 0.95), glassMat);
     doorGlass.position.set(0, 0.35, 0);
     slidingDoor.add(doorGlass);
