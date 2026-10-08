@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Danfo Express</title>
+    <meta name="description" content="Crazy Taxi meets Overcooked on the hyper-chaotic streets of Lagos. High-octane arcade driving, conductor management, and Lagos street survival." />
+    <meta property="og:title" content="Danfo Express" />
+    <meta property="og:description" content="Crazy Taxi meets Overcooked on the hyper-chaotic streets of Lagos. High-octane arcade driving, conductor management, and Lagos street survival." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="manifest" href="/manifest.webmanifest">
+    <meta name="theme-color" content="#facc15">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=Bungee&family=Black+Han+Sans&display=swap" rel="stylesheet">
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch(() => {});
+        });
+      }
+    </script>
+  </head>
+  <body class="bg-stone-950 text-stone-100 antialiased overflow-hidden select-none">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

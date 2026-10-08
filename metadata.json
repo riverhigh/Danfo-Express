@@ -1,0 +1,6 @@
+{
+  "name": "Danfo Express",
+  "description": "Crazy Taxi meets Overcooked on the hyper-chaotic streets of Lagos. High-octane arcade driving, conductor management, and Lagos street survival.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
