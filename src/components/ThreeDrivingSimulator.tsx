@@ -685,7 +685,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
             })}
             className="px-3 py-1.5 bg-stone-900/90 border border-sky-500 rounded-xl text-sky-300 font-black text-[10px] font-mono shadow-xl backdrop-blur"
           >
-            {cameraMode === 'FIRST_PERSON' ? '🚌 1ST' : cameraMode === 'THIRD_PERSON' ? '📷 3RD' : '🔄 360'}
+            {cameraMode === 'FIRST_PERSON' ? '📷 1ST' : cameraMode === 'THIRD_PERSON' ? '📷 3RD' : '📷 360'}
           </button>
         </div>
 
