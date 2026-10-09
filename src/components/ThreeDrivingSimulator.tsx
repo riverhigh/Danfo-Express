@@ -831,7 +831,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           {showRightPanel ? '▶' : '◀'}
         </button>
         <div className={`flex items-end gap-2 transition-opacity duration-300 origin-bottom-right ${showRightPanel ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-          {!isSteppedDown && (
+          {!isSteppedDown ? (
             <>
               <div className="flex flex-col bg-stone-900/85 backdrop-blur border border-stone-700/50 p-1 rounded-xl shadow-lg">
                 {(['P', 'R', 'N', 'D', 'L'] as const).map((g) => (
