@@ -68,7 +68,7 @@ export default function App() {
   const setSelectedSlogan = (val) => updateSave({ selectedSlogan: val });
   const [selectedShiftId, setSelectedShiftId] = useState<ShiftTimeOfDay>('MORNING_RUSH');
   const [isMuted, setIsMuted] = useState<boolean>(false);
-  const [menuTab, setMenuTab] = useState<'MISSIONS' | 'CAREER_SHIFT' | 'GARAGE_WORKSHOP' | 'HOUSING'>('MISSIONS');
+  const [menuTab, setMenuTab] = useState<'CAREER_SHIFT' | 'GARAGE_WORKSHOP' | 'HOUSING'>('CAREER_SHIFT');
   const [selectedMissionId, setSelectedMissionId] = useState<string>(MISSIONS_CATALOG[0].id);
   const [isConductorModalOpen, setIsConductorModalOpen] = useState<boolean>(false);
   const [isPhoneOpen, setIsPhoneOpen] = useState<boolean>(false);
@@ -424,18 +424,6 @@ export default function App() {
             <div className="flex items-center justify-between border-b border-stone-800 pb-3">
               <div className="flex gap-2">
                 <button
-                  onClick={() => setMenuTab('MISSIONS')}
-                  className={`px-4 py-2 rounded-xl font-bold text-xs font-mono transition-colors flex items-center gap-2 ${
-                    menuTab === 'MISSIONS'
-                      ? 'bg-amber-400 text-stone-950 shadow-md font-black'
-                      : 'bg-stone-900 text-stone-400 hover:text-white'
-                  }`}
-                >
-                  <Trophy className="w-3.5 h-3.5" />
-                  <span>MISSIONS</span>
-                </button>
-
-                <button
                   onClick={() => setMenuTab('CAREER_SHIFT')}
                   className={`px-4 py-2 rounded-xl font-bold text-xs font-mono transition-colors flex items-center gap-2 ${
                     menuTab === 'CAREER_SHIFT'
@@ -444,7 +432,7 @@ export default function App() {
                   }`}
                 >
                   <MapPin className="w-3.5 h-3.5" />
-                  <span>CAREER SHIFTS</span>
+                  <span>CAREER</span>
                 </button>
 
                 <button
@@ -477,66 +465,20 @@ export default function App() {
               </div>
             </div>
 
-            {/* TAB 1: DR. DRIVING MISSIONS */}
-            {menuTab === 'MISSIONS' && (
-              <MissionSelector
-                selectedMissionId={selectedMissionId}
-                onSelectMission={(m) => setSelectedMissionId(m.id)}
-                onStartMission={handleStartMission}
-              />
-            )}
-
-            {/* TAB 2: CAREER RUSH SHIFTS */}
+            {/* TAB 1: CAREER RUSH SHIFTS */}
             {menuTab === 'CAREER_SHIFT' && (
-              <div className="w-full space-y-6">
-                <div>
-                  <div className="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-3">
-                    Select Your Rush Hour Shift
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {(Object.keys(SHIFT_CONFIGS) as ShiftTimeOfDay[]).map((shiftKey) => {
-                      const s = SHIFT_CONFIGS[shiftKey];
-                      const isSelected = selectedShiftId === shiftKey;
-                      return (
-                        <button
-                          key={shiftKey}
-                          onClick={() => setSelectedShiftId(shiftKey)}
-                          className={`text-left p-4 rounded-xl border transition-all ${
-                            isSelected 
-                              ? 'bg-amber-400/10 border-amber-400 text-white shadow-lg shadow-amber-400/10 ring-1 ring-amber-400' 
-                              : 'bg-stone-900 border-stone-800 text-stone-400 hover:border-stone-700'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="font-bold text-base text-amber-400">{s.title}</span>
-                            <span className="text-xs font-mono text-stone-300">{s.startTime} - {s.endTime}</span>
-                          </div>
-                          <p className="text-xs text-stone-300 mb-3">{s.subtitle}</p>
-                          <div className="text-xs text-stone-400 flex items-center justify-between border-t border-stone-800/80 pt-2 font-mono">
-                            <span>Union Levy: <strong className="text-rose-400">₦{s.unionLevy.toLocaleString()}</strong></span>
-                            <span>Bonus: <strong className="text-emerald-400">{s.passengerMultiplier}x</strong></span>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
+              <div className="w-full flex flex-col items-center justify-center space-y-6 py-12 bg-stone-900/50 border border-stone-800 rounded-3xl">
+                <div className="text-center space-y-2">
+                  <h3 className="text-amber-400 font-bold font-['Bungee'] text-2xl">SAVE SLOT 1/3</h3>
+                  <p className="text-stone-300">Level: Lagos Hustler • Balance: ₦{walletNaira.toLocaleString()}</p>
                 </div>
-
-                <div className="flex flex-col sm:flex-row items-center justify-between p-5 bg-stone-900 border border-stone-800 rounded-2xl gap-4">
-                  <div>
-                    <div className="font-bold text-stone-100 text-base">Drive in 3D Cockpit with MiniMap & Gas Stations</div>
-                    <div className="text-xs text-stone-400">
-                      Pick commuters from Ikeja Along, Maryland, Anthony, Oshodi, Ojuelegba, and CMS Marina!
-                    </div>
-                  </div>
-                  <button
-                    onClick={handleStartShift}
-                    className="w-full sm:w-auto px-8 py-3.5 bg-amber-400 hover:bg-amber-300 active:scale-95 text-stone-950 font-black font-['Bungee'] rounded-xl text-base tracking-wider flex items-center justify-center gap-3 transition-transform shadow-lg shadow-amber-400/20"
-                  >
-                    <span>START 3D SHIFT</span>
-                    <ArrowRight className="w-5 h-5" />
-                  </button>
-                </div>
+                <button
+                  onClick={() => handleStartShift(selectedShiftId)}
+                  className="px-10 py-5 bg-amber-400 hover:bg-amber-300 text-stone-950 font-black font-['Bungee'] text-xl rounded-2xl shadow-xl shadow-amber-400/20 flex items-center gap-3 transition-transform active:scale-95"
+                >
+                  <MapPin className="w-6 h-6" />
+                  CONTINUE CAREER
+                </button>
               </div>
             )}
 

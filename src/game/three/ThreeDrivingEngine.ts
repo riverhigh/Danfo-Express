@@ -484,8 +484,8 @@ export class ThreeDrivingEngine {
     // ==========================================
     // 1ST-PERSON DRIVER COCKPIT & DASHBOARD
     // ==========================================
-    const dash = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.55, 0.95), darkInteriorMat);
-    dash.position.set(0, 1.48, 1.8);
+    const dash = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.55, 0.7), darkInteriorMat);
+    dash.position.set(0, 1.48, 2.15); // pushed against windshield
     busBody.add(dash);
 
     // Working Instrument Cluster Screen (Graphic Speedometer & Tachometer)
@@ -494,7 +494,7 @@ export class ThreeDrivingEngine {
       new THREE.PlaneGeometry(0.68, 0.34),
       new THREE.MeshBasicMaterial({ map: clusterTex })
     );
-    clusterMesh.position.set(-0.5, 1.58, 1.38);
+    clusterMesh.position.set(-0.5, 1.58, 1.81);
     clusterMesh.rotation.set(-Math.PI / 4, 0, 0);
     busBody.add(clusterMesh);
 
@@ -502,7 +502,7 @@ export class ThreeDrivingEngine {
     const needleGeo = new THREE.BoxGeometry(0.014, 0.10, 0.005);
     needleGeo.translate(0, 0.045, 0);
     const tachNeedle = new THREE.Mesh(needleGeo, new THREE.MeshBasicMaterial({ color: 0xef4444 }));
-    tachNeedle.position.set(-0.66, 1.58, 1.38);
+    tachNeedle.position.set(-0.66, 1.58, 1.81);
     tachNeedle.rotation.set(-Math.PI / 4, 0, 0);
     busBody.add(tachNeedle);
 
@@ -510,19 +510,19 @@ export class ThreeDrivingEngine {
     const fuelNeedleGeo = new THREE.BoxGeometry(0.012, 0.07, 0.005);
     fuelNeedleGeo.translate(0, 0.03, 0);
     const fuelNeedle = new THREE.Mesh(fuelNeedleGeo, new THREE.MeshBasicMaterial({ color: 0x22c55e }));
-    fuelNeedle.position.set(-0.54, 1.58, 1.38);
+    fuelNeedle.position.set(-0.54, 1.58, 1.81);
     fuelNeedle.rotation.set(-Math.PI / 4, 0, 0);
     busBody.add(fuelNeedle);
 
     // 3. Center-Right: Acceleration / Torque Needle [0% - 100%] (x = -0.42)
     const accelNeedle = new THREE.Mesh(fuelNeedleGeo.clone(), new THREE.MeshBasicMaterial({ color: 0x38bdf8 }));
-    accelNeedle.position.set(-0.42, 1.58, 1.38);
+    accelNeedle.position.set(-0.42, 1.58, 1.81);
     accelNeedle.rotation.set(-Math.PI / 4, 0, 0);
     busBody.add(accelNeedle);
 
     // 4. Far Right: Analog Speedometer Needle (x = -0.30)
     const speedNeedle = new THREE.Mesh(needleGeo.clone(), new THREE.MeshBasicMaterial({ color: 0xef4444 }));
-    speedNeedle.position.set(-0.30, 1.58, 1.38);
+    speedNeedle.position.set(-0.30, 1.58, 1.81);
     speedNeedle.rotation.set(-Math.PI / 4, 0, 0);
     busBody.add(speedNeedle);
 
@@ -531,7 +531,7 @@ export class ThreeDrivingEngine {
       new THREE.CircleGeometry(0.018, 12),
       new THREE.MeshBasicMaterial({ color: 0x14532d })
     );
-    dashLeftBlinker.position.set(-0.58, 1.66, 1.32);
+    dashLeftBlinker.position.set(-0.58, 1.66, 1.75);
     dashLeftBlinker.rotation.set(-Math.PI / 4, 0, 0);
     busBody.add(dashLeftBlinker);
 
@@ -539,7 +539,7 @@ export class ThreeDrivingEngine {
       new THREE.CircleGeometry(0.018, 12),
       new THREE.MeshBasicMaterial({ color: 0x14532d })
     );
-    dashRightBlinker.position.set(-0.42, 1.66, 1.32);
+    dashRightBlinker.position.set(-0.42, 1.66, 1.75);
     dashRightBlinker.rotation.set(-Math.PI / 4, 0, 0);
     busBody.add(dashRightBlinker);
 
@@ -561,41 +561,9 @@ export class ThreeDrivingEngine {
       steeringWheel.add(spoke);
     });
 
-    // 3D Sculpted Driver Hands gripping the wheel rim at 9 o'clock and 3 o'clock!
-    const skinMat = new THREE.MeshStandardMaterial({ color: 0x6d381e, roughness: 0.8 }); // Nigerian skin tone
-    const sleeveMat = new THREE.MeshStandardMaterial({ color: 0x047857, roughness: 0.6 }); // Green Lagos polo shirt sleeve
+    // 3D Sculpted Driver Hands (Removed)
 
-    // Left Hand (at 9 o'clock)
-    const lHand = new THREE.Group();
-    const lPalm = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, 0.05), skinMat);
-    const lFingers = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.07, 8), skinMat);
-    lFingers.rotation.x = Math.PI / 2;
-    lHand.add(lPalm);
-    lHand.add(lFingers);
-    lHand.position.set(-0.24, 0, 0.02);
-    const lArm = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.055, 0.35, 8), sleeveMat);
-    lArm.rotation.x = Math.PI / 3;
-    lArm.rotation.z = -0.4;
-    lArm.position.set(-0.35, -0.15, -0.12);
-    lHand.add(lArm);
-    steeringWheel.add(lHand);
-
-    // Right Hand (at 3 o'clock)
-    const rHand = new THREE.Group();
-    const rPalm = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, 0.05), skinMat);
-    const rFingers = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.07, 8), skinMat);
-    rFingers.rotation.x = Math.PI / 2;
-    rHand.add(rPalm);
-    rHand.add(rFingers);
-    rHand.position.set(0.24, 0, 0.02);
-    const rArm = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.055, 0.35, 8), sleeveMat);
-    rArm.rotation.x = Math.PI / 3;
-    rArm.rotation.z = 0.4;
-    rArm.position.set(0.35, -0.15, -0.12);
-    rHand.add(rArm);
-    steeringWheel.add(rHand);
-
-    steeringWheel.position.set(-0.5, 1.48, 1.15);
+    steeringWheel.position.set(-0.5, 1.48, 1.65);
     steeringWheel.rotation.x = -Math.PI / 6;
     busBody.add(steeringWheel);
 
@@ -1208,18 +1176,18 @@ export class ThreeDrivingEngine {
       // Eye-level behind steering wheel looking FORWARD out windshield towards +Z!
       const eyeX = laneOffsetMeters - 0.5;
       const eyeY = 1.82 + (speedKmH > 10 ? Math.sin(Date.now() * 0.02) * 0.008 : 0);
-      const eyeZ = 0.5;
+      const eyeZ = 1.3;
 
       this.camera.position.set(eyeX, eyeY, eyeZ);
 
-      // Pitch and yaw responding to acceleration and steering
-      const pitchG = isBraking ? -0.04 : (speedKmH > 20 ? 0.015 : 0);
-      const targetLookX = eyeX + steerFactor * 2.8; // Looks naturally into the steered direction!
-      const targetLookY = eyeY - 0.04 + pitchG;
-      const targetLookZ = eyeZ + 35; // Looking forward towards +Z down the expressway!
+      // Perfect sync with bus body rotation + pitch + chassis roll
+      const pitchG = isBraking ? 0.02 : (speedKmH > 20 ? -0.01 : 0);
+      
+      this.camera.rotation.order = 'YXZ';
+      this.camera.rotation.y = Math.PI + steerFactor * 0.08;
+      this.camera.rotation.x = pitchG;
+      this.camera.rotation.z = steerFactor * -0.02;
 
-      this.camera.lookAt(targetLookX, targetLookY, targetLookZ);
-      this.camera.rotateZ(-steerFactor * 0.02); // subtle chassis roll into turn
       this.camera.fov = 70;
       this.camera.updateProjectionMatrix();
     }
