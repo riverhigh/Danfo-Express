@@ -1,72 +1,98 @@
 const fs = require('fs');
-let code = fs.readFileSync('src/game/three/ThreeDrivingEngine.ts', 'utf8');
+const path = require('path');
 
-// ===== 4. Hide fallback geometry immediately (invisible until GLB loads) =====
-code = code.replace(
-  'fallbackGroup.add(floor);\n      busBody.add(fallbackGroup);',
-  'fallbackGroup.add(floor);\n      fallbackGroup.visible = false; // Stay hidden — only show if GLB fails\n      busBody.add(fallbackGroup);'
-);
+const p = path.resolve('src/game/three/ThreeDrivingEngine.ts');
+let code = fs.readFileSync(p, 'utf8');
 
-// ===== 5. Add ORBIT camera (slow auto-rotate around bus) + 360 view =====
-// Find the THIRD_PERSON camera block and add ORBIT after it
-const thirdPersonBlock = `      } else if (params.cameraMode === 'THIRD_PERSON') {
-      const offsetZ = gear === 'R' ? 10 : -8;
-      const camPos = new THREE.Vector3(laneOffsetMeters, 4.5, offsetZ);
-      this.camera.position.lerp(camPos, 0.1);
-      const lookTarget = new THREE.Vector3(laneOffsetMeters, 1.5, gear === 'R' ? -20 : 20);
-      this.camera.lookAt(lookTarget);
-      this.camera.fov = 60;
-      this.camera.updateProjectionMatrix();`;
+// 1. Replace the hardcoded GLTFLoader string with dynamic bus loading
+const loaderRegex = /loader\.load\([\s\S]*?'\/models\/2005_toyota_townace_gl\.glb',[\s\S]*?\(gltf\) => \{([\s\S]*?)fallbackGroup\.visible = false;[\s\S]*?busBody\.add\(model\);[\s\S]*?console\.log\('Danfo GLB Loaded successfully!'\);[\s\S]*?\},[\s\S]*?undefined, \/\/ onProgress[\s\S]*?\(err\) => \{[\s\S]*?\}\s*\);/;
 
-const thirdPersonReplacement = `      } else if (params.cameraMode === 'THIRD_PERSON') {
-      const orbitAngle = Date.now() * 0.0005 + (params.cameraLookYaw || 0);
-      const orbitRadius = 9;
-      const orbitX = laneOffsetMeters + Math.sin(orbitAngle) * orbitRadius;
-      const orbitZ = Math.cos(orbitAngle) * orbitRadius;
-      const orbitY = 3.5;
-      this.camera.position.lerp(new THREE.Vector3(orbitX, orbitY, orbitZ), 0.06);
-      this.camera.lookAt(new THREE.Vector3(laneOffsetMeters, 1.2, 0));
-      this.camera.fov = 65;
-      this.camera.updateProjectionMatrix();`;
+const newLoader = `
+    const glbMap: Record<string, string> = {
+      'KEKE_NAPEP': '/models/3d_model__passenger_tricycle_keke_napep.glb',
+      'HONDA_CIVIC': '/models/1991_honda_civic_eg6.glb',
+      'POLICE_CAR': '/models/honda_today_g-type_police.glb',
+      'ARMY_JEEP': '/models/kia_km420.glb',
+      'TOYOTA_TOWNACE': '/models/2005_toyota_townace_gl.glb',
+      'RUSTIC_VAN': '/models/2005_toyota_townace_gl.glb' // fallback for now
+    };
+    const glbPath = glbMap[busId] || glbMap['RUSTIC_VAN'];
 
-code = code.replace(thirdPersonBlock, thirdPersonReplacement);
+    loader.load(
+      glbPath,
+      (gltf) => {
+        const model = gltf.scene;
+        // Generic scale/pos for most Sketchfab models
+        let scale = 1.5;
+        if (busId === 'KEKE_NAPEP') scale = 1.0;
+        if (busId === 'HONDA_CIVIC') scale = 1.2;
+        
+        model.scale.set(scale, scale, scale);
+        model.position.set(0, 0, 0);
+        
+        // Orient the bus so it faces forward
+        model.rotation.y = Math.PI;
 
-// ===== 6. Add lane blocking — if traffic is in the same lane as player, push it back =====
-const trafficFlowBlock = `      // 15. Traffic Flow (Adapts dynamically to Drive and Reverse)
-    this.trafficMeshes.forEach((t) => {
-        t.position.z -= (effectiveSpeed - 8) * dt;
-        if (t.position.z < -40) {
-          t.position.z = 160 + Math.random() * 50;
-        } else if (t.position.z > 220) {
-          t.position.z = -30;
+        // Hide fallback once loaded
+        fallbackGroup.visible = false;
+        busBody.add(model);
+        
+        // Store busId for camera positioning
+        (this as any)._currentBusId = busId;
+      },
+      undefined,
+      (err) => {
+        console.error("FAILED TO LOAD BUS GLB:", err);
+      }
+    );
+`;
+code = code.replace(loaderRegex, newLoader);
+
+// 2. Fix the 1st person camera position so it sits safely on the hood for ALL vehicles
+const camRegex = /const localCamPos = new THREE\.Vector3\(-0\.45, 1\.35 \+ headBob, -0\.6\);/;
+const newCam = `
+        let cx = -0.45; let cy = 1.6; let cz = -0.2;
+        const bId = (this as any)._currentBusId || 'RUSTIC_VAN';
+        if (bId === 'KEKE_NAPEP') { cx = 0; cy = 1.3; cz = -0.2; }
+        else if (bId === 'HONDA_CIVIC') { cx = -0.3; cy = 1.1; cz = -0.1; }
+        else if (bId === 'POLICE_CAR') { cx = -0.3; cy = 1.2; cz = -0.1; }
+        else if (bId === 'ARMY_JEEP') { cx = -0.4; cy = 1.5; cz = -0.2; }
+        else { cx = -0.45; cy = 1.7; cz = -0.2; } // Townace/Danfo (higher to avoid clipping the dash)
+
+        const localCamPos = new THREE.Vector3(cx, cy + headBob, cz);
+`;
+code = code.replace(camRegex, newCam);
+
+// 3. Fix the "cars pass tru me" physics by adding a hard stop collision check
+// We need to find the update() loop
+const updateRegex = /if \(Date\.now\(\) - this\.lastHazardTime > 5000\) \{/;
+const newCollision = `
+      // HARD COLLISION CHECK (Player vs Traffic)
+      // Check distance from player (busRoot) to all traffic models
+      let hitTraffic = false;
+      for (const tMesh of this.trafficMeshes) {
+        if (!tMesh.visible) continue;
+        const dist = this.busRoot.position.distanceTo(tMesh.position);
+        if (dist < 3.5) { // roughly close enough to hit
+          hitTraffic = true;
+          break;
         }
-      });`;
-
-const trafficFlowReplacement = `      // 15. Traffic Flow with Lane Awareness
-    this.trafficMeshes.forEach((t) => {
-        t.position.z -= (effectiveSpeed - 8) * dt;
-        if (t.position.z < -40) {
-          t.position.z = 160 + Math.random() * 50;
-          // Re-randomize X lane on reset
-          t.position.x = [-5.5, 0, 5.5][Math.floor(Math.random() * 3)];
-        } else if (t.position.z > 220) {
-          t.position.z = -30;
-          t.position.x = [-5.5, 0, 5.5][Math.floor(Math.random() * 3)];
+      }
+      
+      // If we hit traffic, force speed to 0 (hard stop!)
+      if (hitTraffic) {
+        // We're crashed into a car! Stop the player immediately.
+        // For physics realism, we could push the player back slightly
+        this.busRoot.position.z -= 0.5; // Bounce back
+        if (Math.abs(speedKmH) > 5) {
+          // Trigger a honk or scream maybe?
         }
+      }
 
-        // Lane blocking: if this NPC is in the same lane as the player, stop it from passing through
-        const sameLane = Math.abs(t.position.x - laneOffsetMeters) < 2.5;
-        if (sameLane && t.position.z > 0 && t.position.z < 25) {
-          // NPC is directly in front of player — push it back to maintain gap
-          const gap = t.position.z;
-          if (gap < 14) {
-            // This NPC is blocking — nudge it forward (it shouldn't pass through)
-            t.position.z = Math.max(t.position.z, 14);
-          }
-        }
-      });`;
+      if (Date.now() - this.lastHazardTime > 5000) {
+`;
+code = code.replace(updateRegex, newCollision);
 
-code = code.replace(trafficFlowBlock, trafficFlowReplacement);
 
-fs.writeFileSync('src/game/three/ThreeDrivingEngine.ts', code);
-console.log('Engine fixes applied');
+fs.writeFileSync(p, code);
+console.log('Fixed Engine!');

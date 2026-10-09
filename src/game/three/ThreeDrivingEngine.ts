@@ -124,7 +124,7 @@ export class ThreeDrivingEngine {
   private bootDoorAngle: number = 0; // 0 (closed) to Math.PI * 0.42 (open)
   private conductorClapTimer: number = 0;
 
-  constructor(container: HTMLElement) {
+  constructor(container: HTMLElement, busId: string = 'RUSTIC_VAN') {
     this.container = container;
     const width = container.clientWidth || 800;
     const height = container.clientHeight || 500;
@@ -1167,7 +1167,17 @@ export class ThreeDrivingEngine {
       this.camera.updateProjectionMatrix();
     } else {
       const headBob = speedKmH > 10 ? Math.sin(Date.now() * 0.02) * 0.008 : 0;
-      const localCamPos = new THREE.Vector3(-0.45, 1.35 + headBob, -0.6);
+      
+        let cx = -0.45; let cy = 1.6; let cz = -0.2;
+        const bId = (this as any)._currentBusId || 'RUSTIC_VAN';
+        if (bId === 'KEKE_NAPEP') { cx = 0; cy = 1.3; cz = -0.2; }
+        else if (bId === 'HONDA_CIVIC') { cx = -0.3; cy = 1.1; cz = -0.1; }
+        else if (bId === 'POLICE_CAR') { cx = -0.3; cy = 1.2; cz = -0.1; }
+        else if (bId === 'ARMY_JEEP') { cx = -0.4; cy = 1.5; cz = -0.2; }
+        else { cx = -0.45; cy = 1.7; cz = -0.2; } // Townace/Danfo (higher to avoid clipping the dash)
+
+        const localCamPos = new THREE.Vector3(cx, cy + headBob, cz);
+
       localCamPos.applyEuler(this.busRoot.rotation);
       localCamPos.add(this.busRoot.position);
       this.camera.position.copy(localCamPos);

@@ -138,7 +138,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
   // Initialize Three.js Engine on mount
   useEffect(() => {
     if (!mountRef.current) return;
-    const engine = new ThreeDrivingEngine(mountRef.current);
+    const engine = new ThreeDrivingEngine(mountRef.current, gameState.bus.id);
     engineRef.current = engine;
 
     return () => {
