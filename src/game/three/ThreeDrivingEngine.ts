@@ -1119,7 +1119,7 @@ export class ThreeDrivingEngine {
       this.conductorMesh.visible = true;
       this.conductorClapTimer += dt * 6;
       const slapSwing = Math.sin(this.conductorClapTimer) * 0.3;
-      this.conductorMesh.children[4].rotation.z = slapSwing;
+      if (this.conductorMesh.children.length >= 5) { this.conductorMesh.children[4].rotation.z = slapSwing; }
     } else {
       this.conductorMesh.visible = false;
     }
@@ -1168,13 +1168,14 @@ export class ThreeDrivingEngine {
     } else {
       const headBob = speedKmH > 10 ? Math.sin(Date.now() * 0.02) * 0.008 : 0;
       
-        let cx = -0.45; let cy = 1.6; let cz = -0.2;
+        // Place camera on the hood/front bumper so opaque windows don't block the view!
+        let cx = 0; let cy = 1.6; let cz = -1.8;
         const bId = (this as any)._currentBusId || 'RUSTIC_VAN';
-        if (bId === 'KEKE_NAPEP') { cx = 0; cy = 1.3; cz = -0.2; }
-        else if (bId === 'HONDA_CIVIC') { cx = -0.3; cy = 1.1; cz = -0.1; }
-        else if (bId === 'POLICE_CAR') { cx = -0.3; cy = 1.2; cz = -0.1; }
-        else if (bId === 'ARMY_JEEP') { cx = -0.4; cy = 1.5; cz = -0.2; }
-        else { cx = -0.45; cy = 1.7; cz = -0.2; } // Townace/Danfo (higher to avoid clipping the dash)
+        if (bId === 'KEKE_NAPEP') { cy = 1.3; cz = -0.8; }
+        else if (bId === 'HONDA_CIVIC') { cy = 1.1; cz = -1.2; }
+        else if (bId === 'POLICE_CAR') { cy = 1.2; cz = -1.2; }
+        else if (bId === 'ARMY_JEEP') { cy = 1.5; cz = -1.5; }
+        else { cy = 1.7; cz = -2.0; } // Townace/Danfo
 
         const localCamPos = new THREE.Vector3(cx, cy + headBob, cz);
 
