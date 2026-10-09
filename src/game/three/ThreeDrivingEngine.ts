@@ -1139,7 +1139,7 @@ export class ThreeDrivingEngine {
       this.camera.updateProjectionMatrix();
     } else {
       const headBob = speedKmH > 10 ? Math.sin(Date.now() * 0.02) * 0.008 : 0;
-      const localCamPos = new THREE.Vector3(-0.4, 1.5 + headBob, -0.15);
+      const localCamPos = new THREE.Vector3(-0.45, 1.35 + headBob, -0.6);
       localCamPos.applyEuler(this.busRoot.rotation);
       localCamPos.add(this.busRoot.position);
       this.camera.position.copy(localCamPos);
