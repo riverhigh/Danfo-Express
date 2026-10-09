@@ -145,7 +145,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       engine.dispose();
       engineRef.current = null;
     };
-  }, []);
+  }, [gameState.bus.id]);
 
   const toggleEngine = () => {
     const nextState = !isEngineRunning;

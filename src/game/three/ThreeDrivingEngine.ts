@@ -42,6 +42,7 @@ export interface SceneUpdateParams {
 }
 
 export class ThreeDrivingEngine {
+  private currentBusId: string = 'RUSTIC_VAN';
   private container: HTMLElement;
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
@@ -144,6 +145,8 @@ export class ThreeDrivingEngine {
   private conductorClapTimer: number = 0;
 
   constructor(container: HTMLElement, busId: string = 'RUSTIC_VAN') {
+    this.currentBusId = busId || 'RUSTIC_VAN';
+    (this as any)._currentBusId = this.currentBusId;
     this.container = container;
     const width = container.clientWidth || 800;
     const height = container.clientHeight || 500;
@@ -171,7 +174,7 @@ export class ThreeDrivingEngine {
     this.setupRoadAndCity();
 
     // 6. Danfo Bus Cockpit & Passenger Cabin with 3D Driver Hands & Dual Mirrors
-    const busComponents = this.createDanfoBus();
+    const busComponents = this.createDanfoBus(this.currentBusId);
     this.busRoot = busComponents.busRoot;
     this.busBody = busComponents.busBody;
     this.steeringWheelMesh = busComponents.steeringWheel;
@@ -671,43 +674,55 @@ export class ThreeDrivingEngine {
    * 3D Driver Hands gripping the wheel, working dashboard cluster, dual side mirrors,
    * and the animated Passenger Sliding Door on the right!
    */
-  private createDanfoBus() {
+    private createDanfoBus(busId: string = 'RUSTIC_VAN') {
     const busRoot = new THREE.Group();
     const busBody = new THREE.Group();
     busRoot.add(busBody);
 
-    // Placeholder returned objects so engine properties don't crash
+    // Steering wheel placeholder
     const steeringWheel = new THREE.Group();
     steeringWheel.rotation.order = 'ZYX';
     steeringWheel.position.set(-0.6, 1.5, 2.3);
     busBody.add(steeringWheel);
     
-    // We will build a basic procedural bus as a fallback/scaffold
     const fallbackGroup = new THREE.Group();
-      busBody.add(fallbackGroup);
+    busBody.add(fallbackGroup);
 
-    // Try to load the user's downloaded GLB
+    // Load correct 3D GLB Model for whichever vehicle is selected
     const loader = new GLTFLoader();
+    const glbMap: Record<string, { path: string; scale: number; y: number; rotY: number }> = {
+      'RUSTIC_VAN':    { path: '/models/danfo.glb', scale: 1.5, y: 0, rotY: 0 },
+      'TOYOTA_TOWNACE': { path: '/models/2005_toyota_townace_gl.glb', scale: 1.5, y: 0.2, rotY: Math.PI },
+      'HONDA_CIVIC':   { path: '/models/1991_honda_civic_eg6.glb', scale: 1.2, y: 0, rotY: Math.PI },
+      'KEKE_NAPEP':    { path: '/models/3d_model__passenger_tricycle_keke_napep.glb', scale: 1.0, y: 0, rotY: 0 },
+      'POLICE_CAR':    { path: '/models/honda_today_g-type_police.glb', scale: 1.3, y: 0, rotY: Math.PI },
+      'ARMY_JEEP':     { path: '/models/kia_km420.glb', scale: 1.4, y: 0, rotY: Math.PI },
+      'KIA_CARNIVAL':  { path: '/models/kia_carnival.glb', scale: 1.4, y: 0, rotY: Math.PI },
+      'CIVIC_TYPE_R':  { path: '/models/2000_honda_civic_type_r_ek9.glb', scale: 1.2, y: 0, rotY: Math.PI },
+      'KIA_FORTE':     { path: '/models/2010_kia_forte_koup.glb', scale: 1.3, y: 0, rotY: Math.PI },
+      'HONDA_ACTY':    { path: '/models/ac_-_honda_acty_ha3_free.glb', scale: 1.0, y: 0, rotY: Math.PI },
+    };
+
+    const targetKey = busId || this.currentBusId || 'RUSTIC_VAN';
+    const glbCfg = glbMap[targetKey] || glbMap['RUSTIC_VAN'];
+
     loader.load(
-      '/models/2005_toyota_townace_gl.glb',
+      glbCfg.path,
       (gltf) => {
         const model = gltf.scene;
-        
-        // Scale and position adjustment based on typical sketchfab models
-        model.scale.set(1.5, 1.5, 1.5);
-        model.position.set(0, 0.2, 0);
-        
-        // Orient the bus so it faces forward (Z-negative usually, or adjust based on model)
-        model.rotation.y = Math.PI;
-
-        // Hide fallback once loaded
+        model.scale.setScalar(glbCfg.scale);
+        model.position.set(0, glbCfg.y, 0);
+        if (glbCfg.rotY) {
+          model.rotation.y = glbCfg.rotY;
+        }
         fallbackGroup.visible = false;
         busBody.add(model);
-        console.log('Danfo GLB Loaded successfully!');
+        (this as any)._playerModel = model;
+        console.log('Player GLB loaded successfully:', glbCfg.path);
       },
       undefined,
       (error) => {
-        console.error('Error loading Danfo GLB:', error);
+        console.error('Error loading Player vehicle GLB:', error);
       }
     );
 
@@ -802,14 +817,32 @@ export class ThreeDrivingEngine {
       const passengers: THREE.Group[] = [];
       const passengerColors = [0x1e3a8a, 0xdc2626, 0x16a34a, 0x9333ea, 0xd97706, 0x0284c7];
 
+            const characterGlbs = [
+        { path: '/models/african_female_model.glb', scale: 1.2 },
+        { path: '/models/african_girl.glb', scale: 1.1 },
+        { path: '/models/free_download_athletic_african_man_walking_223.glb', scale: 1.25 },
+        { path: '/models/free_download_attractive_african_woman_236.glb', scale: 1.2 },
+        { path: '/models/human.glb', scale: 1.25 }
+      ];
+      const charLoader = new GLTFLoader();
+
       for (let p = 0; p < Math.min(6, junc.waitingPassengersCount); p++) {
         const pGroup = new THREE.Group();
-          (pGroup as any)._isNpc = true;
+        (pGroup as any)._isNpc = true;
 
         const pX = 9.2 + Math.random() * 2.2;
         const pZ = -3.5 + p * 1.4;
         pGroup.position.set(pX, 0, pZ);
         pGroup.rotation.y = -Math.PI / 2;
+
+        const charCfg = characterGlbs[p % characterGlbs.length];
+        charLoader.load(charCfg.path, (gltf) => {
+          const charScene = gltf.scene;
+          charScene.scale.setScalar(charCfg.scale);
+          charScene.position.set(0, 0, 0);
+          pGroup.add(charScene);
+        }, undefined, (err) => console.warn('Passenger char load err:', err));
+
         group.add(pGroup);
         passengers.push(pGroup);
       }
@@ -820,116 +853,33 @@ export class ThreeDrivingEngine {
   }
 
   private setupTrafficAndHazards() {
-    const trafficColors = [0xfacc15, 0x0284c7, 0xdc2626, 0x16a34a, 0x475569];
-    const glassMat = new THREE.MeshPhysicalMaterial({ color: 0x0a0a0a, roughness: 0.05, transparent: true, opacity: 0.6 });
-    const blackMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 });
-    const chromeMat = new THREE.MeshStandardMaterial({ color: 0xd1d5db, roughness: 0.1, metalness: 0.9 });
-    
-    const types = ['BRT', 'KEKE', 'TRUCK', 'OKADA', 'SEDAN'];
+    const npcGlbPaths = [
+      { path: '/models/1991_honda_civic_eg6.glb', scale: 1.2 },
+      { path: '/models/2005_toyota_townace_gl.glb', scale: 1.5 },
+      { path: '/models/3d_model__passenger_tricycle_keke_napep.glb', scale: 1.0 },
+      { path: '/models/honda_today_g-type_police.glb', scale: 1.3 },
+      { path: '/models/kia_km420.glb', scale: 1.4 },
+      { path: '/models/2000_honda_civic_type_r_ek9.glb', scale: 1.2 },
+      { path: '/models/2010_kia_forte_koup.glb', scale: 1.3 },
+      { path: '/models/ac_-_honda_acty_ha3_free.glb', scale: 1.0 },
+    ];
+    const loader = new GLTFLoader();
+    const lanes = [-5.5, 0, 5.5];
 
     for (let i = 0; i < 15; i++) {
       const traffic = new THREE.Group();
-      const type = types[Math.floor(Math.random() * types.length)];
-      const color = trafficColors[Math.floor(Math.random() * trafficColors.length)];
-      const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.4 });
-
-      if (type === 'BRT') {
-        // Massive Blue BRT Bus
-        const brtMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.3 });
-        const body = new THREE.Mesh(new THREE.BoxGeometry(2.5, 3.2, 12), brtMat);
-        body.position.y = 1.8;
-        traffic.add(body);
-        
-        // Windows
-        const windows = new THREE.Mesh(new THREE.BoxGeometry(2.52, 1.2, 11.5), glassMat);
-        windows.position.y = 2.2;
-        traffic.add(windows);
-        
-        // LED Sign
-        const sign = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.4, 0.1), new THREE.MeshBasicMaterial({ color: 0x000000 }));
-        sign.position.set(0, 3.0, 6.05);
-        traffic.add(sign);
-        
-      } else if (type === 'KEKE') {
-        // Yellow Keke Napep (Tricycle)
-        const kekeMat = new THREE.MeshStandardMaterial({ color: 0xfacc15 });
-        const body = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.0, 2.2), kekeMat);
-        body.position.set(0, 0.8, 0);
-        traffic.add(body);
-        
-        // Canopy
-        const canopy = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.1, 2.2), blackMat);
-        canopy.position.set(0, 1.8, 0);
-        traffic.add(canopy);
-        
-        // Windshield
-        const ws = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 0.8), glassMat);
-        ws.position.set(0, 1.4, 1.1);
-        traffic.add(ws);
-        
-        // Wheels (1 front, 2 back)
-        const frontW = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.1), blackMat);
-        frontW.rotation.z = Math.PI / 2;
-        frontW.position.set(0, 0.2, 1.0);
-        traffic.add(frontW);
-        
-        [-0.6, 0.6].forEach(x => {
-          const w = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.1), blackMat);
-          w.rotation.z = Math.PI / 2;
-          w.position.set(x, 0.2, -0.8);
-          traffic.add(w);
-        });
-
-      } else if (type === 'TRUCK') {
-        // Dangote-style Truck
-        const cabinMat = new THREE.MeshStandardMaterial({ color: 0xef4444 });
-        const cabin = new THREE.Mesh(new THREE.BoxGeometry(2.6, 2.5, 2.5), cabinMat);
-        cabin.position.set(0, 2.0, 4.0);
-        traffic.add(cabin);
-        
-        const cargo = new THREE.Mesh(new THREE.BoxGeometry(2.6, 3.0, 8.0), chromeMat);
-        cargo.position.set(0, 2.5, -1.5);
-        traffic.add(cargo);
-
-      } else if (type === 'OKADA') {
-        // Okada Motorcycle
-        const bikeMat = new THREE.MeshStandardMaterial({ color: 0x475569 });
-        const body = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.6, 1.8), bikeMat);
-        body.position.set(0, 0.6, 0);
-        traffic.add(body);
-        
-        const rider = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.8, 0.4), new THREE.MeshStandardMaterial({ color: 0xef4444 }));
-        rider.position.set(0, 1.3, 0);
-        traffic.add(rider);
-        
-        [-0.8, 0.8].forEach(z => {
-          const w = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.1), blackMat);
-          w.rotation.z = Math.PI / 2;
-          w.position.set(0, 0.3, z);
-          traffic.add(w);
-        });
-        
-      } else {
-        // Sedan
-        const body = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.8, 4.6), bodyMat);
-        body.position.y = 0.7;
-        traffic.add(body);
-        
-        const top = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.6, 2.4), bodyMat);
-        top.position.set(0, 1.4, -0.2);
-        traffic.add(top);
-        
-        const windows = new THREE.Mesh(new THREE.BoxGeometry(1.65, 0.5, 2.45), glassMat);
-        windows.position.set(0, 1.4, -0.2);
-        traffic.add(windows);
-      }
-
-      // Random Lane
-      const lanes = [-5.5, 0, 5.5];
+      const cfg = npcGlbPaths[i % npcGlbPaths.length];
       traffic.position.set(lanes[Math.floor(Math.random() * lanes.length)], 0, 80 + i * 45);
-      
       this.scene.add(traffic);
       this.trafficMeshes.push(traffic);
+
+      loader.load(cfg.path, (gltf) => {
+        const m = gltf.scene;
+        m.scale.setScalar(cfg.scale);
+        m.position.set(0, 0, 0);
+        traffic.add(m);
+        traffic.userData.hasGlb = true;
+      }, undefined, (err) => console.warn('Traffic GLB fail:', err));
     }
   }
 
@@ -1142,37 +1092,42 @@ export class ThreeDrivingEngine {
     // (FIXES THE BACKWARD R AND D PERCEPTION!)
     // ========================================================
     if (isSteppedDown) {
-      // Driver stepped down to roadside passenger door
-      this.camera.position.set(laneOffsetMeters + 1.8, 1.65, 0.2);
+      // Driver stepped out onto roadside sidewalk:
+      // Position camera on the sidewalk next to the passenger door
+      this.camera.position.set(laneOffsetMeters + 2.5, 1.6, 0.5);
       this.camera.rotation.order = 'YXZ';
-      // Look outward towards the door by default (approx -1.8 rad), plus user drag
-      this.camera.rotation.y = -1.8 + (params.cameraLookYaw || 0);
+      // Look towards vehicle and allow full 360-degree free look around
+      this.camera.rotation.y = -Math.PI / 2 + (params.cameraLookYaw || 0);
       this.camera.rotation.x = (params.cameraLookPitch || 0);
       this.camera.rotation.z = 0;
       this.camera.fov = 68;
       this.camera.updateProjectionMatrix();
     } else if (params.cameraMode === 'THIRD_PERSON') {
-      const offsetZ = gear === 'R' ? 10 : -8;
-      const camPos = new THREE.Vector3(laneOffsetMeters, 4.5, offsetZ);
-      this.camera.position.lerp(camPos, 0.1);
-      const lookTarget = new THREE.Vector3(laneOffsetMeters, 1.5, gear === 'R' ? -20 : 20);
+      // Third Person Exterior Follow Camera (Shows full 3D vehicle exterior)
+      const offsetZ = gear === 'R' ? 9.5 : -7.5;
+      const camPos = new THREE.Vector3(laneOffsetMeters, 3.8, offsetZ);
+      this.camera.position.lerp(camPos, 0.15);
+      const lookTarget = new THREE.Vector3(laneOffsetMeters, 1.2, gear === 'R' ? -20 : 20);
       this.camera.lookAt(lookTarget);
-      this.camera.fov = 60;
+      this.camera.fov = 62;
       this.camera.updateProjectionMatrix();
     } else {
+      // FIRST PERSON / DR. DRIVING COCKPIT VIEW:
+      // Camera is positioned on the hood/windshield looking directly forward at the road (+Z)
+      // Clean, open road view with NO dark opaque interior roof/pillars blocking the view!
       const headBob = speedKmH > 10 ? Math.sin(Date.now() * 0.02) * 0.008 : 0;
       
-        // Place camera near the steering wheel/dash, ensuring it doesn't clip backwards into the interior
-        let cx = -0.45; let cy = 1.65; let cz = 0.5; // +Z is forward!
-        const bId = (this as any)._currentBusId || 'RUSTIC_VAN';
-        if (bId === 'KEKE_NAPEP') { cx = 0; cy = 1.3; cz = 0.2; }
-        else if (bId === 'HONDA_CIVIC') { cx = -0.3; cy = 1.1; cz = 0.2; }
-        else if (bId === 'POLICE_CAR') { cx = -0.3; cy = 1.2; cz = 0.2; }
-        else if (bId === 'ARMY_JEEP') { cx = -0.4; cy = 1.5; cz = 0.3; }
-        else { cx = -0.45; cy = 1.75; cz = 0.8; } // Townace/Danfo
+      let cx = -0.35; // driver side
+      let cy = 1.35;  // natural eye/hood height
+      let cz = 2.2;   // on hood in front of opaque windshield/pillars
+      const bId = this.currentBusId || 'RUSTIC_VAN';
+      if (bId === 'KEKE_NAPEP') { cx = 0; cy = 1.15; cz = 1.3; }
+      else if (bId === 'HONDA_CIVIC' || bId === 'CIVIC_TYPE_R') { cx = -0.3; cy = 1.05; cz = 1.8; }
+      else if (bId === 'POLICE_CAR') { cx = -0.3; cy = 1.1; cz = 1.8; }
+      else if (bId === 'ARMY_JEEP') { cx = -0.35; cy = 1.3; cz = 1.9; }
+      else { cx = -0.35; cy = 1.45; cz = 2.3; } // Danfo / Townace
 
-        const localCamPos = new THREE.Vector3(cx, cy + headBob, cz);
-
+      const localCamPos = new THREE.Vector3(cx, cy + headBob, cz);
       localCamPos.applyEuler(this.busRoot.rotation);
       localCamPos.add(this.busRoot.position);
       this.camera.position.copy(localCamPos);
