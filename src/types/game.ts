@@ -249,6 +249,16 @@ export interface GameState {
   bankBalanceNaira: number;
   streetCred: number; // Level / XP
   
+  // Survival Needs
+  needs: {
+    hunger: number;
+    energy: number;
+    fun: number;
+    social: number;
+    hygiene: number;
+    bladder: number;
+  };
+
   // Life Simulation & Bills
   house: HouseInfo;
   inventory: InventoryItem[];

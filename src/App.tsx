@@ -35,6 +35,7 @@ import { InventoryModal } from './components/InventoryModal';
 import { MainMap, MapLocation } from './components/MainMap';
 import { Dealership, VEHICLES } from './components/Dealership';
 import { CharacterCreation } from './components/CharacterCreation';
+import { NeedsPanel } from './components/NeedsPanel';
 import { AjoApp, KoloSystem } from './components/SavingsSystems';
 import { 
   Trophy, 
@@ -115,8 +116,9 @@ export default function App() {
         collectedCash: 1200,
       },
       walletNaira: saveData.walletNaira,
-        bankBalanceNaira: saveData.bankBalanceNaira,
-        streetCred: saveData.streetCred,
+      bankBalanceNaira: saveData.bankBalanceNaira,
+      streetCred: saveData.streetCred,
+      needs: saveData.needs || { hunger: 100, energy: 100, fun: 100, social: 100, hygiene: 100, bladder: 100 },
       hustleMeter: 40,
       comboMultiplier: 1,
       comboStreak: 0,
@@ -336,6 +338,28 @@ export default function App() {
 
   const unreadCount = gameState.messages?.filter((m) => m.unread).length || 0;
 
+  // Drain Needs globally every 5 seconds
+  useEffect(() => {
+    if (gameState.screen !== 'SHIFT_ACTIVE') return;
+    const interval = setInterval(() => {
+      setGameState((prev) => {
+        const n = prev.needs;
+        return {
+          ...prev,
+          needs: {
+            hunger: Math.max(0, n.hunger - 0.5),
+            energy: Math.max(0, n.energy - 0.3),
+            fun: Math.max(0, n.fun - 0.4),
+            social: Math.max(0, n.social - 0.2),
+            hygiene: Math.max(0, n.hygiene - 0.1),
+            bladder: Math.max(0, n.bladder - 0.6),
+          }
+        };
+      });
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [gameState.screen]);
+
   return (
     <div className="w-screen h-screen bg-stone-950 text-stone-100 flex flex-col overflow-hidden font-['Plus_Jakarta_Sans',sans-serif]">
       {/* HEADER NAV / STATUS BAR */}
@@ -417,6 +441,7 @@ export default function App() {
 
       {/* MAIN CONTENT AREA */}
       <main className={`relative overflow-hidden flex flex-col ${gameState.screen === 'SHIFT_ACTIVE' ? 'absolute inset-0 w-full h-full' : 'flex-1'}`}>
+        {gameState.screen === 'MENU' && (<div className="absolute right-4 top-4 z-40 hidden lg:block"><NeedsPanel needs={gameState.needs} /></div>)}
         {/* MENU STATE */}
         {gameState.screen === 'MENU' && (
           <div className="flex-1 overflow-y-auto px-4 py-6 max-w-5xl mx-auto w-full space-y-6">

@@ -15,6 +15,14 @@ interface SaveData {
   selectedSlogan: string;
   unlockedHouses: HouseTierId[];
   activeHouseId: HouseTierId;
+  needs: {
+    hunger: number;
+    energy: number;
+    fun: number;
+    social: number;
+    hygiene: number;
+    bladder: number;
+  };
 }
 
 const DEFAULT_SAVE: SaveData = {
@@ -30,7 +38,8 @@ const DEFAULT_SAVE: SaveData = {
   selectedBusId: 'RUSTIC_VAN',
   selectedSlogan: 'No King as God',
   unlockedHouses: ['FACE_ME_I_SLAP_YOU'],
-  activeHouseId: 'FACE_ME_I_SLAP_YOU'
+  activeHouseId: 'FACE_ME_I_SLAP_YOU',
+  needs: { hunger: 100, energy: 100, fun: 100, social: 100, hygiene: 100, bladder: 100 }
 };
 
 const SAVE_KEY = 'danfo_express_save_v1';
