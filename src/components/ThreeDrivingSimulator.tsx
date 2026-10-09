@@ -919,6 +919,42 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           }}
         />
       )}
-    </div>
+    
+      {/* 2D DASHBOARD OVERLAY */}
+      {!isSteppedDown && cameraMode !== 'ORBIT' && (
+        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 w-[800px] max-w-[95vw] h-40 pointer-events-none z-[80] flex items-end justify-center">
+          <div className="relative w-[600px] h-32 bg-gradient-to-t from-stone-900 via-stone-800 to-transparent border-t-4 border-stone-700/50 rounded-t-full opacity-90 shadow-[0_-10px_40px_rgba(0,0,0,0.8)] backdrop-blur-sm flex justify-between px-16 pb-4 items-end overflow-hidden">
+            
+            {/* Speedometer Left */}
+            <div className="relative w-28 h-28 border-4 border-stone-600/50 rounded-full bg-stone-950/80 shadow-inner flex flex-col items-center justify-center">
+              <div className="text-3xl text-sky-400 font-black tracking-tighter" style={{ textShadow: '0 0 10px rgba(56,189,248,0.5)' }}>
+                {Math.round(simRef.current?.speed || 0)}
+              </div>
+              <div className="text-[10px] text-stone-400 font-bold tracking-widest uppercase">KM/H</div>
+            </div>
+
+            {/* Center Info Screen */}
+            <div className="flex flex-col items-center justify-end pb-2">
+              <div className="px-3 py-1 bg-stone-950 border border-stone-700 rounded text-amber-500 font-mono text-xs shadow-inner">
+                {gear} - AUTO
+              </div>
+            </div>
+
+            {/* RPM / Heat Right */}
+            <div className="relative w-28 h-28 border-4 border-stone-600/50 rounded-full bg-stone-950/80 shadow-inner flex flex-col items-center justify-center">
+              <div className="text-xl text-rose-500 font-black tracking-tighter">
+                {Math.round(gameState.bus.heat)}°
+              </div>
+              <div className="text-[10px] text-stone-400 font-bold tracking-widest uppercase">TEMP</div>
+              <div className="absolute bottom-2 w-16 h-1.5 bg-stone-800 rounded-full overflow-hidden">
+                <div className="h-full bg-gradient-to-r from-emerald-500 via-amber-500 to-rose-500" style={{ width: `${gameState.bus.heat}%` }} />
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+</div>
   );
 };

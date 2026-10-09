@@ -87,7 +87,7 @@ export class ThreeDrivingEngine {
         '/models/3d_model__passenger_tricycle_keke_napep.glb',
         '/models/honda_today_g-type_police.glb',
         '/models/kia_km420.glb',
-        '/models/danfo.glb'
+        '/models/2005_toyota_townace_gl.glb'
       ];
       
       modelsToLoad.forEach(path => {
@@ -675,7 +675,7 @@ export class ThreeDrivingEngine {
     // Try to load the user's downloaded GLB
     const loader = new GLTFLoader();
     loader.load(
-      '/models/danfo.glb',
+      '/models/2005_toyota_townace_gl.glb',
       (gltf) => {
         const model = gltf.scene;
         
