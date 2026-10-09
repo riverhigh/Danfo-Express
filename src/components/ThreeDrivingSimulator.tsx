@@ -53,6 +53,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
 }) => {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const engineRef = useRef<ThreeDrivingEngine | null>(null);
+  const lookRef = useRef({ yaw: 0, pitch: 0, isDragging: false, startX: 0, startY: 0, startYaw: 0, startPitch: 0 });
 
   // UI Interactive States
   const [gear, setGear] = useState<GearPosition>('D');
@@ -175,18 +176,29 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
     }
     const nextStep = !isSteppedDown;
     setIsSteppedDown(nextStep);
+    simRef.current.isSteppedDown = nextStep;
     soundEngine.playDoorOpenClose();
     if (nextStep) {
       if (doorState === 'CLOSED') {
         setDoorState('OPEN');
+        simRef.current.doorState = 'OPEN';
         soundEngine.playDoorSlide(true);
       }
-      addFeedMessage('🚶 EJECTED / STEPPED DOWN: Standing at passenger door to usher commuters in!');
-      // Trigger nearby NPC if stopped
+      addFeedMessage('🚪 STEPPED OUT: Standing on roadside! Drag to look 360° around your vehicle!');
       const randomNpc = LAGOS_NPCS[Math.floor(Math.random() * LAGOS_NPCS.length)];
       setActiveNpc(randomNpc);
     } else {
-      addFeedMessage('🚍 BACK IN DRIVER SEAT: Hands gripped on steering wheel, ready to accelerate!');
+      // RE-ENTERING DRIVER SEAT: automatically ready to start & drive!
+      setDoorState('CLOSED');
+      simRef.current.doorState = 'CLOSED';
+      soundEngine.playDoorSlide(false);
+      setIsEngineRunning(true);
+      inputsRef.current.isEngineRunning = true;
+      setGear('D');
+      inputsRef.current.gear = 'D';
+      inputsRef.current.gas = false;
+      inputsRef.current.brake = false;
+      addFeedMessage('🚌 BACK IN DRIVER SEAT: Engine running, in D gear, ready to accelerate!');
     }
   };
 
@@ -618,7 +630,9 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
             laneOffsetMeters: sim.laneOffset,
             gear: inp.gear,
             isBraking: inp.brake,
-            cameraMode: cameraMode === 'ORBIT' ? 'THIRD_PERSON' : cameraMode as any,
+            cameraMode: cameraMode as any,
+            cameraLookYaw: lookRef.current.yaw,
+            cameraLookPitch: lookRef.current.pitch,
             turnSignal: inp.turnSignal,
             hazardLights: inp.hazardLights,
             wipersActive: inp.wipersActive,
@@ -675,22 +689,47 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
   return (
     <div className="relative w-[100vw] h-[100vh] bg-stone-950 overflow-hidden select-none pointer-events-none" style={{ position: "relative", width: "100vw", height: "100vh" }}>
       
-        {/* CAMERA MODE BUTTON — always visible */}
-        <div className="absolute top-0 right-0 z-[9998] pointer-events-auto flex flex-col gap-1 p-2">
+        {/* CAMERA MODE BUTTON - Positioned top-right below top HUD bar so it never overlaps MiniMap or icons */}
+        <div className="absolute top-11 right-3 z-40 pointer-events-auto flex flex-col gap-1">
           <button
             onClick={() => setCameraMode(m => {
               if (m === 'FIRST_PERSON') return 'THIRD_PERSON';
-              if (m === 'THIRD_PERSON') return 'ORBIT';
+              if (m === 'THIRD_PERSON') return 'TOP_DOWN';
+              if (m === 'TOP_DOWN') return 'ORBIT';
               return 'FIRST_PERSON';
             })}
-            className="px-3 py-1.5 bg-stone-900/90 border border-sky-500 rounded-xl text-sky-300 font-black text-[10px] font-mono shadow-xl backdrop-blur"
+            className="px-3 py-1.5 bg-stone-950/90 border border-sky-400/80 hover:border-sky-300 rounded-xl text-sky-300 hover:text-white font-black text-[10px] font-mono shadow-2xl backdrop-blur flex items-center gap-1.5 active:scale-95 transition-all"
+            title="Cycle Camera View"
           >
-            {cameraMode === 'FIRST_PERSON' ? '📷 1ST' : cameraMode === 'THIRD_PERSON' ? '📷 3RD' : '📷 360'}
+            {cameraMode === 'FIRST_PERSON' && '🎥 1ST COCKPIT'}
+            {cameraMode === 'THIRD_PERSON' && '🚗 3RD CHASE'}
+            {cameraMode === 'TOP_DOWN' && '🦅 BIRD EYE'}
+            {cameraMode === 'ORBIT' && '🔄 360 FREE'}
           </button>
         </div>
 
         {/* 3D WebGL Canvas */}
-      <div ref={mountRef} className="absolute inset-0 w-full h-full pointer-events-auto" />
+      <div
+        ref={mountRef}
+        onPointerDown={(e) => {
+          // Allow looking around in walkout, 360, or 1st person
+          lookRef.current.isDragging = true;
+          lookRef.current.startX = e.clientX;
+          lookRef.current.startY = e.clientY;
+          lookRef.current.startYaw = lookRef.current.yaw;
+          lookRef.current.startPitch = lookRef.current.pitch;
+        }}
+        onPointerMove={(e) => {
+          if (!lookRef.current.isDragging) return;
+          const dx = e.clientX - lookRef.current.startX;
+          const dy = e.clientY - lookRef.current.startY;
+          lookRef.current.yaw = lookRef.current.startYaw + dx * 0.006;
+          lookRef.current.pitch = Math.max(-0.6, Math.min(0.6, lookRef.current.startPitch + dy * 0.005));
+        }}
+        onPointerUp={() => { lookRef.current.isDragging = false; }}
+        onPointerCancel={() => { lookRef.current.isDragging = false; }}
+        className="absolute inset-0 w-full h-full pointer-events-auto cursor-grab active:cursor-grabbing touch-none"
+      />
 
       {/* ═══════ TOP BAR ═══════ */}
       <div className={`absolute top-0 left-0 right-0 z-40 pointer-events-auto transition-transform duration-300 ${showTopHUD ? 'translate-y-0' : '-translate-y-full'}`}>
@@ -921,7 +960,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       )}
     
       {/* 2D DASHBOARD OVERLAY */}
-      {!isSteppedDown && cameraMode !== 'ORBIT' && (
+      {!isSteppedDown && cameraMode === 'FIRST_PERSON' && (
         <div className="absolute bottom-2 left-1/2 -translate-x-1/2 w-[800px] max-w-[95vw] h-40 pointer-events-none z-[80] flex items-end justify-center">
           <div className="relative w-[600px] h-32 bg-gradient-to-t from-stone-900 via-stone-800 to-transparent border-t-4 border-stone-700/50 rounded-t-full opacity-90 shadow-[0_-10px_40px_rgba(0,0,0,0.8)] backdrop-blur-sm flex justify-between px-16 pb-4 items-end overflow-hidden">
             

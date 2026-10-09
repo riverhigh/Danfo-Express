@@ -834,11 +834,9 @@ export class ThreeDrivingEngine {
       const passengerColors = [0x1e3a8a, 0xdc2626, 0x16a34a, 0x9333ea, 0xd97706, 0x0284c7];
 
             const characterGlbs = [
-        { path: '/models/african_female_model.glb', scale: 1.2 },
-        { path: '/models/african_girl.glb', scale: 1.1 },
-        { path: '/models/free_download_athletic_african_man_walking_223.glb', scale: 1.25 },
-        { path: '/models/free_download_attractive_african_woman_236.glb', scale: 1.2 },
-        { path: '/models/human.glb', scale: 1.25 }
+        { path: '/models/free_download_athletic_african_man_walking_223.glb' },
+        { path: '/models/free_download_attractive_african_woman_236.glb' },
+        { path: '/models/african_female_model.glb' }
       ];
       const charLoader = new GLTFLoader();
 
@@ -854,8 +852,24 @@ export class ThreeDrivingEngine {
         const charCfg = characterGlbs[p % characterGlbs.length];
         charLoader.load(charCfg.path, (gltf) => {
           const charScene = gltf.scene;
-          charScene.scale.setScalar(charCfg.scale);
-          charScene.position.set(0, 0, 0);
+          
+          // NORMALIZE CHARACTER HEIGHT TO 1.75 METERS!
+          // Some models were authored in centimeters (228 units tall = 228m tall giants!).
+          // Calculate bounding box and scale to realistic human height:
+          const bbox = new THREE.Box3().setFromObject(charScene);
+          const size = bbox.getSize(new THREE.Vector3());
+          const maxDim = Math.max(size.x, size.y, size.z);
+          if (maxDim > 0) {
+            const targetHeight = 1.75; // realistic 1.75m human height
+            const rawHeight = size.y > 0.5 ? size.y : maxDim;
+            const normScale = targetHeight / rawHeight;
+            charScene.scale.setScalar(normScale);
+
+            // Re-calculate box to plant feet firmly on the ground at Y=0
+            const finalBox = new THREE.Box3().setFromObject(charScene);
+            charScene.position.y = -finalBox.min.y;
+          }
+
           pGroup.add(charScene);
         }, undefined, (err) => console.warn('Passenger char load err:', err));
 
@@ -1140,7 +1154,7 @@ export class ThreeDrivingEngine {
     // (FIXES THE BACKWARD R AND D PERCEPTION!)
     // ========================================================
     if (isSteppedDown) {
-      // Driver stepped out onto roadside sidewalk:
+      // Driver stepped out on roadside sidewalk:
       // Position camera on the sidewalk next to the passenger door
       this.camera.position.set(laneOffsetMeters + 2.5, 1.6, 0.5);
       this.camera.rotation.order = 'YXZ';
@@ -1150,14 +1164,35 @@ export class ThreeDrivingEngine {
       this.camera.rotation.z = 0;
       this.camera.fov = 68;
       this.camera.updateProjectionMatrix();
+    } else if (params.cameraMode === 'TOP_DOWN' || (params.cameraMode as any) === 'BIRD') {
+      // BIRD'S EYE VIEW: High above looking down at the Danfo bus driving along expressway!
+      const camPos = new THREE.Vector3(laneOffsetMeters, 16.5, -1.0);
+      this.camera.position.lerp(camPos, 0.15);
+      const lookTarget = new THREE.Vector3(laneOffsetMeters, 0.5, 14.0);
+      this.camera.lookAt(lookTarget);
+      this.camera.fov = 55;
+      this.camera.updateProjectionMatrix();
     } else if (params.cameraMode === 'THIRD_PERSON') {
-      // Third Person Exterior Follow Camera (Shows full 3D vehicle exterior)
-      const offsetZ = gear === 'R' ? 9.5 : -7.5;
+      // CHASE CAM: Classic 3rd person follow camera behind Danfo bus
+      const offsetZ = gear === 'R' ? 10.0 : -8.5;
       const camPos = new THREE.Vector3(laneOffsetMeters, 3.8, offsetZ);
       this.camera.position.lerp(camPos, 0.15);
-      const lookTarget = new THREE.Vector3(laneOffsetMeters, 1.2, gear === 'R' ? -20 : 20);
+      const lookTarget = new THREE.Vector3(laneOffsetMeters, 1.3, gear === 'R' ? -20 : 25);
       this.camera.lookAt(lookTarget);
-      this.camera.fov = 62;
+      this.camera.fov = 65;
+      this.camera.updateProjectionMatrix();
+    } else if (params.cameraMode === 'ORBIT') {
+      // 360 ORBIT VIEW: Free rotate around Danfo bus
+      const orbitDist = 7.5;
+      const orbitHeight = 3.2;
+      const yaw = (params.cameraLookYaw || 0) + Math.PI;
+      const pitch = (params.cameraLookPitch || 0);
+      const cx = laneOffsetMeters + Math.sin(yaw) * orbitDist;
+      const cy = orbitHeight + Math.sin(pitch) * 4;
+      const cz = -Math.cos(yaw) * orbitDist;
+      this.camera.position.set(cx, Math.max(1.2, cy), cz);
+      this.camera.lookAt(new THREE.Vector3(laneOffsetMeters, 1.2, 0));
+      this.camera.fov = 65;
       this.camera.updateProjectionMatrix();
     } else {
       // FIRST PERSON / DR. DRIVING COCKPIT VIEW:
