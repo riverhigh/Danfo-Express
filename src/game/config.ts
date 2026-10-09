@@ -102,6 +102,15 @@ export const BUS_PRESETS: Record<string, Bus> = {
   },
 
   KEKE_NAPEP: {
+    speed: 0,
+    maxSpeed: 100,
+    acceleration: 5,
+    handling: 5,
+    durability: 100,
+    capacity: 14,
+    condition: 100,
+    mileage: 0,
+    color: '#ffcc00',
     id: 'KEKE_NAPEP',
     name: 'Keke Maruwa',
     slogan: 'God Dey',
@@ -109,9 +118,27 @@ export const BUS_PRESETS: Record<string, Bus> = {
     fuelPercent: 100,
     doorState: 'CLOSED',
     passengers: [],
-    upgrades: { ...DEFAULT_UPGRADES }
+    upgrades: {
+      loudHorn: false,
+      musicalHorn: false,
+      ledLights: false,
+      leatherSeats: false,
+      soundSystem: false,
+      engineTuning: false,
+      tintedWindows: false,
+      alloys: false
+    }
   },
   HONDA_CIVIC: {
+    speed: 0,
+    maxSpeed: 100,
+    acceleration: 5,
+    handling: 5,
+    durability: 100,
+    capacity: 14,
+    condition: 100,
+    mileage: 0,
+    color: '#ffcc00',
     id: 'HONDA_CIVIC',
     name: 'Honda Civic EG6',
     slogan: 'VTEC Kicked In',
@@ -119,9 +146,27 @@ export const BUS_PRESETS: Record<string, Bus> = {
     fuelPercent: 100,
     doorState: 'CLOSED',
     passengers: [],
-    upgrades: { ...DEFAULT_UPGRADES }
+    upgrades: {
+      loudHorn: false,
+      musicalHorn: false,
+      ledLights: false,
+      leatherSeats: false,
+      soundSystem: false,
+      engineTuning: false,
+      tintedWindows: false,
+      alloys: false
+    }
   },
   POLICE_CAR: {
+    speed: 0,
+    maxSpeed: 100,
+    acceleration: 5,
+    handling: 5,
+    durability: 100,
+    capacity: 14,
+    condition: 100,
+    mileage: 0,
+    color: '#ffcc00',
     id: 'POLICE_CAR',
     name: 'NPF Patrol Vehicle',
     slogan: 'To Serve And Protect',
@@ -129,9 +174,27 @@ export const BUS_PRESETS: Record<string, Bus> = {
     fuelPercent: 100,
     doorState: 'CLOSED',
     passengers: [],
-    upgrades: { ...DEFAULT_UPGRADES }
+    upgrades: {
+      loudHorn: false,
+      musicalHorn: false,
+      ledLights: false,
+      leatherSeats: false,
+      soundSystem: false,
+      engineTuning: false,
+      tintedWindows: false,
+      alloys: false
+    }
   },
   ARMY_JEEP: {
+    speed: 0,
+    maxSpeed: 100,
+    acceleration: 5,
+    handling: 5,
+    durability: 100,
+    capacity: 14,
+    condition: 100,
+    mileage: 0,
+    color: '#ffcc00',
     id: 'ARMY_JEEP',
     name: 'KIA KM420 Jeep',
     slogan: 'Clear Road',
@@ -139,9 +202,27 @@ export const BUS_PRESETS: Record<string, Bus> = {
     fuelPercent: 100,
     doorState: 'CLOSED',
     passengers: [],
-    upgrades: { ...DEFAULT_UPGRADES }
+    upgrades: {
+      loudHorn: false,
+      musicalHorn: false,
+      ledLights: false,
+      leatherSeats: false,
+      soundSystem: false,
+      engineTuning: false,
+      tintedWindows: false,
+      alloys: false
+    }
   },
   TOYOTA_TOWNACE: {
+    speed: 0,
+    maxSpeed: 100,
+    acceleration: 5,
+    handling: 5,
+    durability: 100,
+    capacity: 14,
+    condition: 100,
+    mileage: 0,
+    color: '#ffcc00',
     id: 'TOYOTA_TOWNACE',
     name: 'Toyota Townace',
     slogan: 'Hustle Hard',
@@ -149,7 +230,16 @@ export const BUS_PRESETS: Record<string, Bus> = {
     fuelPercent: 100,
     doorState: 'CLOSED',
     passengers: [],
-    upgrades: { ...DEFAULT_UPGRADES }
+    upgrades: {
+      loudHorn: false,
+      musicalHorn: false,
+      ledLights: false,
+      leatherSeats: false,
+      soundSystem: false,
+      engineTuning: false,
+      tintedWindows: false,
+      alloys: false
+    }
   }
 };
 
