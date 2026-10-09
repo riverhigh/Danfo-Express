@@ -79,6 +79,7 @@ export default function App() {
   const [isKoloOpen, setIsKoloOpen] = useState<boolean>(false);
   const [isAjoOpen, setIsAjoOpen] = useState<boolean>(false);
   const [showCharacterCreation, setShowCharacterCreation] = useState<boolean>(!saveData.playerName || saveData.playerName === 'Driver');
+  const [gameTime, setGameTime] = useState(new Date('2026-10-09T08:00:00'));
 
 
   // Active driving feed
@@ -98,7 +99,8 @@ export default function App() {
       bus.id = saveData.selectedBusId || 'RUSTIC_VAN';
     const junctions = JSON.parse(JSON.stringify(DEFAULT_JUNCTIONS));
 
-    return {
+    setGameTime(d => new Date(d.getTime() + 15 * 60000)); // 15 mins per tick
+        return {
       screen: 'MENU',
       activeShift: shift,
       shiftTimeRemaining: shift.durationSeconds,
@@ -373,6 +375,9 @@ export default function App() {
               <h1 className="font-black text-sm tracking-wide text-amber-400 font-['Bungee'] leading-none">
                 DANFO EXPRESS
               </h1>
+              <div className="text-[10px] font-mono font-bold text-amber-200 mt-0.5 bg-stone-900/50 px-1.5 py-0.5 rounded border border-stone-700 w-max">
+                {gameTime.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' })} • {gameTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+              </div>
               <span className="text-[9px] font-mono font-bold text-stone-400 tracking-wider">
                 LAGOS 3D SIMULATOR
               </span>
