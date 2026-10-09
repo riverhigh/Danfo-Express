@@ -1142,9 +1142,13 @@ export class ThreeDrivingEngine {
     // (FIXES THE BACKWARD R AND D PERCEPTION!)
     // ========================================================
     if (isSteppedDown) {
-      // Driver stepped down to roadside passenger door to usher passengers in
+      // Driver stepped down to roadside passenger door
       this.camera.position.set(laneOffsetMeters + 1.8, 1.65, 0.2);
-      this.camera.lookAt(laneOffsetMeters + 3.8, 1.6, 0.5);
+      this.camera.rotation.order = 'YXZ';
+      // Look outward towards the door by default (approx -1.8 rad), plus user drag
+      this.camera.rotation.y = -1.8 + (params.cameraLookYaw || 0);
+      this.camera.rotation.x = (params.cameraLookPitch || 0);
+      this.camera.rotation.z = 0;
       this.camera.fov = 68;
       this.camera.updateProjectionMatrix();
     } else if (params.cameraMode === 'THIRD_PERSON') {
@@ -1158,14 +1162,14 @@ export class ThreeDrivingEngine {
     } else {
       const headBob = speedKmH > 10 ? Math.sin(Date.now() * 0.02) * 0.008 : 0;
       
-        // Place camera on the hood/front bumper so opaque windows don't block the view!
-        let cx = 0; let cy = 1.6; let cz = -1.8;
+        // Place camera near the steering wheel/dash, ensuring it doesn't clip backwards into the interior
+        let cx = -0.45; let cy = 1.65; let cz = 0.5; // +Z is forward!
         const bId = (this as any)._currentBusId || 'RUSTIC_VAN';
-        if (bId === 'KEKE_NAPEP') { cy = 1.3; cz = -0.8; }
-        else if (bId === 'HONDA_CIVIC') { cy = 1.1; cz = -1.2; }
-        else if (bId === 'POLICE_CAR') { cy = 1.2; cz = -1.2; }
-        else if (bId === 'ARMY_JEEP') { cy = 1.5; cz = -1.5; }
-        else { cy = 1.7; cz = -2.0; } // Townace/Danfo
+        if (bId === 'KEKE_NAPEP') { cx = 0; cy = 1.3; cz = 0.2; }
+        else if (bId === 'HONDA_CIVIC') { cx = -0.3; cy = 1.1; cz = 0.2; }
+        else if (bId === 'POLICE_CAR') { cx = -0.3; cy = 1.2; cz = 0.2; }
+        else if (bId === 'ARMY_JEEP') { cx = -0.4; cy = 1.5; cz = 0.3; }
+        else { cx = -0.45; cy = 1.75; cz = 0.8; } // Townace/Danfo
 
         const localCamPos = new THREE.Vector3(cx, cy + headBob, cz);
 
