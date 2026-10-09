@@ -1132,8 +1132,8 @@ export class ThreeDrivingEngine {
     } else {
       // Eye-level behind steering wheel looking FORWARD out windshield towards +Z!
       const eyeX = laneOffsetMeters - 0.5;
-      const eyeY = 1.82 + (speedKmH > 10 ? Math.sin(Date.now() * 0.02) * 0.008 : 0);
-      const eyeZ = 1.3;
+      const eyeY = 1.5 + (speedKmH > 10 ? Math.sin(Date.now() * 0.02) * 0.008 : 0);
+      const eyeZ = -0.2;
 
       this.camera.position.set(eyeX, eyeY, eyeZ);
 

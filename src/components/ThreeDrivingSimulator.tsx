@@ -500,7 +500,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       // Lateral lane offset
       const turnDir = inp.gear === 'R' ? -1 : 1;
       sim.laneOffset += turnDir * steerFactor * ((sim.speed / 60) * 4.2 + 0.8) * dt;
-      sim.laneOffset = Math.max(-5.5, Math.min(5.5, sim.laneOffset));
+      sim.laneOffset = Math.max(-25, Math.min(25, sim.laneOffset));
 
       // Distance traveled: increases in D, decreases in R
       const deltaM = (sim.speed * 1000 / 3600) * dt;
