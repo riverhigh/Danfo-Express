@@ -152,7 +152,7 @@ export default function App() {
 
   // Start 3D Mission
   const handleStartMission = (mission: MissionGoal) => {
-    const baseBus = BUS_PRESETS[selectedBusId];
+    const baseBus = BUS_PRESETS[selectedBusId] || BUS_PRESETS['RUSTIC_VAN'];
     const bus: typeof baseBus = JSON.parse(JSON.stringify(baseBus));
     bus.slogan = selectedSlogan;
     bus.upgrades = { ...gameState.bus.upgrades };
@@ -193,7 +193,7 @@ export default function App() {
   // Start General Career Shift
   const handleStartShift = () => {
     const shift = SHIFT_CONFIGS[selectedShiftId];
-    const baseBus = BUS_PRESETS[selectedBusId];
+    const baseBus = BUS_PRESETS[selectedBusId] || BUS_PRESETS['RUSTIC_VAN'];
     const bus: typeof baseBus = JSON.parse(JSON.stringify(baseBus));
     bus.slogan = selectedSlogan;
     bus.upgrades = { ...gameState.bus.upgrades };
@@ -386,7 +386,7 @@ export default function App() {
 
           <div className="hidden sm:flex items-center gap-1.5 ml-4 px-2 py-0.5 rounded-full bg-stone-800/80 border border-stone-700/60 text-xs font-mono font-bold text-stone-300">
             <span>BUS:</span>
-            <span className="text-amber-400 font-semibold">{BUS_PRESETS[selectedBusId].name}</span>
+            <span className="text-amber-400 font-semibold">{(BUS_PRESETS[selectedBusId] || BUS_PRESETS['RUSTIC_VAN']).name}</span>
           </div>
         </div>
 
