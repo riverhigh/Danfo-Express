@@ -672,8 +672,8 @@ export class ThreeDrivingEngine {
     // Wheels dummy
     const lfWheel = new THREE.Mesh();
     const rfWheel = new THREE.Mesh();
-    const rearWheels = new THREE.Group();
-    busBody.add(lfWheel, rfWheel, rearWheels);
+    const rearWheels = [new THREE.Mesh(), new THREE.Mesh()];
+    busBody.add(lfWheel, rfWheel, ...rearWheels);
 
     return {
       busRoot,
