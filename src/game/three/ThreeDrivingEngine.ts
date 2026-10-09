@@ -78,11 +78,30 @@ export class ThreeDrivingEngine {
   // Road & Environment
   
     private trafficModels: THREE.Group[] = [];
+  private npcModels: THREE.Group[] = [];
     
     // In setupRoadAndCity, we can pre-load traffic models
     private loadTrafficModels() {
       const loader = new GLTFLoader();
-      const modelsToLoad = [
+      
+        const npcLoader = new GLTFLoader();
+        this.npcModels = [];
+        const npcPaths = [
+          '/models/african_female_model.glb',
+          '/models/free_download_athletic_african_man_walking_223.glb',
+          '/models/free_download_attractive_african_woman_236.glb',
+          '/models/human.glb'
+        ];
+        npcPaths.forEach(path => {
+          npcLoader.load(path, (gltf) => {
+            const m = gltf.scene;
+            m.scale.set(1.4, 1.4, 1.4);
+            m.position.set(0, 0, 0);
+            this.npcModels.push(m);
+          });
+        });
+        
+        const modelsToLoad = [
         '/models/1991_honda_civic_eg6.glb',
         '/models/3d_model__passenger_tricycle_keke_napep.glb',
         '/models/honda_today_g-type_police.glb',
@@ -665,12 +684,7 @@ export class ThreeDrivingEngine {
     
     // We will build a basic procedural bus as a fallback/scaffold
     const fallbackGroup = new THREE.Group();
-    const yellowMat = new THREE.MeshPhysicalMaterial({ color: 0xf59e0b, roughness: 0.3, metalness: 0.6 });
-    const rustMat = new THREE.MeshStandardMaterial({ color: 0x4a2a18, roughness: 0.9 });
-    const floor = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.1, 5.4), rustMat);
-    floor.position.set(0, 0.7, 0);
-    fallbackGroup.add(floor);
-    busBody.add(fallbackGroup);
+      busBody.add(fallbackGroup);
 
     // Try to load the user's downloaded GLB
     const loader = new GLTFLoader();
@@ -790,31 +804,7 @@ export class ThreeDrivingEngine {
 
       for (let p = 0; p < Math.min(6, junc.waitingPassengersCount); p++) {
         const pGroup = new THREE.Group();
-        const head = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 10), new THREE.MeshStandardMaterial({ color: 0x78350f }));
-        head.position.y = 1.6;
-        pGroup.add(head);
-
-        // Headgear (Gele or Cap)
-        if (p % 2 === 0) {
-          const gele = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.06, 8, 16), new THREE.MeshStandardMaterial({ color: passengerColors[(p + 2) % passengerColors.length] }));
-          gele.position.y = 1.7;
-          pGroup.add(gele);
-        }
-
-        const shirtColor = passengerColors[p % passengerColors.length];
-        const body = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.65, 0.22), new THREE.MeshStandardMaterial({ color: shirtColor }));
-        body.position.y = 1.15;
-        pGroup.add(body);
-
-        const legs = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.8, 0.18), new THREE.MeshStandardMaterial({ color: 0x1f2937 }));
-        legs.position.y = 0.4;
-        pGroup.add(legs);
-
-        // Raised waving arm
-        const arm = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.38, 0.08), new THREE.MeshStandardMaterial({ color: 0x78350f }));
-        arm.position.set(-0.22, 1.4, 0.1);
-        arm.rotation.z = 0.6;
-        pGroup.add(arm);
+          (pGroup as any)._isNpc = true;
 
         const pX = 9.2 + Math.random() * 2.2;
         const pZ = -3.5 + p * 1.4;
