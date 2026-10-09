@@ -207,103 +207,103 @@ export class ThreeDrivingEngine {
     const curbTex = createCurbTexture();
 
     const roadLength = 120;
-    const segmentCount = 3;
+    const segmentCount = 4; // More segments for longer road
 
     for (let i = 0; i < segmentCount; i++) {
       const group = new THREE.Group();
       group.position.z = i * roadLength;
 
-      // 1. Asphalt Roadway
-      const roadGeo = new THREE.PlaneGeometry(16, roadLength);
-      const roadMat = new THREE.MeshStandardMaterial({
-        map: asphaltTex,
-        roughness: 0.85,
-        metalness: 0.1,
-      });
+      // 1. Asphalt Roadway (wider — real expressway)
+      const roadGeo = new THREE.PlaneGeometry(20, roadLength);
+      const roadMat = new THREE.MeshStandardMaterial({ map: asphaltTex, roughness: 0.82, metalness: 0.08 });
       const roadMesh = new THREE.Mesh(roadGeo, roadMat);
       roadMesh.rotation.x = -Math.PI / 2;
       roadMesh.receiveShadow = true;
       group.add(roadMesh);
 
-      // Yellow Center Line
-      const centerLineGeo = new THREE.PlaneGeometry(0.24, roadLength);
-      const centerLineMat = new THREE.MeshBasicMaterial({ color: 0xfacc15 });
-      const centerLine = new THREE.Mesh(centerLineGeo, centerLineMat);
-      centerLine.rotation.x = -Math.PI / 2;
-      centerLine.position.y = 0.01;
-      group.add(centerLine);
+      // Yellow double center line
+      [-0.2, 0.2].forEach((cx) => {
+        const cl = new THREE.Mesh(new THREE.PlaneGeometry(0.18, roadLength), new THREE.MeshBasicMaterial({ color: 0xf59e0b }));
+        cl.rotation.x = -Math.PI / 2;
+        cl.position.set(cx, 0.01, 0);
+        group.add(cl);
+      });
 
-      // White Lane Dashes (-4m and +4m)
-      [-4, 4].forEach((laneX) => {
-        for (let s = -roadLength / 2; s < roadLength / 2; s += 8) {
-          const dashGeo = new THREE.PlaneGeometry(0.18, 4);
-          const dashMat = new THREE.MeshBasicMaterial({ color: 0xf1f5f9 });
-          const dash = new THREE.Mesh(dashGeo, dashMat);
+      // White lane dashes (3 lanes each side)
+      [-6, -2, 2, 6].forEach((laneX) => {
+        for (let s = -roadLength / 2; s < roadLength / 2; s += 10) {
+          const dash = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 5), new THREE.MeshBasicMaterial({ color: 0xe2e8f0 }));
           dash.rotation.x = -Math.PI / 2;
           dash.position.set(laneX, 0.01, s);
           group.add(dash);
         }
       });
 
-      // 2. Curbs & Sidewalks
-      [-8.5, 8.5].forEach((curbX, idx) => {
-        const curbGeo = new THREE.BoxGeometry(1.2, 0.35, roadLength);
-        const curbMat = new THREE.MeshStandardMaterial({ map: curbTex, roughness: 0.7 });
-        const curbMesh = new THREE.Mesh(curbGeo, curbMat);
-        curbMesh.position.set(curbX, 0.18, 0);
-        curbMesh.receiveShadow = true;
-        group.add(curbMesh);
+      // 2. Curbs & Sidewalks (wider Lagos-style)
+      [-10.5, 10.5].forEach((curbX, idx) => {
+        const curb = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.3, roadLength), new THREE.MeshStandardMaterial({ map: curbTex, roughness: 0.7 }));
+        curb.position.set(curbX, 0.15, 0);
+        curb.receiveShadow = true;
+        group.add(curb);
 
-        // Pavement Walkway
-        const walkGeo = new THREE.BoxGeometry(6, 0.3, roadLength);
-        const walkMat = new THREE.MeshStandardMaterial({ color: 0x44403c, roughness: 0.9 });
-        const walkMesh = new THREE.Mesh(walkGeo, walkMat);
-        walkMesh.position.set(idx === 0 ? -12 : 12, 0.15, 0);
-        group.add(walkMesh);
+        // Sidewalk
+        const walk = new THREE.Mesh(new THREE.BoxGeometry(7, 0.25, roadLength), new THREE.MeshStandardMaterial({ color: 0x3a3732, roughness: 0.95 }));
+        walk.position.set(idx === 0 ? -14.5 : 14.5, 0.12, 0);
+        group.add(walk);
       });
 
-      // 3. Buildings & Lamp Posts
-      const shopNames: [string, string][] = [
-        ['EKO PHARMACY & CHEMIST', '#0284c7'],
-        ['MAMA PUT AMALA BUKKA', '#dc2626'],
-        ['COMPUTER VILLAGE TECH MART', '#16a34a'],
-        ['TOTAL PETROL PLAZA', '#9333ea'],
+      // 3. Buildings — varied heights & colors
+      const shopVariants: [string, string, number, number][] = [
+        ['EKO PHARMACY & CHEMIST',    '#0284c7', 14, 22],
+        ['MAMA PUT AMALA BUKKA',      '#dc2626', 10, 20],
+        ['COMPUTER VILLAGE TECH',     '#16a34a', 18, 24],
+        ['TOTAL PETROL PLAZA',        '#9333ea', 12, 20],
+        ['FIRST BANK OF NIGERIA',     '#1e40af', 22, 24],
+        ['ZENITH BANK MEGA BRANCH',   '#991b1b', 16, 22],
+        ['MTN EXPERIENCE CENTER',     '#b45309', 12, 20],
+        ['SHOPRITE IKEJA MALL',       '#065f46', 20, 28],
       ];
 
-      for (let s = -roadLength / 2 + 15; s < roadLength / 2; s += 30) {
-        // Left Building
-        const shopLeft = shopNames[Math.floor(Math.random() * shopNames.length)];
-        const bTexL = createBuildingFacadeTexture(shopLeft[0], shopLeft[1]);
-        const bMeshL = new THREE.Mesh(new THREE.BoxGeometry(10, 18, 22), new THREE.MeshStandardMaterial({ map: bTexL, roughness: 0.8 }));
-        bMeshL.position.set(-18, 9, s);
+      for (let s = -roadLength / 2 + 12; s < roadLength / 2; s += 28) {
+        const seed = Math.abs(Math.round(i * 100 + s));
+        const shopL = shopVariants[seed % shopVariants.length];
+        const shopR = shopVariants[(seed + 3) % shopVariants.length];
+
+        const bTexL = createBuildingFacadeTexture(shopL[0], shopL[1]);
+        const hL = shopL[2];
+        const bMeshL = new THREE.Mesh(new THREE.BoxGeometry(11, hL, shopL[3]), new THREE.MeshStandardMaterial({ map: bTexL, roughness: 0.85 }));
+        bMeshL.position.set(-20, hL / 2, s);
+        bMeshL.castShadow = true;
         group.add(bMeshL);
 
-        // Right Building
-        const shopRight = shopNames[Math.floor(Math.random() * shopNames.length)];
-        const bTexR = createBuildingFacadeTexture(shopRight[0], shopRight[1]);
-        const bMeshR = new THREE.Mesh(new THREE.BoxGeometry(10, 20, 22), new THREE.MeshStandardMaterial({ map: bTexR, roughness: 0.8 }));
-        bMeshR.position.set(18, 10, s);
+        const bTexR = createBuildingFacadeTexture(shopR[0], shopR[1]);
+        const hR = shopR[2];
+        const bMeshR = new THREE.Mesh(new THREE.BoxGeometry(11, hR, shopR[3]), new THREE.MeshStandardMaterial({ map: bTexR, roughness: 0.85 }));
+        bMeshR.position.set(20, hR / 2, s);
+        bMeshR.castShadow = true;
         group.add(bMeshR);
 
-        // Street light pole
-        const pole = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.12, 0.14, 7),
-          new THREE.MeshStandardMaterial({ color: 0x78716c, metalness: 0.7 })
-        );
-        pole.position.set(8.8, 3.5, s);
-        group.add(pole);
+        // Street lamp post with glow bulb
+        [-11, 11].forEach((lx) => {
+          const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 8), new THREE.MeshStandardMaterial({ color: 0x52525b, metalness: 0.7 }));
+          pole.position.set(lx, 4, s);
+          group.add(pole);
+          const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 8), new THREE.MeshStandardMaterial({ color: 0xfef3c7, emissive: 0xfef08a, emissiveIntensity: 1.2 }));
+          bulb.position.set(lx, 8.2, s);
+          group.add(bulb);
+        });
       }
 
-      // Overhead Gantry Signboard on segment 1
-      if (i === 1) {
-        const signTex = createSignboardTexture('THIRD MAINLAND EXPRESSWAY', 'IKEJA / OSHODI / CMS MARINA', '#047857');
-        const sign = new THREE.Mesh(new THREE.BoxGeometry(15, 2.8, 0.3), new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.4 }));
-        sign.position.set(0, 7.2, 0);
+      // Overhead gantry signs on every other segment
+      if (i % 2 === 1) {
+        const signTex = createSignboardTexture('LAGOS–IBADAN EXPRESSWAY', 'IKEJA → OSHODI → SURULERE → CMS', '#047857');
+        const sign = new THREE.Mesh(new THREE.BoxGeometry(18, 3.2, 0.35), new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.35 }));
+        sign.position.set(0, 8.0, 0);
         group.add(sign);
 
-        [-8, 8].forEach((px) => {
-          const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 7.5), new THREE.MeshStandardMaterial({ color: 0x57534e, metalness: 0.6 }));
-          pillar.position.set(px, 3.75, 0);
+        [-9.5, 9.5].forEach((px) => {
+          const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 8.2), new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.65 }));
+          pillar.position.set(px, 4.1, 0);
           group.add(pillar);
         });
       }
@@ -311,7 +311,158 @@ export class ThreeDrivingEngine {
       this.scene.add(group);
       this.roadSegments.push(group);
     }
+
+    // ================================================
+    // MAJOR LANDMARK AREAS (fixed world positions)
+    // These scroll with the road to simulate movement
+    // ================================================
+    this.buildIkejaArea();
+    this.buildOshodiArea();
+    this.buildSurulereArea();
   }
+
+  /** IKEJA — Administrative capital vibe. Tall glass buildings, Computer Village market */
+  private buildIkejaArea() {
+    const group = new THREE.Group();
+    group.position.set(0, 0, 280); // Matches distanceMarker 280
+
+    // Overhead pedestrian bridge (very Lagos)
+    const bridge = new THREE.Mesh(new THREE.BoxGeometry(30, 0.6, 3), new THREE.MeshStandardMaterial({ color: 0x78716c, metalness: 0.5 }));
+    bridge.position.set(0, 5.5, 0);
+    group.add(bridge);
+    // Bridge railings
+    [-14, 14].forEach((bx) => {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.2, 3), new THREE.MeshStandardMaterial({ color: 0xa8a29e }));
+      rail.position.set(bx, 5.8, 0);
+      group.add(rail);
+    });
+    // Bridge columns
+    [-13, 0, 13].forEach((bx) => {
+      const col = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.3, 5.5), new THREE.MeshStandardMaterial({ color: 0x57534e, metalness: 0.5 }));
+      col.position.set(bx, 2.75, 0);
+      group.add(col);
+    });
+
+    // IKEJA overhead sign
+    const signTex = createSignboardTexture('IKEJA ALONG', 'Computer Village • Allen Avenue', '#1e40af');
+    const sign = new THREE.Mesh(new THREE.BoxGeometry(14, 2.5, 0.3), new THREE.MeshStandardMaterial({ map: signTex }));
+    sign.position.set(0, 9.5, 0);
+    group.add(sign);
+
+    // Computer Village stalls (market on right)
+    for (let i = 0; i < 5; i++) {
+      const stall = new THREE.Mesh(new THREE.BoxGeometry(3.5, 2.8, 4), new THREE.MeshStandardMaterial({ color: [0x1e3a5f, 0x3d1a0d, 0x0f3d1a, 0x3d1a3d, 0x1a3d1a][i % 5], roughness: 0.85 }));
+      stall.position.set(14 + i * 4.5, 1.4, i * 3 - 6);
+      group.add(stall);
+      // Stall awning
+      const awning = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.15, 5), new THREE.MeshStandardMaterial({ color: [0x3b82f6, 0xef4444, 0x22c55e, 0xa855f7, 0xf59e0b][i % 5] }));
+      awning.position.set(14 + i * 4.5, 2.8, i * 3 - 6);
+      group.add(awning);
+    }
+
+    // Tall office buildings behind
+    [[-22, 0, 28], [22, 0, 28], [-22, 0, -15], [22, 0, -15]].forEach(([x, , z], idx) => {
+      const h = [26, 32, 22, 28][idx];
+      const bTex = createBuildingFacadeTexture(['IKEJA CITY MALL', 'ACCESS BANK TOWER', 'MINISTERIAL QUARTERS', 'GTB PLAZA'][idx], ['#1e40af', '#dc2626', '#065f46', '#b45309'][idx]);
+      const b = new THREE.Mesh(new THREE.BoxGeometry(12, h, 18), new THREE.MeshStandardMaterial({ map: bTex, roughness: 0.75 }));
+      b.position.set(x, h / 2, z);
+      group.add(b);
+    });
+
+    this.scene.add(group);
+  }
+
+  /** OSHODI — Busy interchange. Market stalls everywhere, commuter chaos */
+  private buildOshodiArea() {
+    const group = new THREE.Group();
+    group.position.set(0, 0, 1800); // distanceMarker 1800
+
+    // Massive flyover bridge overhead
+    const flyover = new THREE.Mesh(new THREE.BoxGeometry(40, 1.2, 8), new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.6 }));
+    flyover.position.set(0, 6.8, 0);
+    group.add(flyover);
+    // Flyover support pillars
+    [-16, -8, 0, 8, 16].forEach((px) => {
+      const fp = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.65, 7), new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.4 }));
+      fp.position.set(px, 3.5, 0);
+      group.add(fp);
+    });
+
+    // OSHODI overhead sign
+    const signTex = createSignboardTexture('OSHODI INTERCHANGE', 'Airport Road • Mushin • Ikorodu', '#dc2626');
+    const sign = new THREE.Mesh(new THREE.BoxGeometry(16, 2.8, 0.35), new THREE.MeshStandardMaterial({ map: signTex }));
+    sign.position.set(0, 10.5, 0);
+    group.add(sign);
+
+    // Dense market stalls left and right (chaotic Oshodi market)
+    for (let i = 0; i < 8; i++) {
+      const side = i % 2 === 0 ? -16 : 16;
+      const stall = new THREE.Mesh(new THREE.BoxGeometry(4, 2.4, 3.5), new THREE.MeshStandardMaterial({ color: 0x2a1a0d, roughness: 0.9 }));
+      stall.position.set(side + (i > 4 ? 5 : 0), 1.2, i * 5 - 18);
+      group.add(stall);
+      const awningColors = [0xef4444, 0xf59e0b, 0x22c55e, 0x3b82f6];
+      const awning = new THREE.Mesh(new THREE.BoxGeometry(4.5, 0.2, 4.5), new THREE.MeshStandardMaterial({ color: awningColors[i % 4] }));
+      awning.position.set(side + (i > 4 ? 5 : 0), 2.5, i * 5 - 18);
+      group.add(awning);
+    }
+
+    // Molue bus terminal on the right (parked buses)
+    for (let j = 0; j < 3; j++) {
+      const molue = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.2, 6), new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.6 }));
+      molue.position.set(18 + j * 3, 1.1, j * 8 - 8);
+      group.add(molue);
+      // Black stripe
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(2.42, 0.25, 6), new THREE.MeshStandardMaterial({ color: 0x09090b }));
+      stripe.position.set(18 + j * 3, 0.9, j * 8 - 8);
+      group.add(stripe);
+    }
+
+    this.scene.add(group);
+  }
+
+  /** SURULERE — Residential + Teslim Balogun stadium area */
+  private buildSurulereArea() {
+    const group = new THREE.Group();
+    group.position.set(0, 0, 3000); // distanceMarker 3000
+
+    // SURULERE overhead sign
+    const signTex = createSignboardTexture('SURULERE', 'Balogun Stadium • Ojuelegba • Costain', '#7c3aed');
+    const sign = new THREE.Mesh(new THREE.BoxGeometry(15, 2.6, 0.35), new THREE.MeshStandardMaterial({ map: signTex }));
+    sign.position.set(0, 8.8, 0);
+    group.add(sign);
+    [-8, 8].forEach((px) => {
+      const pc = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 9), new THREE.MeshStandardMaterial({ color: 0x52525b }));
+      pc.position.set(px, 4.5, 0);
+      group.add(pc);
+    });
+
+    // Teslim Balogun Stadium (visible from expressway — large curved structure)
+    const stadiumBase = new THREE.Mesh(new THREE.CylinderGeometry(16, 18, 8, 24, 1, true), new THREE.MeshStandardMaterial({ color: 0x1e3a5f, roughness: 0.7, side: THREE.DoubleSide }));
+    stadiumBase.position.set(-35, 4, 25);
+    group.add(stadiumBase);
+    const stadiumRoof = new THREE.Mesh(new THREE.TorusGeometry(16, 2.5, 8, 24), new THREE.MeshStandardMaterial({ color: 0x7c3aed, roughness: 0.5, metalness: 0.3 }));
+    stadiumRoof.rotation.x = Math.PI / 2;
+    stadiumRoof.position.set(-35, 8.5, 25);
+    group.add(stadiumRoof);
+
+    // Stadium TESLIM BALOGUN sign
+    const sTex = createSignboardTexture('TESLIM BALOGUN STADIUM', 'Home of Lagos Sports', '#7c3aed');
+    const sSign = new THREE.Mesh(new THREE.BoxGeometry(10, 1.8, 0.3), new THREE.MeshStandardMaterial({ map: sTex }));
+    sSign.position.set(-35, 9.5, 9);
+    group.add(sSign);
+
+    // Surulere residential apartments
+    [[-22, 0, -10], [-22, 0, 20], [22, 0, -10], [22, 0, 20]].forEach(([x, , z], idx) => {
+      const h = [18, 22, 16, 20][idx];
+      const bTex = createBuildingFacadeTexture(['SURULERE COURTS', 'BODE THOMAS FLATS', 'ADENIRAN OGUNSANYA ST', 'OJUELEGBA LINK'][idx], ['#7c3aed', '#059669', '#1e40af', '#9333ea'][idx]);
+      const b = new THREE.Mesh(new THREE.BoxGeometry(10, h, 14), new THREE.MeshStandardMaterial({ map: bTex, roughness: 0.8 }));
+      b.position.set(x, h / 2, z);
+      group.add(b);
+    });
+
+    this.scene.add(group);
+  }
+
 
   /**
    * Builds the 3D Gas Station (Total Energies / Oando Plaza) on the right shoulder
@@ -423,12 +574,14 @@ export class ThreeDrivingEngine {
     const busBody = new THREE.Group();
     busRoot.add(busBody);
 
-    const yellowMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.35, metalness: 0.2 });
-    const blackStripeMat = new THREE.MeshStandardMaterial({ color: 0x09090b, roughness: 0.6 });
-    const chromeMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.15, metalness: 0.85 });
-    const darkInteriorMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.85 });
-    const seatLeatherMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.7 });
-    const glassMat = new THREE.MeshPhysicalMaterial({ color: 0x0f172a, roughness: 0.1, transmission: 0.85, transparent: true, opacity: 0.65 });
+    // ---- REALISTIC MATERIALS ----
+    // Real Lagos danfo paint: worn yellow with slight metal flake
+    const yellowMat = new THREE.MeshPhysicalMaterial({ color: 0xf59e0b, roughness: 0.2, metalness: 0.8, clearcoat: 1.0, clearcoatRoughness: 0.1 });
+    const blackStripeMat = new THREE.MeshPhysicalMaterial({ color: 0x0a0a0a, roughness: 0.3, metalness: 0.6, clearcoat: 0.8 });
+    const chromeMat = new THREE.MeshStandardMaterial({ color: 0xd1d5db, roughness: 0.12, metalness: 0.92 });
+    const darkInteriorMat = new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 0.9 });
+    const seatLeatherMat = new THREE.MeshStandardMaterial({ color: 0x6b2f10, roughness: 0.75 });
+    const glassMat = new THREE.MeshPhysicalMaterial({ color: 0x0f172a, roughness: 0.1, transparent: true, opacity: 0.4, transmission: 0.5 });
     const rubberMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.9 });
 
     // Lower Chassis
@@ -454,6 +607,21 @@ export class ThreeDrivingEngine {
       const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.15, 0.12), yellowMat);
       pillar.position.set(px, 1.9, 2.3);
       busBody.add(pillar);
+    });
+
+    // Front Grille (VW Transporter Style)
+    const grille = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.45, 0.05), blackStripeMat);
+    grille.position.set(0, 0.85, 2.62);
+    busBody.add(grille);
+
+    // Headlights (Round classic VW lights)
+    const headlightGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.08, 16);
+    const headlightMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffddaa, emissiveIntensity: 1.5 });
+    [-0.65, 0.65].forEach((px) => {
+      const hl = new THREE.Mesh(headlightGeo, headlightMat);
+      hl.rotation.x = Math.PI / 2;
+      hl.position.set(px, 0.85, 2.65);
+      busBody.add(hl);
     });
 
     // Glass Windows

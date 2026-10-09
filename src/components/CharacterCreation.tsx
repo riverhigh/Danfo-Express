@@ -37,13 +37,13 @@ export const CharacterCreation: React.FC<CharacterCreationProps> = ({ onComplete
             <div className="grid grid-cols-2 gap-3">
               <button
                 onClick={() => setGender('MALE')}
-                className={`py-3 rounded-xl border-2 font-bold transition-all \${gender === 'MALE' ? 'bg-amber-400 text-stone-950 border-amber-400' : 'bg-stone-950 text-stone-400 border-stone-800'}`}
+                className={`py-3 rounded-xl border-2 font-bold transition-all ${gender === 'MALE' ? 'bg-amber-400 text-stone-950 border-amber-400' : 'bg-stone-950 text-stone-400 border-stone-800'}`}
               >
                 MALE
               </button>
               <button
                 onClick={() => setGender('FEMALE')}
-                className={`py-3 rounded-xl border-2 font-bold transition-all \${gender === 'FEMALE' ? 'bg-amber-400 text-stone-950 border-amber-400' : 'bg-stone-950 text-stone-400 border-stone-800'}`}
+                className={`py-3 rounded-xl border-2 font-bold transition-all ${gender === 'FEMALE' ? 'bg-amber-400 text-stone-950 border-amber-400' : 'bg-stone-950 text-stone-400 border-stone-800'}`}
               >
                 FEMALE
               </button>

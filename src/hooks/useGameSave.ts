@@ -29,8 +29,8 @@ const DEFAULT_SAVE: SaveData = {
   ownedVehicles: ['RUSTIC_VAN'],
   selectedBusId: 'RUSTIC_VAN',
   selectedSlogan: 'No King as God',
-  unlockedHouses: ['ROOM_AND_PARLOUR'],
-  activeHouseId: 'ROOM_AND_PARLOUR'
+  unlockedHouses: ['FACE_ME_I_SLAP_YOU'],
+  activeHouseId: 'FACE_ME_I_SLAP_YOU'
 };
 
 const SAVE_KEY = 'danfo_express_save_v1';

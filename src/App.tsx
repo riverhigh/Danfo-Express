@@ -473,7 +473,7 @@ export default function App() {
                   <p className="text-stone-300">Level: Lagos Hustler • Balance: ₦{walletNaira.toLocaleString()}</p>
                 </div>
                 <button
-                  onClick={() => handleStartShift(selectedShiftId)}
+                  onClick={() => handleStartShift()}
                   className="px-10 py-5 bg-amber-400 hover:bg-amber-300 text-stone-950 font-black font-['Bungee'] text-xl rounded-2xl shadow-xl shadow-amber-400/20 flex items-center gap-3 transition-transform active:scale-95"
                 >
                   <MapPin className="w-6 h-6" />
@@ -886,8 +886,8 @@ export default function App() {
         onPurchase={(vehicle) => {
           updateSave({
             walletNaira: walletNaira - vehicle.price,
-            ownedVehicles: [...saveData.ownedVehicles, vehicle.id],
-            selectedBusId: vehicle.id as any,
+            ownedVehicles: [...saveData.ownedVehicles, vehicle.id as BusModelId] as BusModelId[],
+            selectedBusId: vehicle.id as BusModelId,
           });
           addFeedMessage(`🚗 PURCHASED: ${vehicle.name} added to your garage!`);
         }}
