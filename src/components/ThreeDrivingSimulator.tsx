@@ -604,7 +604,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
             laneOffsetMeters: sim.laneOffset,
             gear: inp.gear,
             isBraking: inp.brake,
-            cameraMode: cameraMode as any,
+            cameraMode: cameraMode === 'ORBIT' ? 'THIRD_PERSON' : cameraMode as any,
             turnSignal: inp.turnSignal,
             hazardLights: inp.hazardLights,
             wipersActive: inp.wipersActive,
@@ -660,7 +660,22 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
 
   return (
     <div className="relative w-[100vw] h-[100vh] bg-stone-950 overflow-hidden select-none pointer-events-none" style={{ position: "relative", width: "100vw", height: "100vh" }}>
-      {/* 3D WebGL Canvas */}
+      
+        {/* CAMERA MODE BUTTON — always visible */}
+        <div className="absolute top-0 right-0 z-[9998] pointer-events-auto flex flex-col gap-1 p-2">
+          <button
+            onClick={() => setCameraMode(m => {
+              if (m === 'FIRST_PERSON') return 'THIRD_PERSON';
+              if (m === 'THIRD_PERSON') return 'ORBIT';
+              return 'FIRST_PERSON';
+            })}
+            className="px-3 py-1.5 bg-stone-900/90 border border-sky-500 rounded-xl text-sky-300 font-black text-[10px] font-mono shadow-xl backdrop-blur"
+          >
+            {cameraMode === 'FIRST_PERSON' ? '🚌 1ST' : cameraMode === 'THIRD_PERSON' ? '📷 3RD' : '🔄 360'}
+          </button>
+        </div>
+
+        {/* 3D WebGL Canvas */}
       <div ref={mountRef} className="absolute inset-0 w-full h-full pointer-events-auto" />
 
       {/* ═══════ TOP BAR ═══════ */}

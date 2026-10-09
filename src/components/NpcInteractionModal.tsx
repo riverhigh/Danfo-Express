@@ -83,7 +83,7 @@ export const NpcInteractionModal: React.FC<NpcInteractionModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 bg-black/85 backdrop-blur-md" style={{pointerEvents:"all"}}>
       <div className="relative w-full max-w-lg bg-stone-900 border-2 border-amber-500/80 rounded-2xl p-5 shadow-2xl flex flex-col text-stone-100 font-sans">
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-stone-800">
