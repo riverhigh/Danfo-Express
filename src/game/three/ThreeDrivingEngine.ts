@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { CameraViewMode, BusUpgrades, JunctionStop, DoorState, GasStationBay, RoadsideShop } from '../../types/game';
 import { 
   createAsphaltTexture, 
@@ -252,7 +254,60 @@ export class ThreeDrivingEngine {
         group.add(walk);
       });
 
-      // 3. Buildings — varied heights & colors
+      // 2.5 Diverse Road Scenery (Trees & Pedestrian Bridges)
+        if (i % 2 === 1) {
+          // Add a pedestrian bridge every other segment
+          const bridgeGroup = new THREE.Group();
+          const bridgePillarMat = new THREE.MeshStandardMaterial({ color: 0x9ca3af, roughness: 0.8 });
+          const bridgeSpanMat = new THREE.MeshStandardMaterial({ color: 0x1e3a8a, metalness: 0.4, roughness: 0.6 });
+          
+          // Pillars
+          [-11, 11].forEach(px => {
+            const pillar = new THREE.Mesh(new THREE.BoxGeometry(1.5, 7, 1.5), bridgePillarMat);
+            pillar.position.set(px, 3.5, 0);
+            pillar.castShadow = true;
+            bridgeGroup.add(pillar);
+          });
+          
+          // Span
+          const span = new THREE.Mesh(new THREE.BoxGeometry(24, 1, 3), bridgeSpanMat);
+          span.position.set(0, 7.5, 0);
+          span.castShadow = true;
+          bridgeGroup.add(span);
+          
+          // Bridge Signboard
+          const sign = new THREE.Mesh(new THREE.PlaneGeometry(16, 1.5), new THREE.MeshBasicMaterial({ color: 0x15803d }));
+          sign.position.set(0, 7.5, 1.55);
+          bridgeGroup.add(sign);
+          
+          group.add(bridgeGroup);
+        }
+
+        // Add some random Trees along the road
+        const treeGeo = new THREE.ConeGeometry(2, 6, 8);
+        const trunkGeo = new THREE.CylinderGeometry(0.4, 0.4, 2);
+        const leafMat = new THREE.MeshStandardMaterial({ color: 0x166534, roughness: 0.9 });
+        const trunkMat = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.9 });
+        
+        for (let t = -roadLength / 2; t < roadLength / 2; t += 30) {
+          if (Math.random() > 0.5) {
+            [-12.5, 12.5].forEach(tx => {
+              if (Math.random() > 0.3) {
+                 const tree = new THREE.Group();
+                 const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+                 trunk.position.y = 1;
+                 const leaves = new THREE.Mesh(treeGeo, leafMat);
+                 leaves.position.y = 4;
+                 tree.add(trunk, leaves);
+                 tree.position.set(tx, 0, t + Math.random() * 10);
+                 tree.castShadow = true;
+                 group.add(tree);
+              }
+            });
+          }
+        }
+
+        // 3. Buildings — varied heights & colors
       const shopVariants: [string, string, number, number][] = [
         ['EKO PHARMACY & CHEMIST',    '#0284c7', 14, 22],
         ['MAMA PUT AMALA BUKKA',      '#dc2626', 10, 20],
