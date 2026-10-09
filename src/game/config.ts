@@ -100,6 +100,57 @@ export const BUS_PRESETS: Record<string, Bus> = {
     isEngineRunning: true,
     doorState: 'CLOSED',
   },
+
+  KEKE_NAPEP: {
+    id: 'KEKE_NAPEP',
+    name: 'Keke Maruwa',
+    slogan: 'God Dey',
+    heat: 30,
+    fuelPercent: 100,
+    doorState: 'CLOSED',
+    passengers: [],
+    upgrades: { ...DEFAULT_UPGRADES }
+  },
+  HONDA_CIVIC: {
+    id: 'HONDA_CIVIC',
+    name: 'Honda Civic EG6',
+    slogan: 'VTEC Kicked In',
+    heat: 15,
+    fuelPercent: 100,
+    doorState: 'CLOSED',
+    passengers: [],
+    upgrades: { ...DEFAULT_UPGRADES }
+  },
+  POLICE_CAR: {
+    id: 'POLICE_CAR',
+    name: 'NPF Patrol Vehicle',
+    slogan: 'To Serve And Protect',
+    heat: 5,
+    fuelPercent: 100,
+    doorState: 'CLOSED',
+    passengers: [],
+    upgrades: { ...DEFAULT_UPGRADES }
+  },
+  ARMY_JEEP: {
+    id: 'ARMY_JEEP',
+    name: 'KIA KM420 Jeep',
+    slogan: 'Clear Road',
+    heat: 5,
+    fuelPercent: 100,
+    doorState: 'CLOSED',
+    passengers: [],
+    upgrades: { ...DEFAULT_UPGRADES }
+  },
+  TOYOTA_TOWNACE: {
+    id: 'TOYOTA_TOWNACE',
+    name: 'Toyota Townace',
+    slogan: 'Hustle Hard',
+    heat: 20,
+    fuelPercent: 100,
+    doorState: 'CLOSED',
+    passengers: [],
+    upgrades: { ...DEFAULT_UPGRADES }
+  }
 };
 
 export const DEFAULT_JUNCTIONS = [

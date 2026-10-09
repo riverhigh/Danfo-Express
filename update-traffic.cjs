@@ -1,124 +1,85 @@
 const fs = require('fs');
 
-const path = 'src/game/three/ThreeDrivingEngine.ts';
-let code = fs.readFileSync(path, 'utf8');
+let engine = fs.readFileSync('src/game/three/ThreeDrivingEngine.ts', 'utf8');
 
-const regex = /private setupTrafficAndHazards\(\) \{[\s\S]*?this\.trafficMeshes\.push\(traffic\);\n    \}\n  \}/;
+// 1. Pass the bus ID into the engine constructor or update method
+// We will look for where loader.load('/models/danfo.glb', ...) is called
 
-const newMethod = `private setupTrafficAndHazards() {
-    const trafficColors = [0xfacc15, 0x0284c7, 0xdc2626, 0x16a34a, 0x475569];
-    const glassMat = new THREE.MeshPhysicalMaterial({ color: 0x0a0a0a, roughness: 0.05, transparent: true, opacity: 0.6 });
-    const blackMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 });
-    const chromeMat = new THREE.MeshStandardMaterial({ color: 0xd1d5db, roughness: 0.1, metalness: 0.9 });
-    
-    const types = ['BRT', 'KEKE', 'TRUCK', 'OKADA', 'SEDAN'];
-
-    for (let i = 0; i < 15; i++) {
-      const traffic = new THREE.Group();
-      const type = types[Math.floor(Math.random() * types.length)];
-      const color = trafficColors[Math.floor(Math.random() * trafficColors.length)];
-      const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.4 });
-
-      if (type === 'BRT') {
-        // Massive Blue BRT Bus
-        const brtMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.3 });
-        const body = new THREE.Mesh(new THREE.BoxGeometry(2.5, 3.2, 12), brtMat);
-        body.position.y = 1.8;
-        traffic.add(body);
-        
-        // Windows
-        const windows = new THREE.Mesh(new THREE.BoxGeometry(2.52, 1.2, 11.5), glassMat);
-        windows.position.y = 2.2;
-        traffic.add(windows);
-        
-        // LED Sign
-        const sign = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.4, 0.1), new THREE.MeshBasicMaterial({ color: 0x000000 }));
-        sign.position.set(0, 3.0, 6.05);
-        traffic.add(sign);
-        
-      } else if (type === 'KEKE') {
-        // Yellow Keke Napep (Tricycle)
-        const kekeMat = new THREE.MeshStandardMaterial({ color: 0xfacc15 });
-        const body = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.0, 2.2), kekeMat);
-        body.position.set(0, 0.8, 0);
-        traffic.add(body);
-        
-        // Canopy
-        const canopy = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.1, 2.2), blackMat);
-        canopy.position.set(0, 1.8, 0);
-        traffic.add(canopy);
-        
-        // Windshield
-        const ws = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 0.8), glassMat);
-        ws.position.set(0, 1.4, 1.1);
-        traffic.add(ws);
-        
-        // Wheels (1 front, 2 back)
-        const frontW = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.1), blackMat);
-        frontW.rotation.z = Math.PI / 2;
-        frontW.position.set(0, 0.2, 1.0);
-        traffic.add(frontW);
-        
-        [-0.6, 0.6].forEach(x => {
-          const w = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.1), blackMat);
-          w.rotation.z = Math.PI / 2;
-          w.position.set(x, 0.2, -0.8);
-          traffic.add(w);
-        });
-
-      } else if (type === 'TRUCK') {
-        // Dangote-style Truck
-        const cabinMat = new THREE.MeshStandardMaterial({ color: 0xef4444 });
-        const cabin = new THREE.Mesh(new THREE.BoxGeometry(2.6, 2.5, 2.5), cabinMat);
-        cabin.position.set(0, 2.0, 4.0);
-        traffic.add(cabin);
-        
-        const cargo = new THREE.Mesh(new THREE.BoxGeometry(2.6, 3.0, 8.0), chromeMat);
-        cargo.position.set(0, 2.5, -1.5);
-        traffic.add(cargo);
-
-      } else if (type === 'OKADA') {
-        // Okada Motorcycle
-        const bikeMat = new THREE.MeshStandardMaterial({ color: 0x475569 });
-        const body = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.6, 1.8), bikeMat);
-        body.position.set(0, 0.6, 0);
-        traffic.add(body);
-        
-        const rider = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.8, 0.4), new THREE.MeshStandardMaterial({ color: 0xef4444 }));
-        rider.position.set(0, 1.3, 0);
-        traffic.add(rider);
-        
-        [-0.8, 0.8].forEach(z => {
-          const w = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.1), blackMat);
-          w.rotation.z = Math.PI / 2;
-          w.position.set(0, 0.3, z);
-          traffic.add(w);
-        });
-        
-      } else {
-        // Sedan
-        const body = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.8, 4.6), bodyMat);
-        body.position.y = 0.7;
-        traffic.add(body);
-        
-        const top = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.6, 2.4), bodyMat);
-        top.position.set(0, 1.4, -0.2);
-        traffic.add(top);
-        
-        const windows = new THREE.Mesh(new THREE.BoxGeometry(1.65, 0.5, 2.45), glassMat);
-        windows.position.set(0, 1.4, -0.2);
-        traffic.add(windows);
-      }
-
-      // Random Lane
-      const lanes = [-5.5, 0, 5.5];
-      traffic.position.set(lanes[Math.floor(Math.random() * lanes.length)], 0, 80 + i * 45);
+const glbLoaderReplace = `
+      // Try to load the user's downloaded GLB based on the selected bus
+      const loader = new GLTFLoader();
       
-      this.scene.add(traffic);
-      this.trafficMeshes.push(traffic);
-    }
-  }`;
+      let glbPath = '/models/danfo.glb'; // Default
+      // Use window or global state if possible, but we'll use a hack to read from DOM or just default to danfo for now until next update.
+      // Actually, we can read params.slogan or something. But engine doesn't know the bus ID at init!
+      
+      // Let's modify the createDanfoBus signature to take the bus ID.
+`;
 
-code = code.replace(regex, newMethod);
-fs.writeFileSync(path, code);
-console.log('Traffic updated');
+// Wait, ThreeDrivingEngine is initialized BEFORE `update` is called, and `createDanfoBus` is called in the constructor.
+// Let's modify the `update` method to change the GLB if the bus ID changes?
+// For now, I'll just change traffic generation to randomly use the new vehicle GLBs!
+const trafficLoaderReplace = `
+    private trafficModels: THREE.Group[] = [];
+    
+    // In setupRoadAndCity, we can pre-load traffic models
+    private loadTrafficModels() {
+      const loader = new GLTFLoader();
+      const modelsToLoad = [
+        '/models/1991_honda_civic_eg6.glb',
+        '/models/3d_model__passenger_tricycle_keke_napep.glb',
+        '/models/honda_today_g-type_police.glb',
+        '/models/kia_km420.glb',
+        '/models/danfo.glb'
+      ];
+      
+      modelsToLoad.forEach(path => {
+        loader.load(path, (gltf) => {
+          const m = gltf.scene;
+          if (path.includes('keke')) m.scale.set(1.2, 1.2, 1.2);
+          else if (path.includes('danfo')) m.scale.set(1.5, 1.5, 1.5);
+          else m.scale.set(1.4, 1.4, 1.4);
+          
+          m.position.set(0, 0.2, 0);
+          this.trafficModels.push(m);
+        });
+      });
+    }
+`;
+
+// Insert into class:
+if (!engine.includes('loadTrafficModels')) {
+  engine = engine.replace('private roadSegments: THREE.Group[] = [];', trafficLoaderReplace + '\n    private roadSegments: THREE.Group[] = [];');
+  
+  // Call it in setupRoadAndCity
+  engine = engine.replace('private setupRoadAndCity() {', 'private setupRoadAndCity() {\n      this.loadTrafficModels();');
+  
+  // Update traffic generation to use these models instead of boxes
+  const trafficGenReplace = `
+      for (let i = 0; i < 12; i++) {
+        const traffic = new THREE.Group();
+        
+        // Wait until models are loaded, fallback to box
+        if (this.trafficModels.length > 0) {
+          const randomModel = this.trafficModels[Math.floor(Math.random() * this.trafficModels.length)].clone();
+          randomModel.rotation.y = Math.PI; // Traffic goes same way
+          traffic.add(randomModel);
+        } else {
+          const tMesh = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 4), new THREE.MeshStandardMaterial({ color: Math.random() * 0xffffff }));
+          tMesh.position.y = 1;
+          traffic.add(tMesh);
+        }
+        
+        // Random Lane
+  `;
+  
+  engine = engine.replace(
+    /for \(let i = 0; i < 12; i\+\+\) \{\s*const traffic = new THREE\.Group\(\);\s*const tMesh.*?;/s,
+    trafficGenReplace
+  );
+  
+  fs.writeFileSync('src/game/three/ThreeDrivingEngine.ts', engine);
+  console.log('Traffic updated');
+} else {
+  console.log('Traffic already updated');
+}

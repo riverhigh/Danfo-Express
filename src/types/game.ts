@@ -58,7 +58,7 @@ export interface RoadHazard {
   hit: boolean;
 }
 
-export type CameraViewMode = 'CABIN_1ST' | 'CHASE_3RD' | 'TOP_DOWN' | 'ON_FOOT';
+export type CameraViewMode = 'CABIN_1ST' | 'CHASE_3RD' | 'TOP_DOWN' | 'ON_FOOT' | 'FIRST_PERSON' | 'THIRD_PERSON' | 'ORBIT';
 
 export type GearPosition = 'P' | 'R' | 'N' | 'D' | 'L';
 
@@ -74,7 +74,7 @@ export interface MissionGoal {
   type: 'PARK_OUT' | 'LANE_DISCIPLINE' | 'SMOOTH_STOP' | 'FUEL_SAVER' | 'NARROW_SQUEEZE';
 }
 
-export type BusModelId = 'RUSTIC_VAN' | 'TURBO_SPRINTER' | 'HIGH_RISER_COASTER';
+export type BusModelId = 'RUSTIC_VAN' | 'TURBO_SPRINTER' | 'HIGH_RISER_COASTER' | 'KEKE_NAPEP' | 'HONDA_CIVIC' | 'TOYOTA_TOWNACE' | 'KIA_CARNIVAL' | 'TOYOTA_FORTUNER' | 'POLICE_CAR' | 'ARMY_JEEP';
 
 export interface JunctionStop {
   id: string;

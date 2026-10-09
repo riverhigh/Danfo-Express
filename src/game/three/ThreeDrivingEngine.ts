@@ -76,7 +76,34 @@ export class ThreeDrivingEngine {
   private headLights: THREE.SpotLight[] = [];
 
   // Road & Environment
-  private roadSegments: THREE.Group[] = [];
+  
+    private trafficModels: THREE.Group[] = [];
+    
+    // In setupRoadAndCity, we can pre-load traffic models
+    private loadTrafficModels() {
+      const loader = new GLTFLoader();
+      const modelsToLoad = [
+        '/models/1991_honda_civic_eg6.glb',
+        '/models/3d_model__passenger_tricycle_keke_napep.glb',
+        '/models/honda_today_g-type_police.glb',
+        '/models/kia_km420.glb',
+        '/models/danfo.glb'
+      ];
+      
+      modelsToLoad.forEach(path => {
+        loader.load(path, (gltf) => {
+          const m = gltf.scene;
+          if (path.includes('keke')) m.scale.set(1.2, 1.2, 1.2);
+          else if (path.includes('danfo')) m.scale.set(1.5, 1.5, 1.5);
+          else m.scale.set(1.4, 1.4, 1.4);
+          
+          m.position.set(0, 0.2, 0);
+          this.trafficModels.push(m);
+        });
+      });
+    }
+
+    private roadSegments: THREE.Group[] = [];
   private junctionMeshes: { group: THREE.Group; junction: JunctionStop; passengers: THREE.Group[] }[] = [];
   private gasStationMeshes: THREE.Group[] = [];
   private billboardMeshes: { group: THREE.Group; ad: BillboardAd }[] = [];
@@ -205,6 +232,7 @@ export class ThreeDrivingEngine {
   }
 
   private setupRoadAndCity() {
+      this.loadTrafficModels();
     const asphaltTex = createAsphaltTexture();
     const curbTex = createCurbTexture();
 
