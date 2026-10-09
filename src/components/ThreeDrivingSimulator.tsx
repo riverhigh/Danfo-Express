@@ -66,6 +66,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
   const [gyroEnabled, setGyroEnabled] = useState<boolean>(false);
   const [wheelVisualAngle, setWheelVisualAngle] = useState<number>(0);
   const [isBoarding, setIsBoarding] = useState<boolean>(false);
+  const [cameraMode, setCameraMode] = React.useState('FIRST_PERSON');
 
   // NPC Interaction State
   const [activeNpc, setActiveNpc] = useState<LagosNpc | null>(null);
@@ -148,14 +149,14 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
 
   const toggleEngine = () => {
     const nextState = !isEngineRunning;
-    setIsEngineRunning(nextState);
+    setIsEngineRunning(nextState); inputsRef.current.isEngineRunning = nextState;
     soundEngine.playEngineIgnition(nextState);
     addFeedMessage(nextState ? '🔑 ENGINE STARTED: Diesel motor rumbling!' : '🛑 ENGINE STOPPED: Ignition off.');
   };
 
   const toggleDoor = () => {
     const nextDoor: DoorState = doorState === 'CLOSED' ? 'OPEN' : 'CLOSED';
-    setDoorState(nextDoor);
+    setDoorState(nextDoor); simRef.current.doorState = nextDoor;
     soundEngine.playDoorSlide(nextDoor === 'OPEN');
     if (nextDoor === 'OPEN') {
       addFeedMessage('🚪 PASSENGER DOOR OPENED: Sliding door rolled back for commuters!');
@@ -377,7 +378,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           inputsRef.current.gear = 'R';
           inputsRef.current.gas = true;
           inputsRef.current.brake = false;
-          soundEngine.playReverseBeep();
+          // soundEngine.playReverseBeep();
         } else if (inputsRef.current.gear === 'R') {
           inputsRef.current.gas = true;
           inputsRef.current.brake = false;
@@ -499,7 +500,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
 
       // Lateral lane offset
       const turnDir = inp.gear === 'R' ? -1 : 1;
-      sim.laneOffset += turnDir * steerFactor * ((sim.speed / 60) * 4.2 + 0.8) * dt;
+      sim.laneOffset -= turnDir * steerFactor * ((sim.speed / 60) * 4.2 + 0.8) * dt;
       sim.laneOffset = Math.max(-25, Math.min(25, sim.laneOffset));
 
       // Distance traveled: increases in D, decreases in R
@@ -603,7 +604,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
             laneOffsetMeters: sim.laneOffset,
             gear: inp.gear,
             isBraking: inp.brake,
-            cameraMode: 'CABIN_1ST',
+            cameraMode: cameraMode as any,
             turnSignal: inp.turnSignal,
             hazardLights: inp.hazardLights,
             wipersActive: inp.wipersActive,
@@ -721,7 +722,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
 
       {/* ═══════ DYNAMIC BANNERS ═══════ */}
       {activeGasStation && (
-        <div className="absolute top-12 left-1/2 -translate-x-1/2 z-40 bg-stone-950/95 border-2 border-emerald-400 rounded-2xl px-3 py-2 shadow-2xl flex items-center gap-3 pointer-events-auto">
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-40 bg-stone-950/95 border-2 border-emerald-400 rounded-2xl px-3 py-2 shadow-2xl flex items-center gap-3 pointer-events-auto">
           <Fuel className="w-5 h-5 text-emerald-400 shrink-0" />
           <div>
             <div className="text-[9px] font-mono font-black text-emerald-400">⛽ {activeGasStation.name}</div>
@@ -734,7 +735,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         </div>
       )}
       {activeShop && (
-        <div className="absolute top-12 left-1/2 -translate-x-1/2 z-40 bg-stone-950/95 border-2 border-amber-400 rounded-2xl px-3 py-2 shadow-2xl flex items-center gap-3 pointer-events-auto max-w-xs w-full">
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-40 bg-stone-950/95 border-2 border-amber-400 rounded-2xl px-3 py-2 shadow-2xl flex items-center gap-3 pointer-events-auto max-w-xs w-full">
           <Store className="w-5 h-5 text-amber-400 shrink-0" />
           <div className="flex-1 min-w-0">
             <div className="text-[9px] font-mono font-black text-amber-400 truncate">{activeShop.name}</div>
@@ -749,7 +750,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         </div>
       )}
       {isAtCurrentJunction && !activeGasStation && !activeShop && (
-        <div className="absolute top-12 left-1/2 -translate-x-1/2 z-40 bg-stone-950/95 border-2 border-amber-400 rounded-2xl px-3 py-2 shadow-2xl flex items-center gap-3 pointer-events-auto">
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-40 bg-stone-950/95 border-2 border-amber-400 rounded-2xl px-3 py-2 shadow-2xl flex items-center gap-3 pointer-events-auto">
           <MapPin className="w-5 h-5 text-amber-400 animate-pulse shrink-0" />
           <div>
             <div className="text-[9px] font-mono font-black text-amber-400">📍 {currentJunction?.name}</div>

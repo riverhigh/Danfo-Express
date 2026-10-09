@@ -14,7 +14,7 @@ import {
 import { getCustomBillboards, createBillboardTexture, BillboardAd } from '../billboards';
 
 export interface SceneUpdateParams {
-  speedKmH: number;
+  speedKmH: number; cameraLookYaw?: number; cameraLookPitch?: number;
   steeringWheelAngleDeg: number;
   laneOffsetMeters: number;
   gear: 'P' | 'R' | 'N' | 'D' | 'L';
@@ -996,7 +996,7 @@ export class ThreeDrivingEngine {
 
     // 2. Bus Root Position & Steering Tilt
     this.busRoot.position.x = laneOffsetMeters;
-    const steerFactor = steeringWheelAngleDeg / 120;
+    const steerFactor = -(steeringWheelAngleDeg / 120);
     this.busRoot.rotation.y = steerFactor * 0.08;
     this.busRoot.rotation.z = -steerFactor * 0.04;
 
@@ -1129,22 +1129,28 @@ export class ThreeDrivingEngine {
       this.camera.lookAt(laneOffsetMeters + 3.8, 1.6, 0.5);
       this.camera.fov = 68;
       this.camera.updateProjectionMatrix();
+    } else if (params.cameraMode === 'THIRD_PERSON') {
+      const offsetZ = gear === 'R' ? 10 : -8;
+      const camPos = new THREE.Vector3(laneOffsetMeters, 4.5, offsetZ);
+      this.camera.position.lerp(camPos, 0.1);
+      const lookTarget = new THREE.Vector3(laneOffsetMeters, 1.5, gear === 'R' ? -20 : 20);
+      this.camera.lookAt(lookTarget);
+      this.camera.fov = 60;
+      this.camera.updateProjectionMatrix();
     } else {
-      // Eye-level behind steering wheel looking FORWARD out windshield towards +Z!
-      const eyeX = laneOffsetMeters - 0.5;
-      const eyeY = 1.5 + (speedKmH > 10 ? Math.sin(Date.now() * 0.02) * 0.008 : 0);
-      const eyeZ = -0.2;
+      const headBob = speedKmH > 10 ? Math.sin(Date.now() * 0.02) * 0.008 : 0;
+      const localCamPos = new THREE.Vector3(-0.4, 1.5 + headBob, -0.15);
+      localCamPos.applyEuler(this.busRoot.rotation);
+      localCamPos.add(this.busRoot.position);
+      this.camera.position.copy(localCamPos);
 
-      this.camera.position.set(eyeX, eyeY, eyeZ);
-
-      // Perfect sync with bus body rotation + pitch + chassis roll
+      const isReversing = gear === 'R';
+      const baseYaw = isReversing ? 0 : Math.PI; 
       const pitchG = isBraking ? 0.02 : (speedKmH > 20 ? -0.01 : 0);
-      
       this.camera.rotation.order = 'YXZ';
-      this.camera.rotation.y = Math.PI + steerFactor * 0.08;
-      this.camera.rotation.x = pitchG;
-      this.camera.rotation.z = steerFactor * -0.02;
-
+      this.camera.rotation.y = baseYaw + this.busRoot.rotation.y + (params.cameraLookYaw || 0);
+      this.camera.rotation.x = pitchG + (params.cameraLookPitch || 0);
+      this.camera.rotation.z = this.busRoot.rotation.z;
       this.camera.fov = 70;
       this.camera.updateProjectionMatrix();
     }

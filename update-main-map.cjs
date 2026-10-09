@@ -1,55 +1,11 @@
-import React, { useState } from 'react';
-import { X, Navigation } from 'lucide-react';
+const fs = require('fs');
+let code = fs.readFileSync('src/components/MainMap.tsx', 'utf8');
 
-export type MapLocation = {
-  id: string;
-  name: string;
-  label: string;
-  icon: string;
-  x: number; // % from left
-  y: number; // % from top
-  type: 'JUNCTION' | 'GARAGE' | 'DEALERSHIP' | 'MARKET' | 'GAS_STATION' | 'HOME' | 'PARK';
-  description: string;
-  color: string;
-};
-
-const LAGOS_LOCATIONS: MapLocation[] = [
-  { id: 'home-mushin', name: 'Mushin Home', label: 'HOME', icon: '🏠', x: 22, y: 60, type: 'HOME', description: 'Your base. Sleep, cook, and save game here.', color: 'bg-emerald-400' },
-  { id: 'park-oshodi', name: 'Oshodi Motor Park', label: 'PARK', icon: '🚍', x: 35, y: 52, type: 'PARK', description: 'Pick up passengers. Start your daily Danfo shift.', color: 'bg-amber-400' },
-  { id: 'junction-ikeja', name: 'Ikeja Along', label: 'JUNCTION', icon: '📍', x: 28, y: 38, type: 'JUNCTION', description: 'Busy junction. Pick up Ikeja commuters.', color: 'bg-sky-400' },
-  { id: 'dealership-ladipo', name: "Ladipo Car Dealership", label: 'DEALERSHIP', icon: '🚗', x: 48, y: 45, type: 'DEALERSHIP', description: 'Buy new Danfos, electric scooters, and private cars.', color: 'bg-purple-400' },
-  { id: 'market-oshodi', name: 'Oshodi Market', label: 'MARKET', icon: '🛒', x: 38, y: 58, type: 'MARKET', description: 'Buy Kolo pot, groceries and spare parts here.', color: 'bg-rose-400' },
-  { id: 'gas-total', name: 'Total Fuel Station', label: 'FUEL', icon: '⛽', x: 55, y: 40, type: 'GAS_STATION', description: 'Refuel your Danfo. Diesel ₦950/litre.', color: 'bg-orange-400' },
-  { id: 'junction-maryland', name: 'Maryland Junction', label: 'JUNCTION', icon: '📍', x: 45, y: 32, type: 'JUNCTION', description: 'Route to Ikeja or Third Mainland.', color: 'bg-sky-400' },
-  { id: 'park-cms', name: 'CMS Marina Terminal', label: 'PARK', icon: '🚌', x: 62, y: 72, type: 'PARK', description: 'Island terminus. Premium fares. High police presence.', color: 'bg-amber-400' },
-  { id: 'garage-anthony', name: 'Anthony Auto Garage', label: 'GARAGE', icon: '🔧', x: 42, y: 24, type: 'GARAGE', description: 'Mechanics row. Repair, upgrade and tune your bus.', color: 'bg-stone-400' },
-  { id: 'junction-ojuelegba', name: 'Ojuelegba', label: 'JUNCTION', icon: '📍', x: 52, y: 60, type: 'JUNCTION', description: 'The heart of Lagos streets. Busy crossroads.', color: 'bg-sky-400' },
-  { id: 'junction-yaba', name: 'Yaba', label: 'JUNCTION', icon: '📍', x: 55, y: 55, type: 'JUNCTION', description: 'Tech hub area. Students and workers commute here.', color: 'bg-sky-400' },
-  { id: 'gas-oando', name: 'Oando Filling Station', label: 'FUEL', icon: '⛽', x: 30, y: 48, type: 'GAS_STATION', description: 'Cheaper diesel. Sometimes has long queues.', color: 'bg-orange-400' },
-  { id: 'junction-bridge', name: 'Third Mainland Bridge', label: 'JUNCTION', icon: '🌉', x: 65, y: 48, type: 'JUNCTION', description: 'Lagos longest bridge. 80km/h. High speed route to Island.', color: 'bg-sky-400' },
-  { id: 'junction-vi', name: 'Victoria Island', label: 'JUNCTION', icon: '🏢', x: 72, y: 68, type: 'JUNCTION', description: 'Business district. Premium fares, but strict LASTMA.', color: 'bg-sky-400' },
-];
-
-interface MainMapProps {
-  isOpen?: boolean;
-  onClose: () => void;
-  onNavigateTo: (loc: any) => void;
-  walletNaira: number;
-}
-
-export const MainMap: React.FC<MainMapProps> = ({ isOpen, onClose, onNavigateTo, walletNaira }) => {
-  const [selectedLoc, setSelectedLoc] = useState<MapLocation | null>(null);
-
-  if (!isOpen) return null;
-
-  const handleRoute = () => {
-    if (selectedLoc) {
-      onNavigateTo(selectedLoc);
-      onClose();
-    }
-  };
-
-  return (
+// I will just replace the entire return block of MainMap.tsx to implement the isometric view.
+// First, find the return block.
+const returnIdx = code.indexOf('return (');
+if (returnIdx !== -1) {
+  const isometricReturn = `return (
     <div className="absolute inset-0 z-50 bg-stone-950/80 backdrop-blur-sm flex items-center justify-center p-4">
       {/* Container holding the map UI */}
       <div className="relative w-full max-w-6xl h-[85vh] bg-sky-300 rounded-3xl overflow-hidden shadow-2xl border border-stone-800 flex flex-col">
@@ -97,15 +53,15 @@ export const MainMap: React.FC<MainMapProps> = ({ isOpen, onClose, onNavigateTo,
                   key={loc.id}
                   className="absolute group transition-transform hover:scale-110 z-10"
                   style={{ 
-                    left: `${loc.x}%`, 
-                    top: `${loc.y}%`,
+                    left: \`\${loc.x}%\`, 
+                    top: \`\${loc.y}%\`,
                     transformStyle: 'preserve-3d',
                   }}
                   onPointerDown={() => setSelectedLoc(loc)}
                 >
                   {/* Pin standing up vertically from the isometric plane */}
                   <div 
-                    className={`w-10 h-10 rounded-full flex items-center justify-center text-xl shadow-2xl border-2 border-stone-900 cursor-pointer ${loc.color} ${selectedLoc?.id === loc.id ? 'ring-4 ring-white animate-bounce' : ''}`}
+                    className={\`w-10 h-10 rounded-full flex items-center justify-center text-xl shadow-2xl border-2 border-stone-900 cursor-pointer \${loc.color} \${selectedLoc?.id === loc.id ? 'ring-4 ring-white animate-bounce' : ''}\`}
                     style={{
                       transform: 'rotateZ(35deg) rotateX(-55deg) translateZ(20px) translateY(-20px)',
                       boxShadow: 'inset 0 -3px 0 rgba(0,0,0,0.3), 0 15px 15px rgba(0,0,0,0.6)'
@@ -126,9 +82,9 @@ export const MainMap: React.FC<MainMapProps> = ({ isOpen, onClose, onNavigateTo,
                 { x: 25, y: 70, brand: "AIRTEL", color: "bg-red-500" },
                 { x: 75, y: 75, brand: "DANFO EXPRESS", color: "bg-stone-900" }
               ].map((board, i) => (
-                <div key={i} className="absolute" style={{ left: `${board.x}%`, top: `${board.y}%`, transformStyle: 'preserve-3d' }}>
+                <div key={i} className="absolute" style={{ left: \`\${board.x}%\`, top: \`\${board.y}%\`, transformStyle: 'preserve-3d' }}>
                   <div 
-                    className={`w-24 h-12 ${board.color} border-4 border-stone-800 flex items-center justify-center text-white font-black shadow-2xl`}
+                    className={\`w-24 h-12 \${board.color} border-4 border-stone-800 flex items-center justify-center text-white font-black shadow-2xl\`}
                     style={{
                       transform: 'rotateZ(35deg) rotateX(-55deg) translateZ(15px) translateY(-25px)',
                     }}
@@ -147,7 +103,7 @@ export const MainMap: React.FC<MainMapProps> = ({ isOpen, onClose, onNavigateTo,
           {selectedLoc && (
             <div className="absolute bottom-6 left-6 right-6 bg-stone-900/95 backdrop-blur-md rounded-2xl border border-stone-700 p-5 shadow-2xl z-30 flex items-center justify-between animate-in slide-in-from-bottom-8">
               <div className="flex items-center gap-4">
-                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-3xl shadow-inner border border-stone-800 ${selectedLoc.color}`}>
+                <div className={\`w-14 h-14 rounded-2xl flex items-center justify-center text-3xl shadow-inner border border-stone-800 \${selectedLoc.color}\`}>
                   {selectedLoc.icon}
                 </div>
                 <div>
@@ -174,4 +130,11 @@ export const MainMap: React.FC<MainMapProps> = ({ isOpen, onClose, onNavigateTo,
       </div>
     </div>
   );
+}`;
+
+  code = code.substring(0, returnIdx) + isometricReturn;
+  fs.writeFileSync('src/components/MainMap.tsx', code);
+  console.log('MainMap updated');
+} else {
+  console.log('Return block not found in MainMap');
 }
