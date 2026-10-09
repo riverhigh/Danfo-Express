@@ -537,7 +537,21 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         }
       }
 
-      // 5. Junction Bus Stop Detection & Passenger Boarding
+      
+        // NPC honk when player is blocking their lane
+        if (Math.random() < 0.0015) {
+          const hornMessages = [
+            '📢 "Driver move na! You dey block road!" 🚗💨',
+            '🚕 "Oga park well! Area boys go vex!" 😤',
+            '📯 "PAMPAMPAM! Werey driver!" 🤦',
+            '🚌 "Driver! Comot for my lane abeg!" 🙏',
+            '😡 "You go pay for this traffic!" 💸',
+          ];
+          addFeedMessage(hornMessages[Math.floor(Math.random() * hornMessages.length)]);
+          soundEngine.playHorn(false);
+        }
+
+        // 5. Junction Bus Stop Detection & Passenger Boarding
       const juncs = gameState.junctions;
       const currJunc = juncs[sim.activeJunctionIndex];
 
