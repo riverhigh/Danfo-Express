@@ -864,6 +864,10 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                 </button>
               </div>
             </>
+          ) : (
+            <button onClick={toggleStepDown} className="px-6 py-4 bg-amber-400 text-stone-950 font-black rounded-xl shadow-2xl active:scale-95 animate-bounce mb-8">
+              GET IN BUS
+            </button>
           )}
         </div>
       </div>
