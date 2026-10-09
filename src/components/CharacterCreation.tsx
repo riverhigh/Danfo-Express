@@ -10,7 +10,7 @@ export const CharacterCreation: React.FC<CharacterCreationProps> = ({ onComplete
   const [gender, setGender] = useState<'MALE' | 'FEMALE'>('MALE');
 
   return (
-    <div className="fixed inset-0 z-50 bg-stone-950 flex flex-col items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 bg-stone-950 flex flex-col items-center justify-center p-4 overflow-y-auto">
       <div className="w-full max-w-md bg-stone-900 border-2 border-amber-500/50 rounded-3xl p-6 shadow-2xl">
         <h1 className="text-3xl font-black font-['Bungee'] text-amber-400 mb-2 text-center">
           Lagos Driver Profile
