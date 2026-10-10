@@ -691,6 +691,7 @@ export default function App() {
             onHireConductor={() => setIsConductorModalOpen(true)}
             onOpenPhone={() => setIsPhoneOpen(true)}
             onOpenInventory={() => setIsInventoryOpen(true)}
+            onOpenMap={() => setIsMapOpen(true)}
             actionFeed={actionFeed}
             addFeedMessage={addFeedMessage}
           />

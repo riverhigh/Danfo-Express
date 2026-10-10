@@ -36,6 +36,7 @@ interface ThreeDrivingSimulatorProps {
   onHireConductor: () => void;
   onOpenPhone: () => void;
   onOpenInventory: () => void;
+  onOpenMap?: () => void;
   actionFeed: string[];
   addFeedMessage: (msg: string) => void;
 }

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { CameraViewMode, BusUpgrades, JunctionStop, DoorState, GasStationBay, RoadsideShop } from '../../types/game';
+import { soundEngine } from '../../audio/soundEngine';
 import { 
   createAsphaltTexture, 
   createCurbTexture, 
@@ -48,6 +49,9 @@ export class ThreeDrivingEngine {
   private currentBusId: string = 'RUSTIC_VAN';
   private driverWalkPos: THREE.Vector3 = new THREE.Vector3(2.5, 0, 0.5);
   private wasSteppedDown: boolean = false;
+  private bumpTimer: number = 0;
+  private bumpImpulse: number = 0;
+  private bumpCooldown: number = 0;
   private container: HTMLElement;
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
@@ -162,7 +166,7 @@ export class ThreeDrivingEngine {
     this.scene.fog = new THREE.FogExp2(0x322014, 0.009);
 
     // 2. Camera (Wide-Angle Cockpit View Looking Forward Out Windshield)
-    this.camera = new THREE.PerspectiveCamera(70, width / height, 0.08, 480);
+    this.camera = new THREE.PerspectiveCamera(70, width / height, 0.45, 480);
 
     // 3. WebGL Renderer
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
@@ -451,6 +455,21 @@ export class ThreeDrivingEngine {
           bulb.position.set(lx, 8.2, s);
           group.add(bulb);
         });
+      }
+
+      // 3D Road Speed Bump / Asphalt Ridge across lanes
+      if (i % 2 === 0) {
+        const bumpGeo = new THREE.CylinderGeometry(0.5, 0.5, 17, 12, 1, false, 0, Math.PI);
+        const bumpMat = new THREE.MeshStandardMaterial({
+          color: 0x332a20,
+          roughness: 0.9,
+          metalness: 0.1
+        });
+        const bumpMesh = new THREE.Mesh(bumpGeo, bumpMat);
+        bumpMesh.rotation.z = Math.PI / 2;
+        bumpMesh.position.set(0, 0.06, 25);
+        bumpMesh.scale.set(0.12, 1.0, 1.6);
+        group.add(bumpMesh);
       }
 
       // Overhead gantry signs on every other segment
@@ -926,10 +945,10 @@ export class ThreeDrivingEngine {
     const npcGlbPaths = [
       { path: '/models/1991_honda_civic_eg6.glb', scale: 1.2, rotY: Math.PI },
       { path: '/models/2005_toyota_townace_gl.glb', scale: 1.5, rotY: Math.PI },
-      { path: '/models/3d_model__passenger_tricycle_keke_napep.glb', scale: 1.0, rotY: -Math.PI / 2 },
       { path: '/models/honda_today_g-type_police.glb', scale: 1.3, rotY: Math.PI },
-      { path: '/models/kia_km420.glb', scale: 1.4, rotY: Math.PI },
       { path: '/models/2010_kia_forte_koup.glb', scale: 1.3, rotY: Math.PI },
+      { path: '/models/kia_km420.glb', scale: 1.4, rotY: Math.PI },
+      { path: '/models/2000_honda_civic_type_r_ek9.glb', scale: 1.2, rotY: Math.PI },
     ];
     const loader = new GLTFLoader();
     const lanes = [-5.5, 0, 5.5];
@@ -1090,6 +1109,38 @@ export class ThreeDrivingEngine {
     // Acceleration / Torque Meter: 0% (-135 deg) to 100% (+115 deg)
     const accelRatio = isEngineRunning ? (throttle > 0 ? Math.min(1.0, 0.25 + throttle * 0.75) : 0.04) : 0;
     this.accelNeedle.rotation.z = -Math.PI * 0.75 + accelRatio * (Math.PI * 1.4);
+
+    // Road Bump & Suspension Spring Bounce Physics
+    const bumpInterval = 140; // bump every 140 meters along highway
+    const distMod = (roadDistanceTraveled + 30) % bumpInterval;
+    const isCrossingBump = distMod < 2.8 && speedKmH > 6;
+
+    if (isCrossingBump && this.bumpCooldown <= 0) {
+      this.bumpCooldown = 0.9;
+      this.bumpImpulse = Math.min(1.0, speedKmH / 38);
+      this.bumpTimer = 0;
+      if (speedKmH > 22) {
+        soundEngine.playPotholeThud();
+      }
+    }
+
+    if (this.bumpCooldown > 0) {
+      this.bumpCooldown -= dt;
+    }
+
+    if (this.bumpImpulse > 0.01) {
+      this.bumpTimer += dt * 14;
+      const decay = Math.exp(-this.bumpTimer * 0.45);
+      const bounceY = Math.abs(Math.sin(this.bumpTimer)) * this.bumpImpulse * 0.22 * decay;
+      const pitchWobble = Math.sin(this.bumpTimer * 1.2) * this.bumpImpulse * 0.07 * decay;
+      const rollWobble = Math.cos(this.bumpTimer * 0.9) * this.bumpImpulse * 0.035 * decay;
+
+      this.busRoot.position.y += bounceY;
+      this.busRoot.rotation.x += pitchWobble;
+      this.busRoot.rotation.z += rollWobble;
+
+      this.bumpImpulse *= Math.pow(0.12, dt);
+    }
 
     // 5. Blinker flashers
     this.blinkerTimer += dt * 4;
@@ -1258,14 +1309,14 @@ export class ThreeDrivingEngine {
       const headBob = speedKmH > 10 ? Math.sin(Date.now() * 0.02) * 0.008 : 0;
       
       let cx = -0.35; // driver side
-      let cy = 1.35;  // natural eye/hood height
-      let cz = 2.2;   // on hood in front of opaque windshield/pillars
+      let cy = 2.25;  // Commanding high Lagos bus driver eye height
+      let cz = 1.95;  // inside driver cab overlooking traffic
       const bId = this.currentBusId || 'RUSTIC_VAN';
-      if (bId === 'KEKE_NAPEP') { cx = 0; cy = 1.15; cz = 1.3; }
-      else if (bId === 'HONDA_CIVIC' || bId === 'CIVIC_TYPE_R') { cx = -0.3; cy = 1.05; cz = 1.8; }
-      else if (bId === 'POLICE_CAR') { cx = -0.3; cy = 1.1; cz = 1.8; }
-      else if (bId === 'ARMY_JEEP') { cx = -0.35; cy = 1.3; cz = 1.9; }
-      else { cx = -0.35; cy = 1.45; cz = 2.3; } // Danfo / Townace
+      if (bId === 'KEKE_NAPEP') { cx = 0; cy = 1.65; cz = 1.15; }
+      else if (bId === 'HONDA_CIVIC' || bId === 'CIVIC_TYPE_R') { cx = -0.3; cy = 1.45; cz = 1.65; }
+      else if (bId === 'POLICE_CAR') { cx = -0.3; cy = 1.5; cz = 1.65; }
+      else if (bId === 'ARMY_JEEP') { cx = -0.35; cy = 1.95; cz = 1.75; }
+      else { cx = -0.35; cy = 2.25; cz = 1.95; } // Danfo / Townace high vantage view
 
       const localCamPos = new THREE.Vector3(cx, cy + headBob, cz);
       localCamPos.applyEuler(this.busRoot.rotation);
