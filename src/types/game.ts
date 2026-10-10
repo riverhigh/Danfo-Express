@@ -77,6 +77,21 @@ export interface MissionGoal {
 
 export type BusModelId = 'RUSTIC_VAN' | 'TURBO_SPRINTER' | 'HIGH_RISER_COASTER' | 'KEKE_NAPEP' | 'HONDA_CIVIC' | 'TOYOTA_TOWNACE' | 'KIA_CARNIVAL' | 'TOYOTA_FORTUNER' | 'POLICE_CAR' | 'ARMY_JEEP';
 
+export interface DeliveryJob {
+  id: string;
+  senderName: string;
+  senderRole: string;
+  itemName: string;
+  itemIcon: string;
+  description: string;
+  destinationJunctionUid: string;
+  destinationName: string;
+  destinationMarkerMeters: number;
+  rewardNaira: number;
+  accepted: boolean;
+  completed: boolean;
+}
+
 export interface JunctionStop {
   id: string;
   uid: string;
@@ -88,6 +103,7 @@ export interface JunctionStop {
   destinationTag: LagosDestination;
   stopReached: boolean;
   cleared: boolean;
+  side?: 'LEFT' | 'RIGHT' | 'BOTH';
 }
 
 export interface ConductorProfile {
@@ -282,6 +298,10 @@ export interface GameState {
   // Lagos Junctions & Bus Stops along Route
   junctions: JunctionStop[];
   activeJunctionIndex: number;
+  
+  // NPC Delivery Waybill Item (Cartons, Yams, Electronics, Jollof)
+  activeDelivery?: DeliveryJob | null;
+  availableDelivery?: DeliveryJob | null;
   
   // Active in-bus micro-event (Overcooked style)
   activeCabinEvent: CabinEvent | null;

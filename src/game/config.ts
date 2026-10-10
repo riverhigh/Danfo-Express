@@ -1,4 +1,4 @@
-import { Bus, ShiftConfig, ShiftTimeOfDay, PassengerArchetype, LagosDestination } from '../types/game';
+import { Bus, ShiftConfig, ShiftTimeOfDay, PassengerArchetype, LagosDestination, DeliveryJob, JunctionStop } from '../types/game';
 
 export const BUS_PRESETS: Record<string, Bus> = {
   RUSTIC_VAN: {
@@ -268,7 +268,7 @@ export const BUS_PRESETS: Record<string, Bus> = {
   }
 };
 
-export const DEFAULT_JUNCTIONS = [
+export const DEFAULT_JUNCTIONS: JunctionStop[] = [
   {
     id: 'j-1',
     uid: 'bustop-ikeja-along',
@@ -280,6 +280,7 @@ export const DEFAULT_JUNCTIONS = [
     destinationTag: 'Ikeja Along' as const,
     stopReached: false,
     cleared: false,
+    side: 'RIGHT',
   },
   {
     id: 'j-2',
@@ -292,6 +293,7 @@ export const DEFAULT_JUNCTIONS = [
     destinationTag: 'Third Mainland Bridge / Obalende' as const,
     stopReached: false,
     cleared: false,
+    side: 'LEFT',
   },
   {
     id: 'j-3',
@@ -304,6 +306,7 @@ export const DEFAULT_JUNCTIONS = [
     destinationTag: 'Oshodi Interchange' as const,
     stopReached: false,
     cleared: false,
+    side: 'RIGHT',
   },
   {
     id: 'j-4',
@@ -316,6 +319,7 @@ export const DEFAULT_JUNCTIONS = [
     destinationTag: 'Ojuelegba Underbridge' as const,
     stopReached: false,
     cleared: false,
+    side: 'LEFT',
   },
   {
     id: 'j-5',
@@ -328,6 +332,7 @@ export const DEFAULT_JUNCTIONS = [
     destinationTag: 'Lekki Phase 1 Toll Gate' as const,
     stopReached: false,
     cleared: false,
+    side: 'RIGHT',
   },
   {
     id: 'j-6',
@@ -340,6 +345,80 @@ export const DEFAULT_JUNCTIONS = [
     destinationTag: 'CMS Marina Terminal' as const,
     stopReached: false,
     cleared: false,
+    side: 'BOTH',
+  },
+];
+
+export const SAMPLE_DELIVERY_JOBS: DeliveryJob[] = [
+  {
+    id: 'del-1',
+    senderName: 'Iya Basira',
+    senderRole: 'Mama Put Caterer',
+    itemName: 'Hot Cooler of Party Jollof & Fried Fish',
+    itemIcon: '🍲',
+    description: 'Hot party jollof for workers at Maryland Mall. Deliver before it gets cold!',
+    destinationJunctionUid: 'bustop-maryland',
+    destinationName: 'Maryland Junction',
+    destinationMarkerMeters: 750,
+    rewardNaira: 3500,
+    accepted: false,
+    completed: false,
+  },
+  {
+    id: 'del-2',
+    senderName: 'Chinedu Electronics',
+    senderRole: 'Alaba Waybill Agent',
+    itemName: 'Carton of Smartphone Chargers & Screens',
+    itemIcon: '📱',
+    description: 'Waybill parcel from Alaba. Drop off at Anthony interchange for pickup.',
+    destinationJunctionUid: 'bustop-anthony',
+    destinationName: 'Anthony Interchange',
+    destinationMarkerMeters: 1250,
+    rewardNaira: 4800,
+    accepted: false,
+    completed: false,
+  },
+  {
+    id: 'del-3',
+    senderName: 'Alhaji Danladi',
+    senderRole: 'Yam Wholesaler',
+    itemName: 'Tied Sacks of Benue Tubers',
+    itemIcon: '🍠',
+    description: 'Load 4 giant yams in your rear boot. Receiver waiting at Oshodi underbridge.',
+    destinationJunctionUid: 'bustop-oshodi',
+    destinationName: 'Oshodi Underbridge Terminal',
+    destinationMarkerMeters: 1800,
+    rewardNaira: 5500,
+    accepted: false,
+    completed: false,
+  },
+  {
+    id: 'del-4',
+    senderName: 'Madam Kemi',
+    senderRole: 'Balogun Lace Merchant',
+    itemName: 'Bespoke Aso-Ebi Lace Fabric Roll',
+    itemIcon: '👗',
+    description: 'VIP luxury wedding lace material. Deliver to Ojuelegba fashion house.',
+    destinationJunctionUid: 'bustop-ojuelegba',
+    destinationName: 'Ojuelegba Flyover',
+    destinationMarkerMeters: 2350,
+    rewardNaira: 6000,
+    accepted: false,
+    completed: false,
+  },
+  {
+    id: 'del-5',
+    senderName: 'Engineer Femi',
+    senderRole: 'Marina Marine Tech',
+    itemName: 'Caterpillar Engine Spare Alternator',
+    itemIcon: '⚙️',
+    description: 'Heavy duty marine spare part. Deliver directly to CMS Marina Jetty.',
+    destinationJunctionUid: 'bustop-cms',
+    destinationName: 'CMS Marina Terminal',
+    destinationMarkerMeters: 3000,
+    rewardNaira: 7500,
+    accepted: false,
+    completed: false,
   },
 ];
 

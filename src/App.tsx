@@ -192,6 +192,8 @@ export default function App() {
       targetDistanceMeters: 3000,
       junctions: junctions,
       activeJunctionIndex: 0,
+      activeDelivery: null,
+      availableDelivery: null,
       house: DEFAULT_HOUSE,
       inventory: DEFAULT_INVENTORY,
       messages: DEFAULT_MESSAGES,
@@ -247,6 +249,8 @@ export default function App() {
       targetDistanceMeters: mission.targetDistanceMeters,
       junctions: junctions,
       activeJunctionIndex: 0,
+      activeDelivery: null,
+      availableDelivery: null,
       activeCabinEvent: null,
       lastShiftResult: null,
     }));
@@ -276,6 +280,8 @@ export default function App() {
       targetDistanceMeters: 15000,
       junctions: junctions,
       activeJunctionIndex: 0,
+      activeDelivery: null,
+      availableDelivery: null,
       activeCabinEvent: null,
       lastShiftResult: null,
     }));

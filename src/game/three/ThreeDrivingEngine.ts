@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
-import { CameraViewMode, BusUpgrades, JunctionStop, DoorState, GasStationBay, RoadsideShop } from '../../types/game';
+import { CameraViewMode, BusUpgrades, JunctionStop, DoorState, GasStationBay, RoadsideShop, DeliveryJob } from '../../types/game';
 import { soundEngine } from '../../audio/soundEngine';
 import { 
   createAsphaltTexture, 
@@ -39,6 +39,7 @@ export interface SceneUpdateParams {
   junctions: JunctionStop[];
   activeJunctionIndex: number;
   isBoardingPassengers: boolean;
+  activeDelivery?: DeliveryJob | null;
   gasStations?: GasStationBay[];
   roadsideShops?: RoadsideShop[];
   walkMoveX?: number;
@@ -1223,128 +1224,160 @@ export class ThreeDrivingEngine {
   }
 
   /**
-   * Builds roadside Junction Bus Stops with shelters, signboards, and high-graphic 3D waiting passengers!
+   * Builds roadside Junction Bus Stops with shelters, signboards, and 3D waiting passengers on BOTH left and right sides!
    */
   public syncJunctionShelters(junctions: JunctionStop[]) {
     if (this.junctionMeshes.length > 0) return;
 
-    junctions.forEach((junc) => {
+    const charLoader = new GLTFLoader();
+    const characterGlbs = [
+      '/models/free_download_athletic_african_man_walking_223.glb',
+      '/models/free_download_attractive_african_woman_236.glb',
+      '/models/african_female_model.glb'
+    ];
+
+    junctions.forEach((junc, jIdx) => {
       const group = new THREE.Group();
+      group.position.set(0, 0, junc.distanceMarkerMeters);
 
-      // Bus Stop Shelter on the right shoulder
-      const shelterRoof = new THREE.Mesh(
-        new THREE.BoxGeometry(7, 0.25, 10),
-        new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.5 })
-      );
-      shelterRoof.position.set(10.5, 3.8, 0);
-      shelterRoof.rotation.z = -0.05;
-      group.add(shelterRoof);
+      // Support bus stops on BOTH sides: Left side, Right side, or Dual (Both)
+      const effectiveSide = junc.side || (jIdx % 2 === 0 ? 'RIGHT' : 'LEFT');
+      const sidesToBuild: Array<'LEFT' | 'RIGHT'> = 
+        effectiveSide === 'BOTH' ? ['LEFT', 'RIGHT'] : [effectiveSide];
 
-      [-4, 4].forEach((sz) => {
-        const pillar = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.12, 0.12, 3.8),
-          new THREE.MeshStandardMaterial({ color: 0x57534e })
+      const passengers: THREE.Group[] = [];
+
+      sidesToBuild.forEach((side) => {
+        const isLeft = side === 'LEFT';
+        const sideMult = isLeft ? -1 : 1;
+        const shoulderX = 10.5 * sideMult;
+        const benchX = 12 * sideMult;
+        const signX = 8.2 * sideMult;
+        const stopBoxX = 5.8 * sideMult;
+
+        // Bus Stop Shelter Roof
+        const shelterRoof = new THREE.Mesh(
+          new THREE.BoxGeometry(7, 0.25, 10),
+          new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.5 })
         );
-        pillar.position.set(10.5, 1.9, sz);
-        group.add(pillar);
+        shelterRoof.position.set(shoulderX, 3.8, 0);
+        shelterRoof.rotation.z = isLeft ? 0.05 : -0.05;
+        group.add(shelterRoof);
+
+        [-4, 4].forEach((sz) => {
+          const pillar = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.12, 0.12, 3.8),
+            new THREE.MeshStandardMaterial({ color: 0x57534e })
+          );
+          pillar.position.set(shoulderX, 1.9, sz);
+          group.add(pillar);
+        });
+
+        const bench = new THREE.Mesh(
+          new THREE.BoxGeometry(0.8, 0.5, 6),
+          new THREE.MeshStandardMaterial({ color: 0x78350f })
+        );
+        bench.position.set(benchX, 0.45, 0);
+        group.add(bench);
+
+        // Bus Stop Signboard facing incoming traffic
+        const signTex = createBusStopSignTexture(junc.name, junc.destinationTag);
+        const signMesh = new THREE.Mesh(
+          new THREE.BoxGeometry(0.1, 2.2, 4.4),
+          new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.4 })
+        );
+        signMesh.position.set(signX, 3.2, 5.2);
+        if (isLeft) {
+          signMesh.rotation.y = Math.PI;
+        }
+        group.add(signMesh);
+
+        // Yellow striped road curb stop-box on road edge
+        const stopBox = new THREE.Mesh(
+          new THREE.PlaneGeometry(3.5, 12),
+          new THREE.MeshBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0.35 })
+        );
+        stopBox.rotation.x = -Math.PI / 2;
+        stopBox.position.set(stopBoxX, 0.02, 0);
+        group.add(stopBox);
+
+        // High-Graphic 3D Waiting Commuters on Sidewalk
+        const commuterCount = Math.min(3, Math.max(1, Math.round(junc.waitingPassengersCount / sidesToBuild.length)));
+        for (let p = 0; p < commuterCount; p++) {
+          const pGroup = new THREE.Group();
+          (pGroup as any)._isNpc = true;
+
+          const pX = shoulderX + sideMult * ((p % 2) * 1.5);
+          const pZ = -2.5 + p * 2.2;
+          pGroup.position.set(pX, 0.25, pZ);
+          pGroup.rotation.y = isLeft ? Math.PI / 2 : -Math.PI / 2;
+          pGroup.userData = { origX: pX, origZ: pZ, isLeft, boarded: false };
+
+          const charPath = characterGlbs[(p + (isLeft ? 1 : 0)) % characterGlbs.length];
+
+          const applyCharModel = (prototype: THREE.Group) => {
+            const clone = prototype.clone(true);
+            pGroup.add(clone);
+          };
+
+          if (ThreeDrivingEngine.modelCache.has(charPath)) {
+            applyCharModel(ThreeDrivingEngine.modelCache.get(charPath)!);
+          } else {
+            charLoader.load(charPath, (gltf) => {
+              const humanBox = new THREE.Box3().setFromObject(gltf.scene);
+              const lowestY = humanBox.min.y;
+              gltf.scene.children.forEach(child => {
+                child.position.y -= lowestY;
+              });
+
+              const charScene = gltf.scene;
+              const bbox = new THREE.Box3().setFromObject(charScene);
+              const size = bbox.getSize(new THREE.Vector3());
+              const maxDim = Math.max(size.x, size.y, size.z);
+              if (maxDim > 0) {
+                const targetHeight = 1.75;
+                const rawHeight = size.y > 0.5 ? size.y : maxDim;
+                charScene.scale.setScalar(targetHeight / rawHeight);
+                const postBox = new THREE.Box3().setFromObject(charScene);
+                const postLowest = postBox.min.y;
+                charScene.children.forEach(child => {
+                  child.position.y -= postLowest;
+                });
+              }
+              ThreeDrivingEngine.modelCache.set(charPath, charScene);
+              applyCharModel(charScene);
+            }, undefined, (err) => console.warn('Char cache load error:', err));
+          }
+
+          group.add(pGroup);
+          passengers.push(pGroup);
+        }
       });
 
-      const bench = new THREE.Mesh(
-        new THREE.BoxGeometry(0.8, 0.5, 6),
-        new THREE.MeshStandardMaterial({ color: 0x78350f })
+      // 3D Delivery Waybill Floating Beacon above stop
+      const waybillBeacon = new THREE.Group();
+      waybillBeacon.position.set(sidesToBuild[0] === 'LEFT' ? -10.5 : 10.5, 5.8, 0);
+      waybillBeacon.visible = false;
+
+      const crateMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(0.9, 0.9, 0.9),
+        new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.35, metalness: 0.2 })
       );
-      bench.position.set(12, 0.45, 0);
-      group.add(bench);
+      crateMesh.rotation.y = 0.4;
+      waybillBeacon.add(crateMesh);
 
-      // Bus Stop Signboard
-      const signTex = createBusStopSignTexture(junc.name, junc.destinationTag);
-      const signMesh = new THREE.Mesh(
-        new THREE.BoxGeometry(0.1, 2.2, 4.4),
-        new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.4 })
+      const arrowMesh = new THREE.Mesh(
+        new THREE.ConeGeometry(0.35, 0.75, 8),
+        new THREE.MeshBasicMaterial({ color: 0x4ade80 })
       );
-      signMesh.position.set(8.2, 3.2, 5.2);
-      group.add(signMesh);
+      arrowMesh.position.y = -0.9;
+      arrowMesh.rotation.x = Math.PI;
+      waybillBeacon.add(arrowMesh);
 
-      // Yellow striped road curb stop-box on road edge
-      const stopBox = new THREE.Mesh(
-        new THREE.PlaneGeometry(3.5, 12),
-        new THREE.MeshBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0.35 })
-      );
-      stopBox.rotation.x = -Math.PI / 2;
-      stopBox.position.set(5.8, 0.02, 0);
-      group.add(stopBox);
-
-      // High-Graphic 3D Waiting Commuter Figures
-      const passengers: THREE.Group[] = [];
-      const passengerColors = [0x1e3a8a, 0xdc2626, 0x16a34a, 0x9333ea, 0xd97706, 0x0284c7];
-
-            const characterGlbs = [
-        '/models/free_download_athletic_african_man_walking_223.glb',
-        '/models/free_download_attractive_african_woman_236.glb',
-        '/models/african_female_model.glb'
-      ];
-      const charLoader = new GLTFLoader();
-
-      // Spawn 2-3 commuters per stop for great performance
-      const commuterCount = Math.min(3, junc.waitingPassengersCount);
-
-      for (let p = 0; p < commuterCount; p++) {
-        const pGroup = new THREE.Group();
-        (pGroup as any)._isNpc = true;
-
-        const pX = 10.5 + (p % 2) * 1.5;
-        const pZ = -2.5 + p * 2.2;
-        // Sidewalk top surface is at Y = 0.25 so feet sit flat on sidewalk grid
-        pGroup.position.set(pX, 0.25, pZ);
-        pGroup.rotation.y = -Math.PI / 2;
-        pGroup.userData = { origX: pX, origZ: pZ, boarded: false };
-
-        const charPath = characterGlbs[p % characterGlbs.length];
-
-        const applyCharModel = (prototype: THREE.Group) => {
-          const clone = prototype.clone(true);
-          pGroup.add(clone);
-        };
-
-        if (ThreeDrivingEngine.modelCache.has(charPath)) {
-          applyCharModel(ThreeDrivingEngine.modelCache.get(charPath)!);
-        } else {
-          charLoader.load(charPath, (gltf) => {
-            // 1. Calculate the character's exact physical boundaries
-            const humanBox = new THREE.Box3().setFromObject(gltf.scene);
-            const lowestY = humanBox.min.y; // Finds the absolute bottom of their shoes
-
-            // 2. Shift the internal meshes up so the feet rest at Y = 0
-            gltf.scene.children.forEach(child => {
-              child.position.y -= lowestY;
-            });
-
-            const charScene = gltf.scene;
-            const bbox = new THREE.Box3().setFromObject(charScene);
-            const size = bbox.getSize(new THREE.Vector3());
-            const maxDim = Math.max(size.x, size.y, size.z);
-            if (maxDim > 0) {
-              const targetHeight = 1.75;
-              const rawHeight = size.y > 0.5 ? size.y : maxDim;
-              charScene.scale.setScalar(targetHeight / rawHeight);
-              // Re-check bounding box after scaling to ensure shoes rest flat at Y = 0
-              const postBox = new THREE.Box3().setFromObject(charScene);
-              const postLowest = postBox.min.y;
-              charScene.children.forEach(child => {
-                child.position.y -= postLowest;
-              });
-            }
-            ThreeDrivingEngine.modelCache.set(charPath, charScene);
-            applyCharModel(charScene);
-          }, undefined, (err) => console.warn('Char cache load error:', err));
-        }
-
-        group.add(pGroup);
-        passengers.push(pGroup);
-      }
+      group.add(waybillBeacon);
 
       this.scene.add(group);
-      this.junctionMeshes.push({ group, junction: junc, passengers });
+      this.junctionMeshes.push({ group, junction: junc, passengers, waybillBeacon: waybillBeacon as any } as any);
     });
   }
 
@@ -1818,11 +1851,11 @@ export class ThreeDrivingEngine {
     // ========================================================
     // 4. Bind WASD / Arrow key inputs to applyEngineForce, setSteeringValue, and setBrake
     const maxEngineForce = 8500;
-    const maxSteerRad = 0.45;
-    // steeringWheelAngleDeg: -120 (left) to +120 (right)
-    const steerRad = -THREE.MathUtils.degToRad((steeringWheelAngleDeg / 120) * 26);
+    const maxSteerRad = 0.42; // ~24 deg max wheel lock
+    // steeringWheelAngleDeg: -90 (left) to +90 (right)
+    const steerNorm = Math.max(-1.0, Math.min(1.0, (steeringWheelAngleDeg || 0) / 90));
+    const steerRad = steerNorm * maxSteerRad;
     const clampedSteer = Math.max(-maxSteerRad, Math.min(maxSteerRad, steerRad));
-    const steerFactor = clampedSteer / maxSteerRad;
 
     this.vehicle.setSteeringValue(clampedSteer, 0);
     this.vehicle.setSteeringValue(clampedSteer, 1);
@@ -1883,13 +1916,31 @@ export class ThreeDrivingEngine {
       }
     }
 
-    // Snappy responsive arcade lateral steering assist
-    if (Math.abs(clampedSteer) > 0.01 && this.chassisBody.velocity.length() > 0.3) {
-      const speedNorm = Math.min(1.0, this.chassisBody.velocity.length() / 15);
-      const latTarget = -steerFactor * 5.2 * speedNorm;
-      this.chassisBody.velocity.x = THREE.MathUtils.lerp(this.chassisBody.velocity.x, latTarget, dt * 6.5);
+    // Natural progressive car steering physics with smooth yaw and lateral response
+    const physSpeedMps = this.chassisBody.velocity.length();
+    const isMoving = physSpeedMps > 0.15;
+    const turnDir = gear === 'R' ? -1 : 1;
+
+    if (Math.abs(steerNorm) > 0.015 && isMoving) {
+      const speedNorm = Math.min(1.0, physSpeedMps / 14);
+      // Smooth body yaw turning into corner
+      const targetYawVel = steerNorm * 1.6 * turnDir * speedNorm;
+      this.chassisBody.angularVelocity.y = THREE.MathUtils.lerp(
+        this.chassisBody.angularVelocity.y,
+        targetYawVel,
+        dt * 8.0
+      );
+
+      // Smooth lateral displacement matching front wheel direction
+      const targetLatVel = steerNorm * 5.4 * turnDir * speedNorm;
+      this.chassisBody.velocity.x = THREE.MathUtils.lerp(
+        this.chassisBody.velocity.x,
+        targetLatVel,
+        dt * 6.5
+      );
     } else {
-      this.chassisBody.velocity.x *= Math.pow(0.08, dt);
+      this.chassisBody.angularVelocity.y *= Math.pow(0.05, dt);
+      this.chassisBody.velocity.x *= Math.pow(0.05, dt);
     }
 
     // Step physics world forward using fixedStep()
@@ -1906,10 +1957,10 @@ export class ThreeDrivingEngine {
     const qw = typeof this.chassisBody.quaternion.w === 'number' ? this.chassisBody.quaternion.w : 1;
     const currentThreeQuat = new THREE.Quaternion(qx, qy, qz, qw);
 
+    // Keep heading (yaw) clamped within safe forward highway orientation (-38° to +38°)
     const euler = new THREE.Euler().setFromQuaternion(currentThreeQuat, 'YXZ');
-    euler.x = 0; // strictly zero out pitch
-    euler.z = 0; // strictly zero out roll
-    const uprightQuat = new THREE.Quaternion().setFromEuler(euler);
+    const safeYaw = Math.max(-0.66, Math.min(0.66, euler.y));
+    const uprightQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, safeYaw, 0, 'YXZ'));
 
     this.chassisBody.quaternion.set(uprightQuat.x, uprightQuat.y, uprightQuat.z, uprightQuat.w);
     this.chassisBody.angularVelocity.x = 0;
@@ -2153,8 +2204,8 @@ export class ThreeDrivingEngine {
       const baseHeightY = isReversing ? 3.9 : (3.85 - accelOffsetZ * 0.25 + (isBraking ? 0.35 : 0));
 
       // Dynamic Swing / Spring Lag: when bus steers, camera swings to frame the turn
-      const swingX = -clampedSteer * 2.2 * (1.1 + speedRatio * 1.6);
-      const targetCamX = this.busRoot.position.x + swingX;
+      const swingX = steerNorm * 2.0 * (1.1 + speedRatio * 1.5);
+      const targetCamX = this.busRoot.position.x - swingX;
 
       // High-speed Lagos road vibration & engine rattle
       const speedShake = physSpeedKmH > 28 ? (physSpeedKmH / 110) * 0.035 : 0;
@@ -2180,7 +2231,7 @@ export class ThreeDrivingEngine {
 
       // Dynamic look target: looks down the road ahead, banking into turns
       const targetLookZ = this.busRoot.position.z + (isReversing ? -12.0 : (4.5 + speedRatio * 5.0));
-      const targetLookX = this.busRoot.position.x + clampedSteer * 1.8;
+      const targetLookX = this.busRoot.position.x + steerNorm * 1.6;
       const targetLookY = this.busRoot.position.y + 1.45 - (isBraking ? 0.2 : 0);
 
       const lookPos = new THREE.Vector3(targetLookX, targetLookY, targetLookZ);
@@ -2188,8 +2239,8 @@ export class ThreeDrivingEngine {
       this.camera.lookAt(this.currentChaseLookTarget);
 
       // Bank into turns safely using rotateZ without ever overriding rotation.z or flipping upside down!
-      if (Math.abs(clampedSteer) > 0.001) {
-        this.camera.rotateZ(clampedSteer * (0.015 + speedRatio * 0.035));
+      if (Math.abs(steerNorm) > 0.01) {
+        this.camera.rotateZ(-steerNorm * (0.015 + speedRatio * 0.025));
       }
       this.camera.updateProjectionMatrix();
     } else if (params.cameraMode === 'ORBIT') {
@@ -2255,13 +2306,27 @@ export class ThreeDrivingEngine {
       }
     });
 
-    // 13. Junction Bus Stops Positioning & Commuter Boarding Animation
+    // 13. Junction Bus Stops Positioning & Commuter Boarding Animation (Both Sides & Waybill Beacon)
     this.junctionMeshes.forEach((jMesh) => {
       jMesh.group.position.z = jMesh.junction.distanceMarkerMeters;
       const relZ = jMesh.junction.distanceMarkerMeters - busZ;
 
-      const isAtThisStop = Math.abs(relZ) < 14;
+      const isAtThisStop = Math.abs(relZ) < 18;
       const isCleared = jMesh.junction.cleared;
+
+      // Waybill Delivery Beacon Visibility & Rotation
+      const isDeliveryTarget = params.activeDelivery && (
+        params.activeDelivery.destinationJunctionUid === jMesh.junction.uid ||
+        params.activeDelivery.destinationName.toLowerCase().includes(jMesh.junction.name.toLowerCase())
+      );
+      if ((jMesh as any).waybillBeacon) {
+        const beacon = (jMesh as any).waybillBeacon as THREE.Group;
+        beacon.visible = !!isDeliveryTarget;
+        if (beacon.visible) {
+          beacon.rotation.y += dt * 3.0;
+          beacon.position.y = 5.8 + Math.sin(Date.now() * 0.005) * 0.4;
+        }
+      }
 
       if (isCleared) {
         jMesh.passengers.forEach((p) => {
@@ -2269,19 +2334,30 @@ export class ThreeDrivingEngine {
         });
       } else if (isAtThisStop && isBoardingPassengers && doorState === 'OPEN') {
         jMesh.passengers.forEach((p, idx) => {
-          if (p.position.x > 2.2) {
-            p.position.x -= dt * (2.2 + idx * 0.4);
-            p.position.z = THREE.MathUtils.lerp(p.position.z, busZ, dt * 2);
+          const isLeft = p.userData && p.userData.isLeft;
+          if (isLeft) {
+            if (p.position.x < -2.2) {
+              p.position.x += dt * (2.4 + idx * 0.4);
+              p.position.z = THREE.MathUtils.lerp(p.position.z, busZ, dt * 2.5);
+            } else {
+              p.visible = false;
+              if (p.userData) p.userData.boarded = true;
+            }
           } else {
-            p.visible = false;
-            if (p.userData) p.userData.boarded = true;
+            if (p.position.x > 2.2) {
+              p.position.x -= dt * (2.4 + idx * 0.4);
+              p.position.z = THREE.MathUtils.lerp(p.position.z, busZ, dt * 2.5);
+            } else {
+              p.visible = false;
+              if (p.userData) p.userData.boarded = true;
+            }
           }
         });
       } else {
         jMesh.passengers.forEach((p) => {
           if (p.userData && !p.userData.boarded) {
             p.position.x = p.userData.origX || 10.5;
-            p.position.z = p.userData.origZ || jMesh.junction.distanceMarkerMeters;
+            p.position.z = p.userData.origZ || 0;
             p.visible = true;
           }
         });

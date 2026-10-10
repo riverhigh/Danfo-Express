@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { ThreeDrivingEngine } from '../game/three/ThreeDrivingEngine';
-import { GameState, CameraViewMode, GearPosition, DoorState, JunctionStop, GasStationBay, RoadsideShop, Passenger, PassengerArchetype } from '../types/game';
+import { GameState, CameraViewMode, GearPosition, DoorState, JunctionStop, GasStationBay, RoadsideShop, Passenger, PassengerArchetype, DeliveryJob } from '../types/game';
 import { soundEngine } from '../audio/soundEngine';
 import { MiniMap } from './MiniMap';
 import { LAGOS_NPCS, LagosNpc } from '../game/npcData';
 import { NpcInteractionModal } from './NpcInteractionModal';
-import { PASSENGER_NAMES } from '../game/config';
+import { PASSENGER_NAMES, SAMPLE_DELIVERY_JOBS } from '../game/config';
 import { 
   Fuel, 
   Power, 
@@ -482,7 +482,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
     const angleDeg = (angleRad * 180) / Math.PI;
     let normalized = angleDeg + 90;
     if (normalized > 180) normalized -= 360;
-    const clamped = Math.max(-125, Math.min(125, normalized));
+    const clamped = Math.max(-90, Math.min(90, normalized));
     simRef.current.steeringAngle = clamped;
     setWheelVisualAngle(clamped);
   };
@@ -582,6 +582,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
     let lastTime = performance.now();
     let telemetryAcc = 0;
     let boardingTimer = 0;
+    let waybillTimer = 0;
 
     const loop = (currTime: number) => {
       const dt = Math.min((currTime - lastTime) / 1000, 0.1);
@@ -591,19 +592,19 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       const sim = simRef.current;
       const inp = inputsRef.current;
 
-      // 1. Steering wheel keyboard steer & self-centering spring
+      // 1. Natural progressive steering wheel steer & self-centering spring
       if (inp.steerLeft) {
-        sim.steeringAngle = Math.max(-120, sim.steeringAngle - 260 * dt);
+        sim.steeringAngle = Math.max(-90, sim.steeringAngle - 190 * dt);
         setWheelVisualAngle(sim.steeringAngle);
       } else if (inp.steerRight) {
-        sim.steeringAngle = Math.min(120, sim.steeringAngle + 260 * dt);
+        sim.steeringAngle = Math.min(90, sim.steeringAngle + 190 * dt);
         setWheelVisualAngle(sim.steeringAngle);
       } else if (!inp.isDraggingWheel && !inp.gyroEnabled) {
-        sim.steeringAngle = sim.steeringAngle * Math.pow(0.05, dt);
-        if (Math.abs(sim.steeringAngle) < 0.6) sim.steeringAngle = 0;
+        sim.steeringAngle = sim.steeringAngle * Math.pow(0.02, dt);
+        if (Math.abs(sim.steeringAngle) < 0.4) sim.steeringAngle = 0;
         setWheelVisualAngle(sim.steeringAngle);
       }
-      const steerFactor = sim.steeringAngle / 120;
+      const steerFactor = sim.steeringAngle / 90;
 
       // 2. Acceleration & Braking Physics
       if (!inp.isEngineRunning || sim.isSteppedDown) {
@@ -708,15 +709,61 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           soundEngine.playHorn(false);
         }
 
+        // Periodic NPC Waybill Delivery Offer (every ~32s if no delivery is active or offered)
+        waybillTimer += dt;
+        if (waybillTimer >= 32 && !gameState.activeDelivery && !gameState.availableDelivery && sim.distanceTraveled > 100) {
+          waybillTimer = 0;
+          const downstreamJobs = SAMPLE_DELIVERY_JOBS.filter(
+            (j) => j.destinationMarkerMeters > sim.distanceTraveled + 250
+          );
+          if (downstreamJobs.length > 0) {
+            const randomJob = downstreamJobs[Math.floor(Math.random() * downstreamJobs.length)];
+            setGameState((prev) => {
+              if (prev.activeDelivery || prev.availableDelivery) return prev;
+              return {
+                ...prev,
+                availableDelivery: { ...randomJob, accepted: false, completed: false },
+              };
+            });
+            soundEngine.playHorn(false);
+            addFeedMessage(`📦 WAYBILL CALL: ${randomJob.senderName} (${randomJob.senderRole}) needs parcel delivered to ${randomJob.destinationName}! (₦${randomJob.rewardNaira.toLocaleString()})`);
+          }
+        }
+
         // 5. Junction Bus Stop Detection & Passenger Alighting / Boarding
         const juncs = gameState.junctions;
-        const currJunc = juncs[sim.activeJunctionIndex];
+        const nearJunc = juncs.find((j) => Math.abs(j.distanceMarkerMeters - sim.distanceTraveled) <= 22);
 
-        if (currJunc) {
-          const distToJunc = currJunc.distanceMarkerMeters - sim.distanceTraveled;
-          const isAtStop = Math.abs(distToJunc) <= 16 && sim.speed < 5;
+        // Keep active junction pointing to next upcoming stop
+        const upcomingIdx = juncs.findIndex((j) => j.distanceMarkerMeters > sim.distanceTraveled - 16);
+        if (upcomingIdx !== -1 && upcomingIdx !== sim.activeJunctionIndex) {
+          sim.activeJunctionIndex = upcomingIdx;
+        }
 
-          if (isAtStop && sim.doorState === 'OPEN' && !currJunc.cleared) {
+        if (nearJunc) {
+          const distToJunc = nearJunc.distanceMarkerMeters - sim.distanceTraveled;
+          const isAtStop = Math.abs(distToJunc) <= 18 && sim.speed < 7;
+
+          // Check if this stop has an active Waybill Delivery destination!
+          if (isAtStop && (sim.doorState === 'OPEN' || bootState === 'OPEN') && gameState.activeDelivery) {
+            const delJob = gameState.activeDelivery;
+            const isDeliveryMatch = 
+              delJob.destinationJunctionUid === nearJunc.uid ||
+              delJob.destinationName.toLowerCase().includes(nearJunc.name.toLowerCase());
+            if (isDeliveryMatch) {
+              soundEngine.playCoin();
+              soundEngine.playHorn(true);
+              addFeedMessage(`🎉 WAYBILL DELIVERED: ${delJob.itemName} handed over safely at ${nearJunc.name}! (+₦${delJob.rewardNaira.toLocaleString()} Cash Reward!)`);
+              setGameState((prev) => ({
+                ...prev,
+                walletNaira: prev.walletNaira + delJob.rewardNaira,
+                streetCred: prev.streetCred + 30,
+                activeDelivery: null,
+              }));
+            }
+          }
+
+          if (isAtStop && sim.doorState === 'OPEN' && !nearJunc.cleared) {
             boardingTimer += dt;
             sim.isBoarding = true;
 
@@ -726,14 +773,14 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
               setTimeout(() => {
                 setGameState((prev) => {
                   const updatedJuncs = [...prev.junctions];
-                  const activeJ = updatedJuncs[prev.activeJunctionIndex];
+                  const activeJ = updatedJuncs.find((j) => j.uid === nearJunc.uid);
                   if (!activeJ || activeJ.cleared) return prev;
 
                   let currentPassengers = [...(prev.bus.passengers || [])];
                   let cashCollected = 0;
                   let alightedCount = 0;
 
-                  // 1. NPC ALIGHTING: Each NPC going to this specific bus stop (matched by UID) goes down!
+                  // 1. NPC ALIGHTING: Commuters drop off at this stop and pay fare!
                   const remainingPassengers: Passenger[] = [];
                   for (const p of currentPassengers) {
                     const isDropOffHere = 
@@ -754,12 +801,13 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                     soundEngine.playCoin();
                   }
 
-                  // 2. NPC BOARDING: More passengers waiting at this stop enter the bus if capacity allows!
+                  // 2. NPC BOARDING: Waiting commuters board up to bus capacity!
                   const busCapacity = prev.bus.capacity || 14;
                   let remainingWaiting = activeJ.waitingPassengersCount;
 
                   if (remainingPassengers.length < busCapacity && remainingWaiting > 0) {
-                    const downstreamStops = updatedJuncs.slice(prev.activeJunctionIndex + 1);
+                    const currIndexInList = updatedJuncs.findIndex((j) => j.uid === activeJ.uid);
+                    const downstreamStops = updatedJuncs.slice(currIndexInList + 1);
                     const targetStop = downstreamStops.length > 0
                       ? downstreamStops[Math.floor(Math.random() * downstreamStops.length)]
                       : updatedJuncs[updatedJuncs.length - 1];
@@ -791,8 +839,9 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                   }
 
                   activeJ.waitingPassengersCount = remainingWaiting;
-                  const isCleared = remainingWaiting === 0 && alightedCount === 0;
+                  const isCleared = remainingWaiting === 0 || remainingPassengers.length >= busCapacity;
                   activeJ.cleared = isCleared;
+                  activeJ.stopReached = true;
 
                   return {
                     ...prev,
@@ -805,11 +854,8 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                       collectedCash: prev.conductor.collectedCash + cashCollected,
                     },
                     walletNaira: prev.walletNaira + cashCollected,
-                    streetCred: prev.streetCred + alightedCount * 5,
+                    streetCred: prev.streetCred + alightedCount * 5 + (isCleared ? 10 : 0),
                     junctions: updatedJuncs,
-                    activeJunctionIndex: isCleared 
-                      ? Math.min(updatedJuncs.length - 1, prev.activeJunctionIndex + 1)
-                      : prev.activeJunctionIndex,
                   };
                 });
               }, 0);
@@ -817,6 +863,8 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           } else {
             sim.isBoarding = false;
           }
+        } else {
+          sim.isBoarding = false;
         }
 
       // Terminal reached
@@ -861,6 +909,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
             junctions: gameState.junctions,
             activeJunctionIndex: sim.activeJunctionIndex,
             isBoardingPassengers: sim.isBoarding,
+            activeDelivery: gameState.activeDelivery,
             walkMoveX: walkJoyRef.current.x,
             walkMoveZ: walkJoyRef.current.y,
           },
@@ -1041,6 +1090,79 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       </div>
 
       {/* ═══════ DYNAMIC BANNERS ═══════ */}
+      {/* 📦 Active Waybill Delivery HUD Pill */}
+      {gameState.activeDelivery && (
+        <div className="absolute top-12 left-4 z-40 bg-stone-950/90 border border-emerald-400/60 rounded-xl px-3 py-1.5 shadow-xl flex items-center gap-2.5 pointer-events-auto backdrop-blur-sm">
+          <span className="text-base">{gameState.activeDelivery.itemIcon || '📦'}</span>
+          <div>
+            <div className="text-[8px] font-mono uppercase text-emerald-400 font-black">ACTIVE WAYBILL DISPATCH</div>
+            <div className="text-[10px] font-bold text-white leading-tight">
+              {gameState.activeDelivery.itemName} ➔ <span className="text-amber-300">{gameState.activeDelivery.destinationName}</span>
+            </div>
+          </div>
+          <div className="text-right pl-2 border-l border-stone-800">
+            <div className="text-[10px] font-mono font-black text-emerald-300">₦{gameState.activeDelivery.rewardNaira.toLocaleString()}</div>
+            <div className="text-[8px] font-mono text-stone-400">
+              {Math.max(0, Math.round(gameState.activeDelivery.destinationMarkerMeters - currentDist))}m away
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 📦 NPC Waybill Offer Dialog */}
+      {gameState.availableDelivery && (
+        <div className="absolute top-24 left-1/2 -translate-x-1/2 z-50 bg-stone-950/95 border-2 border-emerald-400 rounded-2xl p-3.5 shadow-2xl flex flex-col gap-2 pointer-events-auto max-w-sm w-[90vw] backdrop-blur-md animate-in fade-in zoom-in-95 duration-200">
+          <div className="flex items-center gap-2.5">
+            <span className="text-2xl">{gameState.availableDelivery.itemIcon || '📦'}</span>
+            <div className="flex-1 min-w-0">
+              <div className="text-[9px] font-mono font-black text-emerald-400 uppercase">
+                WAYBILL DELIVERY REQUEST • {gameState.availableDelivery.senderRole}
+              </div>
+              <div className="text-xs font-bold text-white truncate">{gameState.availableDelivery.senderName}</div>
+            </div>
+            <div className="text-right">
+              <div className="text-xs font-mono font-black text-emerald-400">
+                +₦{gameState.availableDelivery.rewardNaira.toLocaleString()}
+              </div>
+              <div className="text-[8px] font-mono text-stone-400">Cash on Delivery</div>
+            </div>
+          </div>
+          <p className="text-[10px] text-stone-300 leading-snug">
+            "{gameState.availableDelivery.description}"
+          </p>
+          <div className="flex items-center justify-between text-[9px] font-mono text-amber-300 bg-stone-900/80 px-2 py-1 rounded-lg border border-stone-800">
+            <span>📍 Destination: <strong>{gameState.availableDelivery.destinationName}</strong></span>
+            <span>🎯 {Math.max(0, Math.round(gameState.availableDelivery.destinationMarkerMeters - currentDist))}m down expressway</span>
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={() => {
+                const job = gameState.availableDelivery!;
+                soundEngine.playCoin();
+                setGameState((prev) => ({
+                  ...prev,
+                  activeDelivery: { ...job, accepted: true },
+                  availableDelivery: null,
+                }));
+                addFeedMessage(`📦 WAYBILL ACCEPTED: Loaded ${job.itemName}! Deliver to ${job.destinationName} for ₦${job.rewardNaira.toLocaleString()}.`);
+              }}
+              className="flex-1 py-1.5 bg-emerald-400 hover:bg-emerald-300 active:scale-95 text-stone-950 font-black text-[10px] font-['Bungee'] rounded-xl transition-all shadow-md text-center"
+            >
+              ACCEPT & LOAD (₦{gameState.availableDelivery.rewardNaira.toLocaleString()})
+            </button>
+            <button
+              onClick={() => {
+                setGameState((prev) => ({ ...prev, availableDelivery: null }));
+                addFeedMessage('Waybill declined.');
+              }}
+              className="px-3 py-1.5 bg-stone-800 hover:bg-stone-700 active:scale-95 text-stone-300 font-bold text-[10px] rounded-xl transition-all"
+            >
+              DECLINE
+            </button>
+          </div>
+        </div>
+      )}
+
       {activeGasStation && (
         <div className="absolute top-20 left-1/2 -translate-x-1/2 z-40 bg-stone-950/95 border-2 border-emerald-400 rounded-2xl px-3 py-2 shadow-2xl flex items-center gap-3 pointer-events-auto">
           <Fuel className="w-5 h-5 text-emerald-400 shrink-0" />
@@ -1069,30 +1191,54 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           </div>
         </div>
       )}
-      {isAtCurrentJunction && !activeGasStation && !activeShop && !isSteppedDown && (() => {
+      {(() => {
+        const nearJ = gameState.junctions.find((j) => Math.abs(j.distanceMarkerMeters - currentDist) <= 22);
+        if (!nearJ || activeGasStation || activeShop || isSteppedDown) return null;
+
         const dropOffsCount = (gameState.bus.passengers || []).filter(
-          p => (p.destinationUid && p.destinationUid === currentJunction?.uid) ||
-               (p.destination && p.destination === currentJunction?.destinationTag) ||
-               (p.destination && currentJunction?.name.toLowerCase().includes(p.destination.toLowerCase()))
+          p => (p.destinationUid && p.destinationUid === nearJ.uid) ||
+               (p.destination && p.destination === nearJ.destinationTag) ||
+               (p.destination && nearJ.name.toLowerCase().includes(p.destination.toLowerCase()))
         ).length;
 
+        const isDeliveryDropOff = gameState.activeDelivery && (
+          gameState.activeDelivery.destinationJunctionUid === nearJ.uid ||
+          gameState.activeDelivery.destinationName.toLowerCase().includes(nearJ.name.toLowerCase())
+        );
+
         return (
-          <div className="absolute top-20 left-1/2 -translate-x-1/2 z-40 bg-stone-950/95 border-2 border-amber-400 rounded-2xl px-4 py-2.5 shadow-2xl flex items-center gap-3.5 pointer-events-auto">
+          <div className="absolute top-20 left-1/2 -translate-x-1/2 z-40 bg-stone-950/95 border-2 border-amber-400 rounded-2xl px-4 py-2.5 shadow-2xl flex items-center gap-3.5 pointer-events-auto max-w-md w-full">
             <MapPin className="w-5 h-5 text-amber-400 animate-pulse shrink-0" />
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-mono font-black text-amber-400">🚏 {currentJunction?.name}</span>
-                <span className="text-[8px] font-mono bg-amber-400/20 text-amber-300 border border-amber-400/40 px-1 rounded uppercase">{currentJunction?.uid}</span>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[11px] font-mono font-black text-amber-400">🚏 {nearJ.name}</span>
+                {nearJ.side && (
+                  <span className={`text-[8px] font-mono font-bold px-1.5 py-0.5 rounded ${nearJ.side === 'LEFT' ? 'bg-sky-500/20 text-sky-300 border border-sky-400/40' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/40'}`}>
+                    {nearJ.side} CURB
+                  </span>
+                )}
               </div>
-              <div className="text-[10px] text-stone-300 flex items-center gap-2 mt-0.5">
-                <span className={dropOffsCount > 0 ? "text-emerald-400 font-bold" : "text-stone-400"}>🎯 {dropOffsCount} alighting</span>
+              <div className="text-[10px] text-stone-300 flex items-center gap-2 mt-0.5 flex-wrap">
+                <span className={dropOffsCount > 0 ? "text-emerald-400 font-bold" : "text-stone-400"}>
+                  🎯 {dropOffsCount} alighting
+                </span>
                 <span>•</span>
-                <span className="text-amber-300 font-bold">🚪 {currentJunction?.waitingPassengersCount} waiting</span>
+                <span className="text-amber-300 font-bold">
+                  🚪 {nearJ.waitingPassengersCount} waiting
+                </span>
                 <span>•</span>
-                <span className="text-sky-300">👥 {gameState.bus.passengers?.length || 0}/{gameState.bus.capacity} seats</span>
+                <span className="text-sky-300">
+                  👥 {gameState.bus.passengers?.length || 0}/{gameState.bus.capacity} seats
+                </span>
               </div>
+              {isDeliveryDropOff && (
+                <div className="mt-1 text-[9px] font-mono font-bold text-emerald-400 flex items-center gap-1">
+                  <span>📦 WAYBILL DESTINATION:</span>
+                  <span>{gameState.activeDelivery?.itemName} (+₦{gameState.activeDelivery?.rewardNaira.toLocaleString()})</span>
+                </div>
+              )}
             </div>
-            <button onClick={toggleDoor} className={`px-3 py-1.5 font-black text-[10px] font-['Bungee'] rounded-xl transition-transform active:scale-95 shadow-md ${doorState === 'CLOSED' ? 'bg-amber-400 text-stone-950 hover:bg-amber-300' : 'bg-rose-500 text-white'}`}>
+            <button onClick={toggleDoor} className={`px-3 py-1.5 font-black text-[10px] font-['Bungee'] rounded-xl transition-transform active:scale-95 shadow-md shrink-0 ${doorState === 'CLOSED' ? 'bg-amber-400 text-stone-950 hover:bg-amber-300' : 'bg-rose-500 text-white'}`}>
               {doorState === 'CLOSED' ? 'OPEN DOOR' : 'CLOSE DOOR'}
             </button>
           </div>
@@ -1167,19 +1313,19 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                 onPointerMove={handleWheelPointerMove}
                 onPointerUp={handleWheelPointerUp}
                 onPointerCancel={handleWheelPointerUp}
-                className="relative w-48 h-48 sm:w-52 sm:h-52 rounded-full cursor-grab active:cursor-grabbing touch-none select-none flex items-center justify-center shadow-2xl"
+                className="relative w-32 h-32 sm:w-36 sm:h-36 rounded-full cursor-grab active:cursor-grabbing touch-none select-none flex items-center justify-center shadow-2xl"
                 style={{
                   transform: `rotate(${wheelVisualAngle}deg)`,
                   background: 'radial-gradient(circle, rgba(41,37,36,0.7) 35%, rgba(12,10,9,0.95) 100%)',
-                  border: '10px solid rgba(87,83,78,0.95)',
-                  boxShadow: '0 12px 32px rgba(0,0,0,0.95), inset 0 2px 8px rgba(255,255,255,0.25)',
+                  border: '6px solid rgba(87,83,78,0.95)',
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.9), inset 0 2px 6px rgba(255,255,255,0.25)',
                 }}>
-                <div className="absolute top-0 w-4 h-3 bg-amber-400 rounded-sm" />
-                <div className="absolute bottom-0 w-4 h-3 bg-amber-400 rounded-sm" />
-                <div className="absolute w-full h-2.5 bg-stone-600/80 pointer-events-none" />
-                <div className="absolute h-full w-2.5 bg-stone-600/80 pointer-events-none" />
+                <div className="absolute top-0 w-3 h-2 bg-amber-400 rounded-sm" />
+                <div className="absolute bottom-0 w-3 h-2 bg-amber-400 rounded-sm" />
+                <div className="absolute w-full h-1.5 bg-stone-600/80 pointer-events-none" />
+                <div className="absolute h-full w-1.5 bg-stone-600/80 pointer-events-none" />
                 <button onClick={(e) => { e.stopPropagation(); handleHorn(); }}
-                  className="relative w-14 h-14 bg-amber-400 hover:bg-amber-300 active:bg-amber-200 text-stone-950 rounded-full font-black text-xs font-['Bungee'] flex items-center justify-center shadow-xl border-2 border-stone-900 transition-transform active:scale-95">
+                  className="relative w-10 h-10 bg-amber-400 hover:bg-amber-300 active:bg-amber-200 text-stone-950 rounded-full font-black text-[9px] font-['Bungee'] flex items-center justify-center shadow-lg border border-stone-900 transition-transform active:scale-95">
                   HORN
                 </button>
               </div>
