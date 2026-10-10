@@ -295,40 +295,46 @@ export default function App() {
     soundEngine.stopEngine();
 
     setGameState((prev) => {
-      const grossFares = prev.conductor.collectedCash + (terminalReached ? 8000 : 2000);
+      const completionBonus = terminalReached ? 8000 : 2500;
       const unionLevy = prev.activeShift.unionLevy;
       const repairCost = Math.floor((100 - prev.bus.durability) * 50);
-      const netProfit = Math.max(0, grossFares - unionLevy - repairCost);
-      const earnedCred = Math.floor(netProfit / 100) + (terminalReached ? 60 : 20);
+      const netBonus = Math.max(0, completionBonus - unionLevy - repairCost);
+      const totalFares = prev.conductor.collectedCash + completionBonus;
+      const earnedCred = Math.floor(completionBonus / 100) + (terminalReached ? 60 : 20);
 
       const result: ShiftResultData = {
         shiftId: prev.activeShift.id,
         shiftTitle: prev.activeShift.title,
-        totalFaresCollected: grossFares,
-        passengersDelivered: 12,
+        totalFaresCollected: totalFares,
+        passengersDelivered: Math.max(8, Math.floor(prev.distanceTraveledMeters / 1200)),
         passengersLost: 0,
         unionLevyPaid: unionLevy,
         fuelAndRepairsCost: repairCost,
         bribesSettled: 500,
-        netProfit: netProfit,
+        netProfit: netBonus + prev.conductor.collectedCash,
         maxCombo: Math.max(prev.comboMultiplier, 3),
         hustleScore: Math.floor(prev.hustleMeter * 30 + prev.distanceTraveledMeters / 10),
         streetCredEarned: earnedCred,
         terminalReached: terminalReached,
       };
 
+      const finalWallet = prev.walletNaira + netBonus;
+      const finalCred = prev.streetCred + earnedCred;
+      updateSave({
+        walletNaira: finalWallet,
+        streetCred: finalCred,
+      });
+
       return {
         ...prev,
-        walletNaira: prev.walletNaira + netProfit,
-        streetCred: prev.streetCred + earnedCred,
+        walletNaira: finalWallet,
+        streetCred: finalCred,
         screen: 'SHIFT_RESULTS',
         lastShiftResult: result,
         totalShiftsCompleted: prev.totalShiftsCompleted + 1,
       };
     });
-
-    setWalletNaira((w: number) => w + 8000);
-  }, []);
+  }, [updateSave]);
 
   // Purchase Upgrade
   const handlePurchaseUpgrade = (upgradeId: keyof BusUpgrades, cost: number) => {
@@ -764,6 +770,7 @@ export default function App() {
             onOpenPhone={() => setIsPhoneOpen(true)}
             onOpenInventory={() => setIsInventoryOpen(true)}
             onOpenMap={() => setIsMapOpen(true)}
+            onUpdateSave={updateSave}
             actionFeed={actionFeed}
             addFeedMessage={addFeedMessage}
           />

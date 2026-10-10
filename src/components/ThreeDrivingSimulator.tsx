@@ -38,6 +38,7 @@ interface ThreeDrivingSimulatorProps {
   onOpenPhone: () => void;
   onOpenInventory: () => void;
   onOpenMap?: () => void;
+  onUpdateSave?: (updates: any) => void;
   actionFeed: string[];
   addFeedMessage: (msg: string) => void;
 }
@@ -50,6 +51,8 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
   onHireConductor,
   onOpenPhone,
   onOpenInventory,
+  onOpenMap,
+  onUpdateSave,
   actionFeed,
   addFeedMessage,
 }) => {
@@ -58,8 +61,8 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
   const lookRef = useRef({ yaw: 0, pitch: 0, isDragging: false, startX: 0, startY: 0, startYaw: 0, startPitch: 0 });
 
   // UI Interactive States
-  const [gear, setGear] = useState<GearPosition>('D');
-  const [isEngineRunning, setIsEngineRunning] = useState<boolean>(true);
+  const [gear, setGear] = useState<GearPosition>('N');
+  const [isEngineRunning, setIsEngineRunning] = useState<boolean>(false);
   const [doorState, setDoorState] = useState<DoorState>(gameState.bus.doorState || 'CLOSED');
   const [bootState, setBootState] = useState<'OPEN' | 'CLOSED'>('CLOSED');
   const [isSteppedDown, setIsSteppedDown] = useState<boolean>(false);
@@ -80,6 +83,14 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
 
   // NPC Interaction State
   const [activeNpc, setActiveNpc] = useState<LagosNpc | null>(null);
+  const [cashToast, setCashToast] = useState<{ amount: number; text: string; id: number } | null>(null);
+
+  const triggerCashToast = (amount: number, text: string) => {
+    setCashToast({ amount, text, id: Date.now() });
+    setTimeout(() => {
+      setCashToast(null);
+    }, 2800);
+  };
 
   // Gas Station & Roadside Shop Drive-In States
   const [activeGasStation, setActiveGasStation] = useState<GasStationBay | null>(null);
@@ -128,8 +139,8 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
     brake: false,
     steerLeft: false,
     steerRight: false,
-    gear: 'D' as GearPosition,
-    isEngineRunning: true,
+    gear: 'N' as GearPosition,
+    isEngineRunning: false,
     turnSignal: 'OFF' as 'OFF' | 'LEFT' | 'RIGHT',
     hazardLights: false,
     wipersActive: false,
@@ -173,9 +184,18 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
 
   const toggleEngine = () => {
     const nextState = !isEngineRunning;
-    setIsEngineRunning(nextState); inputsRef.current.isEngineRunning = nextState;
+    setIsEngineRunning(nextState);
+    inputsRef.current.isEngineRunning = nextState;
     soundEngine.playEngineIgnition(nextState);
-    addFeedMessage(nextState ? '🔑 ENGINE STARTED: Diesel motor rumbling!' : '🛑 ENGINE STOPPED: Ignition off.');
+    if (nextState) {
+      if (gear === 'N' || gear === 'P' || inputsRef.current.gear === 'N' || inputsRef.current.gear === 'P') {
+        setGear('D');
+        inputsRef.current.gear = 'D';
+      }
+      addFeedMessage('🔑 IGNITION ON: Diesel engine rumbles to life! Shift into Drive (D) to move.');
+    } else {
+      addFeedMessage('🛑 ENGINE STOPPED: Ignition key turned off.');
+    }
   };
 
   const toggleDoor = () => {
@@ -329,14 +349,18 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       // Luggage tip
       const luggageFee = 900;
       soundEngine.playCoin();
-      setGameState((prev) => ({
-        ...prev,
-        walletNaira: prev.walletNaira + luggageFee,
-        conductor: {
-          ...prev.conductor,
-          collectedCash: prev.conductor.collectedCash + luggageFee,
-        },
-      }));
+      setGameState((prev) => {
+        const nextWallet = prev.walletNaira + luggageFee;
+        onUpdateSave?.({ walletNaira: nextWallet });
+        return {
+          ...prev,
+          walletNaira: nextWallet,
+          conductor: {
+            ...prev.conductor,
+            collectedCash: prev.conductor.collectedCash + luggageFee,
+          },
+        };
+      });
       addFeedMessage(`📦 BAGGAGE LOADED: +₦${luggageFee} heavy cargo carriage fee collected!`);
     } else {
       addFeedMessage('🧳 BOOT CLOSED: Rear door slammed shut securely! (KPA-CHUCK)');
@@ -347,13 +371,19 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
   const handleCollectFares = () => {
     soundEngine.playCoin();
     const fareAmt = Math.floor(Math.random() * 900) + 700;
-    setGameState((prev) => ({
-      ...prev,
-      conductor: {
-        ...prev.conductor,
-        collectedCash: prev.conductor.collectedCash + fareAmt,
-      },
-    }));
+    triggerCashToast(fareAmt, `+₦${fareAmt.toLocaleString()} Fares Collected!`);
+    setGameState((prev) => {
+      const nextWallet = prev.walletNaira + fareAmt;
+      onUpdateSave?.({ walletNaira: nextWallet });
+      return {
+        ...prev,
+        walletNaira: nextWallet,
+        conductor: {
+          ...prev.conductor,
+          collectedCash: prev.conductor.collectedCash + fareAmt,
+        },
+      };
+    });
     addFeedMessage(`💵 CONDUCTOR COLLECTED: ₦${fareAmt.toLocaleString()} fares from passenger rows!`);
   };
 
@@ -378,14 +408,18 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
     simRef.current.fuel = full ? 100 : Math.min(100, simRef.current.fuel + 35);
     setHudFuel(simRef.current.fuel);
 
-    setGameState((prev) => ({
-      ...prev,
-      walletNaira: prev.walletNaira - totalCost,
-      bus: {
-        ...prev.bus,
-        fuelPercent: simRef.current.fuel,
-      },
-    }));
+    setGameState((prev) => {
+      const nextWallet = prev.walletNaira - totalCost;
+      onUpdateSave?.({ walletNaira: nextWallet });
+      return {
+        ...prev,
+        walletNaira: nextWallet,
+        bus: {
+          ...prev.bus,
+          fuelPercent: simRef.current.fuel,
+        },
+      };
+    });
 
     addFeedMessage(`⛽ PUMP DISPENSED: +${litersNeeded}L diesel filled! Paid ₦${totalCost.toLocaleString()}. Tank is full!`);
     setActiveGasStation(null);
@@ -414,9 +448,11 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           effect: item.category === 'MEAL' ? '+40 Stamina' : item.category === 'GROCERY' ? 'Cook at home' : 'Vehicle part',
         }];
       }
+      const nextWallet = prev.walletNaira - item.price;
+      onUpdateSave?.({ walletNaira: nextWallet });
       return {
         ...prev,
-        walletNaira: prev.walletNaira - item.price,
+        walletNaira: nextWallet,
         inventory: updatedInv,
       };
     });
@@ -494,8 +530,25 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
   // Keyboard controls
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      // Toggle / Start Engine Ignition
+      if (e.key === 'k' || e.key === 'K' || e.key === 'x' || e.key === 'X') {
+        toggleEngine();
+        return;
+      }
+      if (!inputsRef.current.isEngineRunning && (e.key === 'e' || e.key === 'E' || e.key === 'i' || e.key === 'I')) {
+        toggleEngine();
+        return;
+      }
       if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+        if (!inputsRef.current.isEngineRunning) {
+          soundEngine.playStarterDeadClick();
+          addFeedMessage('⚡ Engine is OFF! Tap [START ENGINE] or press [K] to start the diesel ignition.');
+          return;
+        }
         if (inputsRef.current.gear === 'R' && simRef.current.speed < 2) {
+          setGear('D');
+          inputsRef.current.gear = 'D';
+        } else if (inputsRef.current.gear === 'N' || inputsRef.current.gear === 'P') {
           setGear('D');
           inputsRef.current.gear = 'D';
         }
@@ -510,7 +563,6 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           setIsGasPressed(true);
           inputsRef.current.brake = false;
           setIsBrakePressed(false);
-          // soundEngine.playReverseBeep();
         } else if (inputsRef.current.gear === 'R') {
           inputsRef.current.gas = true;
           setIsGasPressed(true);
@@ -574,7 +626,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
     };
-  }, [handleHorn, onConductorAction, onOpenPhone, onOpenInventory, cycleCameraMode]);
+  }, [handleHorn, onConductorAction, onOpenPhone, onOpenInventory, cycleCameraMode, toggleEngine, toggleDoor, toggleBoot, toggleStepDown, handleCollectFares]);
 
   // Main 60 FPS RequestAnimationFrame Physics Loop
   useEffect(() => {
@@ -592,16 +644,16 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       const sim = simRef.current;
       const inp = inputsRef.current;
 
-      // 1. Natural progressive steering wheel steer & self-centering spring
+      // 1. Natural progressive steering wheel steer & self-centering spring (Responsive & agile)
       if (inp.steerLeft) {
-        sim.steeringAngle = Math.max(-90, sim.steeringAngle - 190 * dt);
+        sim.steeringAngle = Math.max(-90, sim.steeringAngle - 380 * dt);
         setWheelVisualAngle(sim.steeringAngle);
       } else if (inp.steerRight) {
-        sim.steeringAngle = Math.min(90, sim.steeringAngle + 190 * dt);
+        sim.steeringAngle = Math.min(90, sim.steeringAngle + 380 * dt);
         setWheelVisualAngle(sim.steeringAngle);
       } else if (!inp.isDraggingWheel && !inp.gyroEnabled) {
-        sim.steeringAngle = sim.steeringAngle * Math.pow(0.02, dt);
-        if (Math.abs(sim.steeringAngle) < 0.4) sim.steeringAngle = 0;
+        sim.steeringAngle = sim.steeringAngle * Math.pow(0.015, dt);
+        if (Math.abs(sim.steeringAngle) < 0.25) sim.steeringAngle = 0;
         setWheelVisualAngle(sim.steeringAngle);
       }
       const steerFactor = sim.steeringAngle / 90;
@@ -656,10 +708,15 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         sim.heat = Math.max(10, sim.heat - 4.5 * fanMult * dt);
       }
 
-      // Lateral lane offset
+      // Lateral lane offset - responsive, smooth arcade handling
+      // Positive steer (Right / D) -> moves +X towards right lane & curb
+      // Negative steer (Left / A) -> moves -X towards left lane & barrier
       const turnDir = inp.gear === 'R' ? -1 : 1;
-      sim.laneOffset -= turnDir * steerFactor * ((sim.speed / 60) * 4.2 + 0.8) * dt;
-      sim.laneOffset = Math.max(-25, Math.min(25, sim.laneOffset));
+      // High-agility Lagos arcade steering: nimble at low speeds and sharp at cruising speeds
+      const speedMultiplier = Math.max(5.8, (sim.speed / 28) * 9.5);
+      sim.laneOffset += turnDir * steerFactor * speedMultiplier * dt;
+      // Clamp cleanly to highway road boundaries (-8.5m left barrier to +8.5m right curb)
+      sim.laneOffset = Math.max(-8.5, Math.min(8.5, sim.laneOffset));
 
       // Distance traveled: increases in D, decreases in R
       const deltaM = (sim.speed * 1000 / 3600) * dt;
@@ -732,7 +789,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
 
         // 5. Junction Bus Stop Detection & Passenger Alighting / Boarding
         const juncs = gameState.junctions;
-        const nearJunc = juncs.find((j) => Math.abs(j.distanceMarkerMeters - sim.distanceTraveled) <= 22);
+        const nearJunc = juncs.find((j) => Math.abs(j.distanceMarkerMeters - sim.distanceTraveled) <= 55);
 
         // Keep active junction pointing to next upcoming stop
         const upcomingIdx = juncs.findIndex((j) => j.distanceMarkerMeters > sim.distanceTraveled - 16);
@@ -742,7 +799,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
 
         if (nearJunc) {
           const distToJunc = nearJunc.distanceMarkerMeters - sim.distanceTraveled;
-          const isAtStop = Math.abs(distToJunc) <= 18 && sim.speed < 7;
+          const isAtStop = Math.abs(distToJunc) <= 28 && sim.speed < 16;
 
           // Check if this stop has an active Waybill Delivery destination!
           if (isAtStop && (sim.doorState === 'OPEN' || bootState === 'OPEN') && gameState.activeDelivery) {
@@ -753,13 +810,19 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
             if (isDeliveryMatch) {
               soundEngine.playCoin();
               soundEngine.playHorn(true);
+              triggerCashToast(delJob.rewardNaira, `+₦${delJob.rewardNaira.toLocaleString()} Waybill Delivered!`);
               addFeedMessage(`🎉 WAYBILL DELIVERED: ${delJob.itemName} handed over safely at ${nearJunc.name}! (+₦${delJob.rewardNaira.toLocaleString()} Cash Reward!)`);
-              setGameState((prev) => ({
-                ...prev,
-                walletNaira: prev.walletNaira + delJob.rewardNaira,
-                streetCred: prev.streetCred + 30,
-                activeDelivery: null,
-              }));
+              setGameState((prev) => {
+                const nextWallet = prev.walletNaira + delJob.rewardNaira;
+                const nextCred = prev.streetCred + 30;
+                onUpdateSave?.({ walletNaira: nextWallet, streetCred: nextCred });
+                return {
+                  ...prev,
+                  walletNaira: nextWallet,
+                  streetCred: nextCred,
+                  activeDelivery: null,
+                };
+              });
             }
           }
 
@@ -767,7 +830,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
             boardingTimer += dt;
             sim.isBoarding = true;
 
-            if (boardingTimer >= 0.75) {
+            if (boardingTimer >= 0.55) {
               boardingTimer = 0;
 
               setTimeout(() => {
@@ -791,7 +854,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                     if (isDropOffHere) {
                       alightedCount++;
                       cashCollected += p.fare;
-                      addFeedMessage(`🚶 ALIGHTED: ${p.name} dropped off at ${activeJ.name}! (+₦${p.fare.toLocaleString()})`);
+                      addFeedMessage(`🚶 ALIGHTED: ${p.name} dropped off at ${activeJ.name}! (+₦${p.fare.toLocaleString()} fare paid)`);
                     } else {
                       remainingPassengers.push(p);
                     }
@@ -834,14 +897,23 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
 
                     remainingPassengers.push(newPassenger);
                     remainingWaiting = Math.max(0, remainingWaiting - 1);
+                    cashCollected += fareToCharge;
                     soundEngine.playPassengerBoarding();
-                    addFeedMessage(`🎟️ BOARDED: ${newPassenger.name} entered bus -> Destination: ${targetStop.name} (₦${fareToCharge})`);
+                    soundEngine.playCoin();
+                    addFeedMessage(`🎟️ BOARDED: ${newPassenger.name} entered bus -> Destination: ${targetStop.name} (+₦${fareToCharge.toLocaleString()})`);
                   }
 
                   activeJ.waitingPassengersCount = remainingWaiting;
                   const isCleared = remainingWaiting === 0 || remainingPassengers.length >= busCapacity;
                   activeJ.cleared = isCleared;
                   activeJ.stopReached = true;
+
+                  const nextWallet = prev.walletNaira + cashCollected;
+                  const nextCred = prev.streetCred + alightedCount * 5 + (isCleared ? 15 : 0);
+                  if (cashCollected > 0 || alightedCount > 0) {
+                    onUpdateSave?.({ walletNaira: nextWallet, streetCred: nextCred });
+                    triggerCashToast(cashCollected, `+₦${cashCollected.toLocaleString()} Fares Collected!`);
+                  }
 
                   return {
                     ...prev,
@@ -853,8 +925,8 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                       ...prev.conductor,
                       collectedCash: prev.conductor.collectedCash + cashCollected,
                     },
-                    walletNaira: prev.walletNaira + cashCollected,
-                    streetCred: prev.streetCred + alightedCount * 5 + (isCleared ? 10 : 0),
+                    walletNaira: nextWallet,
+                    streetCred: nextCred,
                     junctions: updatedJuncs,
                   };
                 });
@@ -1191,8 +1263,57 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           </div>
         </div>
       )}
+      {/* 🔑 PROMINENT ENGINE OFF IGNITION STARTER BANNER */}
+      {!isEngineRunning && !isSteppedDown && (
+        <div className="absolute top-24 left-1/2 -translate-x-1/2 z-50 pointer-events-auto flex flex-col items-center gap-2.5 bg-stone-950/95 border-2 border-amber-400 rounded-2xl p-4 shadow-[0_0_35px_rgba(251,191,36,0.4)] backdrop-blur-md max-w-sm w-[90vw] animate-in fade-in zoom-in-95">
+          <div className="flex items-center gap-3 w-full">
+            <div className="w-11 h-11 rounded-xl bg-amber-400/20 border border-amber-400 flex items-center justify-center text-2xl shrink-0 animate-pulse">
+              🔑
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-xs font-black font-['Bungee'] text-amber-400 tracking-wide">
+                DIESEL ENGINE IS OFF
+              </h3>
+              <p className="text-[10px] text-stone-300 font-medium leading-tight mt-0.5">
+                Crank the starter key to start up your Danfo!
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={toggleEngine}
+            className="w-full py-2.5 bg-amber-400 hover:bg-amber-300 active:scale-95 text-stone-950 font-black text-xs font-['Bungee'] rounded-xl shadow-lg transition-transform flex items-center justify-center gap-2 border border-amber-200"
+          >
+            <Power className="w-4 h-4 text-stone-950" />
+            START ENGINE (CRANK KEY)
+          </button>
+          <div className="text-[9px] font-mono text-stone-400 flex items-center gap-1.5">
+            <span>Press keyboard:</span>
+            <kbd className="px-1.5 py-0.5 bg-stone-900 text-amber-400 rounded border border-stone-700 font-bold">K</kbd>
+            <span>or</span>
+            <kbd className="px-1.5 py-0.5 bg-stone-900 text-amber-400 rounded border border-stone-700 font-bold">E</kbd>
+          </div>
+        </div>
+      )}
+
+      {/* 🚏 Upcoming Bus Stop Alert (30m to 70m ahead) */}
       {(() => {
-        const nearJ = gameState.junctions.find((j) => Math.abs(j.distanceMarkerMeters - currentDist) <= 22);
+        const upcomingJ = gameState.junctions.find(
+          (j) => j.distanceMarkerMeters - currentDist > 28 && j.distanceMarkerMeters - currentDist <= 70
+        );
+        if (!upcomingJ || activeGasStation || activeShop || isSteppedDown || !isEngineRunning) return null;
+        const distAhead = Math.round(upcomingJ.distanceMarkerMeters - currentDist);
+        return (
+          <div className="absolute top-20 left-1/2 -translate-x-1/2 z-40 bg-stone-950/90 border border-amber-400/70 rounded-full px-4 py-1.5 shadow-xl flex items-center gap-2 pointer-events-auto backdrop-blur-sm animate-pulse">
+            <span className="text-xs">🚏</span>
+            <span className="text-[10px] font-mono font-black text-amber-400">UPCOMING STOP: {upcomingJ.name}</span>
+            <span className="text-[9px] font-mono text-stone-300">({distAhead}m ahead • {upcomingJ.side} CURB)</span>
+          </div>
+        );
+      })()}
+
+      {/* 🚏 At Bus Stop: Boarding & Alighting Hub */}
+      {(() => {
+        const nearJ = gameState.junctions.find((j) => Math.abs(j.distanceMarkerMeters - currentDist) <= 28);
         if (!nearJ || activeGasStation || activeShop || isSteppedDown) return null;
 
         const dropOffsCount = (gameState.bus.passengers || []).filter(

@@ -1382,388 +1382,686 @@ export class ThreeDrivingEngine {
   }
 
   /**
-   * Procedural factory function called createProceduralTrafficCar(colorHex)
-   * Constructs realistic arcade vehicles using Procedural Geometry and Advanced Materials.
-   * Completely eliminates external .glb downloads for traffic cars.
+  /**
+   * PROCEDURAL VEHICLE FACTORY FUNCTIONS FOR HYPER-REALISTIC LAGOS TRAFFIC
+   * Spawns Keke Maruwa, Blue BRT Long Buses, Luxury SUVs, Executive Luxury Sedans,
+   * Dispatch Courier Bikes with delivery boxes, Police Patrol cars, and Danfo Vans.
    */
-  public createProceduralTrafficCar(colorHex: number, isDanfo: boolean = false): THREE.Group {
+
+  // 1. KEKE NAPEP (BAJAJ TRICYCLE)
+  public createProceduralKeke(slogan: string = 'GOD DEY'): THREE.Group {
+    const keke = new THREE.Group();
+    const yellowMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.2, metalness: 0.3 });
+    const blackCanvasMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.9 });
+    const chromeMat = new THREE.MeshStandardMaterial({ color: 0xd1d5db, roughness: 0.1, metalness: 0.9 });
+    const tireMat = new THREE.MeshStandardMaterial({ color: 0x222224, roughness: 0.8 });
+    const glassMat = new THREE.MeshStandardMaterial({ color: 0x050810, roughness: 0.05, transparent: true, opacity: 0.65 });
+    const headlightMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const taillightMat = new THREE.MeshBasicMaterial({ color: 0xff1e1e });
+
+    // Lower cabin body
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.65, 2.3), yellowMat);
+    body.position.set(0, 0.55, 0);
+    keke.add(body);
+
+    // Canvas roof canopy
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(1.32, 0.08, 2.25), blackCanvasMat);
+    roof.position.set(0, 1.62, -0.05);
+    keke.add(roof);
+
+    // Canopy frame pillars
+    [-0.62, 0.62].forEach((px) => {
+      [-0.95, 0.1, 0.95].forEach((pz) => {
+        const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.75), chromeMat);
+        pillar.position.set(px, 1.25, pz);
+        keke.add(pillar);
+      });
+    });
+
+    // Front Windshield
+    const ws = new THREE.Mesh(new THREE.PlaneGeometry(1.15, 0.65), glassMat);
+    ws.position.set(0, 1.28, 0.96);
+    ws.rotation.x = -0.15;
+    keke.add(ws);
+
+    // Front single tire (Tricycle layout)
+    const frontWheelGeo = new THREE.CylinderGeometry(0.24, 0.24, 0.14, 16);
+    frontWheelGeo.rotateZ(Math.PI / 2);
+    const frontTire = new THREE.Mesh(frontWheelGeo, tireMat);
+    frontTire.position.set(0, 0.24, 1.05);
+    keke.add(frontTire);
+
+    // Front chrome fork
+    const fork = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.55), chromeMat);
+    fork.position.set(0, 0.48, 1.02);
+    keke.add(fork);
+
+    // Dual rear tires
+    [-0.58, 0.58].forEach((rx) => {
+      const rearTire = new THREE.Mesh(frontWheelGeo, tireMat);
+      rearTire.position.set(rx, 0.24, -0.75);
+      keke.add(rearTire);
+    });
+
+    // Front single headlight
+    const headlight = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.05, 12), headlightMat);
+    headlight.rotateX(Math.PI / 2);
+    headlight.position.set(0, 0.72, 1.16);
+    keke.add(headlight);
+
+    // Rear taillights
+    [-0.48, 0.48].forEach((lx) => {
+      const tl = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 0.04), taillightMat);
+      tl.position.set(lx, 0.65, -1.16);
+      keke.add(tl);
+    });
+
+    // Slogan Plate on Rear
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.16, 0.02), new THREE.MeshBasicMaterial({ color: 0x000000 }));
+    plate.position.set(0, 0.45, -1.16);
+    keke.add(plate);
+
+    return keke;
+  }
+
+  // 2. BRT LONG BUS (LAGOS BLUE HIGH-CAPACITY COMMUTER BUS)
+  public createProceduralBRTLongBus(): THREE.Group {
+    const bus = new THREE.Group();
+    const brtBlueMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.25, metalness: 0.3 });
+    const whiteRoofMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.4 });
+    const glassMat = new THREE.MeshStandardMaterial({ color: 0x081528, roughness: 0.05, transparent: true, opacity: 0.7 });
+    const tireMat = new THREE.MeshStandardMaterial({ color: 0x1f2124, roughness: 0.8 });
+    const chromeMat = new THREE.MeshStandardMaterial({ color: 0xd1d5db, roughness: 0.15, metalness: 0.85 });
+    const ledSignMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+    const headlightMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const taillightMat = new THREE.MeshBasicMaterial({ color: 0xff1e1e });
+
+    const busW = 2.6;
+    const busL = 11.5;
+    const busH = 2.4;
+    const tireR = 0.52;
+
+    // Lower Main Blue Body
+    const body = new THREE.Mesh(new THREE.BoxGeometry(busW, busH * 0.55, busL), brtBlueMat);
+    body.position.set(0, tireR + (busH * 0.55) / 2 + 0.1, 0);
+    bus.add(body);
+
+    // White High Roof
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(busW * 0.98, 0.25, busL * 0.98), whiteRoofMat);
+    roof.position.set(0, tireR + busH + 0.15, 0);
+    bus.add(roof);
+
+    // AC Unit Pods on Roof
+    [-2.2, 2.2].forEach((pz) => {
+      const ac = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.22, 1.6), whiteRoofMat);
+      ac.position.set(0, tireR + busH + 0.34, pz);
+      bus.add(ac);
+    });
+
+    // Panoramic Side Windows (Full length)
+    [-busW / 2 - 0.01, busW / 2 + 0.01].forEach((px) => {
+      const windowStrip = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.85, busL * 0.92), glassMat);
+      windowStrip.position.set(px, tireR + busH * 0.65, 0);
+      bus.add(windowStrip);
+    });
+
+    // Massive Front Windshield
+    const windshield = new THREE.Mesh(new THREE.BoxGeometry(busW * 0.94, 1.25, 0.06), glassMat);
+    windshield.position.set(0, tireR + busH * 0.58, busL / 2 + 0.02);
+    windshield.rotation.x = -0.14;
+    bus.add(windshield);
+
+    // Front Illuminated LED Route Sign ("BRT EXPRESS")
+    const ledSign = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.3, 0.06), ledSignMat);
+    ledSign.position.set(0, tireR + busH + 0.02, busL / 2 + 0.01);
+    bus.add(ledSign);
+
+    // 6 Large Wheels (2 front, 4 dual-rear axle)
+    const wheelGeo = new THREE.CylinderGeometry(tireR, tireR, 0.32, 18);
+    wheelGeo.rotateZ(Math.PI / 2);
+    const hubGeo = new THREE.CylinderGeometry(tireR * 0.45, tireR * 0.45, 0.34, 12);
+    hubGeo.rotateZ(Math.PI / 2);
+
+    const wheelZs = [
+      busL / 2 - 1.8,   // Front axle
+      -busL / 2 + 3.2,  // Rear axle 1
+      -busL / 2 + 1.8,  // Rear axle 2
+    ];
+
+    wheelZs.forEach((wz) => {
+      [-busW / 2 - 0.02, busW / 2 + 0.02].forEach((wx) => {
+        const wheel = new THREE.Mesh(wheelGeo, tireMat);
+        wheel.position.set(wx, tireR, wz);
+        const hub = new THREE.Mesh(hubGeo, chromeMat);
+        wheel.add(hub);
+        bus.add(wheel);
+      });
+    });
+
+    // Headlights
+    [-0.95, 0.95].forEach((lx) => {
+      const hl = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.16, 0.05), headlightMat);
+      hl.position.set(lx, tireR + 0.4, busL / 2 + 0.03);
+      bus.add(hl);
+
+      const tl = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.35, 0.05), taillightMat);
+      tl.position.set(lx, tireR + 0.65, -busL / 2 - 0.03);
+      bus.add(tl);
+    });
+
+    return bus;
+  }
+
+  // 3. LUXURY SUV (PRADO / G-WAGON / LAND CRUISER)
+  public createProceduralLuxurySUV(colorHex: number = 0x09090b): THREE.Group {
+    const suv = new THREE.Group();
+    const paintMat = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.12, metalness: 0.75 });
+    const glassMat = new THREE.MeshStandardMaterial({ color: 0x050508, roughness: 0.05, transparent: true, opacity: 0.8 });
+    const chromeMat = new THREE.MeshStandardMaterial({ color: 0xd1d5db, roughness: 0.1, metalness: 0.95 });
+    const tireMat = new THREE.MeshStandardMaterial({ color: 0x1f2124, roughness: 0.85 });
+    const headlightMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const taillightMat = new THREE.MeshBasicMaterial({ color: 0xff1e1e });
+
+    const suvW = 2.15;
+    const suvL = 4.9;
+    const tireR = 0.42;
+
+    // High Clearance Chunky Lower Body
+    const lowerBody = new THREE.Mesh(new THREE.BoxGeometry(suvW, 0.72, suvL), paintMat);
+    lowerBody.position.set(0, tireR + 0.45, 0);
+    suv.add(lowerBody);
+
+    // High Cabin & Squared Off Roof
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(suvW * 0.88, 0.78, suvL * 0.62), paintMat);
+    cabin.position.set(0, tireR + 1.15, -0.35);
+    suv.add(cabin);
+
+    // Chrome Grille & Bull Accent
+    const grille = new THREE.Mesh(new THREE.BoxGeometry(suvW * 0.75, 0.38, 0.12), chromeMat);
+    grille.position.set(0, tireR + 0.52, suvL / 2 + 0.02);
+    suv.add(grille);
+
+    // Roof Rails
+    [-suvW * 0.42, suvW * 0.42].forEach((rx) => {
+      const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, suvL * 0.55), chromeMat);
+      rail.rotateX(Math.PI / 2);
+      rail.position.set(rx, tireR + 1.58, -0.35);
+      suv.add(rail);
+    });
+
+    // Dark Tint Windows
+    const ws = new THREE.Mesh(new THREE.BoxGeometry(suvW * 0.84, 0.68, 0.05), glassMat);
+    ws.position.set(0, tireR + 1.15, 1.12);
+    ws.rotation.x = -0.28;
+    suv.add(ws);
+
+    const rearGlass = new THREE.Mesh(new THREE.BoxGeometry(suvW * 0.82, 0.6, 0.05), glassMat);
+    rearGlass.position.set(0, tireR + 1.15, -1.82);
+    rearGlass.rotation.x = 0.12;
+    suv.add(rearGlass);
+
+    // Spare tire cover on rear trunk (iconic Prado/G-Wagon)
+    const spare = new THREE.Mesh(new THREE.CylinderGeometry(tireR * 0.85, tireR * 0.85, 0.22, 16), paintMat);
+    spare.rotateX(Math.PI / 2);
+    spare.position.set(0, tireR + 0.65, -suvL / 2 - 0.1);
+    suv.add(spare);
+
+    // 4 Chunky Wheels
+    const wheelGeo = new THREE.CylinderGeometry(tireR, tireR, 0.28, 16);
+    wheelGeo.rotateZ(Math.PI / 2);
+    const hubGeo = new THREE.CylinderGeometry(tireR * 0.5, tireR * 0.5, 0.3, 12);
+    hubGeo.rotateZ(Math.PI / 2);
+
+    [
+      [-suvW / 2 - 0.02, 1.45],
+      [suvW / 2 + 0.02, 1.45],
+      [-suvW / 2 - 0.02, -1.45],
+      [suvW / 2 + 0.02, -1.45],
+    ].forEach(([wx, wz]) => {
+      const wheel = new THREE.Mesh(wheelGeo, tireMat);
+      wheel.position.set(wx, tireR, wz);
+      const hub = new THREE.Mesh(hubGeo, chromeMat);
+      wheel.add(hub);
+      suv.add(wheel);
+    });
+
+    // Modern LED Headlights & Taillights
+    [-0.75, 0.75].forEach((lx) => {
+      const hl = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.14, 0.06), headlightMat);
+      hl.position.set(lx, tireR + 0.58, suvL / 2 + 0.03);
+      suv.add(hl);
+
+      const tl = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.35, 0.06), taillightMat);
+      tl.position.set(lx, tireR + 0.68, -suvL / 2 - 0.02);
+      suv.add(tl);
+    });
+
+    return suv;
+  }
+
+  // 4. EXECUTIVE LUXURY SEDAN / COUPE (MERCEDES / LEXUS / KIA FORTE)
+  public createProceduralLuxuryCar(colorHex: number = 0x1e3a8a): THREE.Group {
     const car = new THREE.Group();
+    const paintMat = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.1, metalness: 0.85 });
+    const glassMat = new THREE.MeshStandardMaterial({ color: 0x050812, roughness: 0.05, transparent: true, opacity: 0.75 });
+    const chromeMat = new THREE.MeshStandardMaterial({ color: 0xd1d5db, roughness: 0.1, metalness: 0.95 });
+    const tireMat = new THREE.MeshStandardMaterial({ color: 0x1f2124, roughness: 0.8 });
+    const headlightMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const taillightMat = new THREE.MeshBasicMaterial({ color: 0xff1e1e });
 
-    // Chassis Body Material: MeshStandardMaterial with roughness: 0.1 and metalness: 0.6
-    // Highly reflective, glossy automotive paint finish
-    const paintMat = new THREE.MeshStandardMaterial({
-      color: isDanfo ? 0xfacc15 : colorHex,
-      roughness: 0.1,
-      metalness: 0.6,
+    const carW = 1.95;
+    const carL = 4.7;
+    const tireR = 0.34;
+
+    // Sleek Lower Body
+    const lower = new THREE.Mesh(new THREE.BoxGeometry(carW, 0.48, carL), paintMat);
+    lower.position.set(0, tireR + 0.28, 0);
+    car.add(lower);
+
+    // Aerodynamic Sloped Cabin
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(carW * 0.82, 0.52, carL * 0.52), paintMat);
+    cabin.position.set(0, tireR + 0.72, -0.2);
+    car.add(cabin);
+
+    // Front Windshield
+    const ws = new THREE.Mesh(new THREE.BoxGeometry(carW * 0.78, 0.52, 0.04), glassMat);
+    ws.position.set(0, tireR + 0.68, 0.95);
+    ws.rotation.x = -0.42;
+    car.add(ws);
+
+    // Rear Windshield
+    const rw = new THREE.Mesh(new THREE.BoxGeometry(carW * 0.78, 0.48, 0.04), glassMat);
+    rw.position.set(0, tireR + 0.68, -1.38);
+    rw.rotation.x = 0.38;
+    car.add(rw);
+
+    // 4 Sports Alloy Wheels
+    const wheelGeo = new THREE.CylinderGeometry(tireR, tireR, 0.24, 18);
+    wheelGeo.rotateZ(Math.PI / 2);
+    const hubGeo = new THREE.CylinderGeometry(tireR * 0.55, tireR * 0.55, 0.26, 14);
+    hubGeo.rotateZ(Math.PI / 2);
+
+    [
+      [-carW / 2 - 0.01, 1.4],
+      [carW / 2 + 0.01, 1.4],
+      [-carW / 2 - 0.01, -1.4],
+      [carW / 2 + 0.01, -1.4],
+    ].forEach(([wx, wz]) => {
+      const wheel = new THREE.Mesh(wheelGeo, tireMat);
+      wheel.position.set(wx, tireR, wz);
+      const hub = new THREE.Mesh(hubGeo, chromeMat);
+      wheel.add(hub);
+      car.add(wheel);
     });
 
-    // Windows Material: thin dark boxes with black tint, high gloss, and transparency (transparent: true, opacity: 0.7)
-    const glassMat = new THREE.MeshStandardMaterial({
-      color: 0x050810,
-      roughness: 0.05,
-      metalness: 0.3,
-      transparent: true,
-      opacity: 0.7,
+    // Headlights & Tail Light Bar
+    [-0.72, 0.72].forEach((lx) => {
+      const hl = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.1, 0.05), headlightMat);
+      hl.position.set(lx, tireR + 0.38, carL / 2 + 0.02);
+      car.add(hl);
     });
 
-    // Tires Material: dark gray matte material (roughness: 0.8)
-    const tireMat = new THREE.MeshStandardMaterial({
-      color: 0x1f2124,
-      roughness: 0.8,
-      metalness: 0.1,
+    // Sleek continuous LED taillight bar
+    const tailBar = new THREE.Mesh(new THREE.BoxGeometry(carW * 0.88, 0.08, 0.05), taillightMat);
+    tailBar.position.set(0, tireR + 0.42, -carL / 2 - 0.02);
+    car.add(tailBar);
+
+    // Dual chrome exhaust tips
+    [-0.55, 0.55].forEach((ex) => {
+      const exhaust = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.12, 10), chromeMat);
+      exhaust.rotateX(Math.PI / 2);
+      exhaust.position.set(ex, tireR + 0.12, -carL / 2 - 0.06);
+      car.add(exhaust);
     });
-
-    // Shiny metallic trim for bumpers & wheel hubs
-    const chromeMat = new THREE.MeshStandardMaterial({
-      color: 0xd1d5db,
-      roughness: 0.15,
-      metalness: 0.85,
-    });
-
-    // Self-Illuminating Lights: THREE.MeshBasicMaterial with bright white glow for headlights
-    const headlightMat = new THREE.MeshBasicMaterial({
-      color: 0xffffff,
-    });
-
-    // Taillights: bright red for taillights (active at night without laggy lights)
-    const taillightMat = new THREE.MeshBasicMaterial({
-      color: 0xff1e1e,
-    });
-
-    const tireRadius = 0.35;
-    const tireWidth = 0.22;
-    // Set model base pivot point EXACTLY at bottom of tires so it snaps flat to road canvas (bottom of tires at Y = 0)
-    // Axle center is therefore at Y = tireRadius = 0.35
-
-    if (isDanfo) {
-      // ════════════════════════════════════════════════════════
-      // LAGOS DANFO COMMUTER VAN (PROCEDURAL GEOMETRY)
-      // ════════════════════════════════════════════════════════
-      const bodyWidth = 2.1;
-      const bodyHeight = 1.1;
-      const bodyLength = 4.8;
-
-      // 1. Lower Van Body Box
-      const bodyMesh = new THREE.Mesh(
-        new THREE.BoxGeometry(bodyWidth, bodyHeight, bodyLength),
-        paintMat
-      );
-      bodyMesh.position.set(0, tireRadius + bodyHeight / 2 + 0.04, 0);
-      car.add(bodyMesh);
-
-      // Signature Lagos Danfo Dual Green Stripes along body
-      const greenStripeMat = new THREE.MeshStandardMaterial({
-        color: 0x15803d,
-        roughness: 0.2,
-        metalness: 0.2,
-      });
-      [-0.1, 0.15].forEach((sy) => {
-        const stripeL = new THREE.Mesh(
-          new THREE.BoxGeometry(0.04, 0.12, bodyLength * 0.96),
-          greenStripeMat
-        );
-        stripeL.position.set(bodyWidth / 2 + 0.01, tireRadius + bodyHeight / 2 + sy, 0);
-        car.add(stripeL);
-
-        const stripeR = new THREE.Mesh(
-          new THREE.BoxGeometry(0.04, 0.12, bodyLength * 0.96),
-          greenStripeMat
-        );
-        stripeR.position.set(-bodyWidth / 2 - 0.01, tireRadius + bodyHeight / 2 + sy, 0);
-        car.add(stripeR);
-      });
-
-      // 2. Upper Cabin / High Roof Box
-      const cabinHeight = 0.85;
-      const cabinMesh = new THREE.Mesh(
-        new THREE.BoxGeometry(bodyWidth * 0.96, cabinHeight, bodyLength * 0.94),
-        paintMat
-      );
-      cabinMesh.position.set(0, tireRadius + bodyHeight + cabinHeight / 2, -0.05);
-      car.add(cabinMesh);
-
-      // 3. Windows (Thin dark boxes with black tint, high gloss, transparency)
-      // Front Windshield
-      const windshield = new THREE.Mesh(
-        new THREE.BoxGeometry(bodyWidth * 0.9, 0.72, 0.06),
-        glassMat
-      );
-      windshield.position.set(0, tireRadius + bodyHeight + 0.38, bodyLength * 0.47);
-      windshield.rotation.x = -0.22;
-      car.add(windshield);
-
-      // Rear Window
-      const rearGlass = new THREE.Mesh(
-        new THREE.BoxGeometry(bodyWidth * 0.85, 0.65, 0.06),
-        glassMat
-      );
-      rearGlass.position.set(0, tireRadius + bodyHeight + 0.38, -bodyLength * 0.47);
-      car.add(rearGlass);
-
-      // Side Windows
-      [-1, 1].forEach((side) => {
-        const sideGlass = new THREE.Mesh(
-          new THREE.BoxGeometry(0.06, 0.62, bodyLength * 0.72),
-          glassMat
-        );
-        sideGlass.position.set(side * (bodyWidth / 2 + 0.01), tireRadius + bodyHeight + 0.36, -0.15);
-        car.add(sideGlass);
-      });
-
-      // 4. Roof Destination Board Lightbox
-      const signLight = new THREE.Mesh(
-        new THREE.BoxGeometry(1.5, 0.22, 0.28),
-        new THREE.MeshBasicMaterial({ color: 0xffffff })
-      );
-      signLight.position.set(0, tireRadius + bodyHeight + cabinHeight + 0.12, 1.6);
-      car.add(signLight);
-
-      // Bumpers
-      const frontBumper = new THREE.Mesh(
-        new THREE.BoxGeometry(bodyWidth + 0.06, 0.2, 0.2),
-        chromeMat
-      );
-      frontBumper.position.set(0, tireRadius + 0.15, bodyLength / 2 + 0.1);
-      car.add(frontBumper);
-
-      const rearBumper = new THREE.Mesh(
-        new THREE.BoxGeometry(bodyWidth + 0.06, 0.2, 0.2),
-        chromeMat
-      );
-      rearBumper.position.set(0, tireRadius + 0.15, -bodyLength / 2 - 0.1);
-      car.add(rearBumper);
-
-      // Self-Illuminating Headlights & Taillights
-      [-0.78, 0.78].forEach((lx) => {
-        const headLight = new THREE.Mesh(
-          new THREE.BoxGeometry(0.25, 0.18, 0.06),
-          headlightMat
-        );
-        headLight.position.set(lx, tireRadius + 0.45, bodyLength / 2 + 0.02);
-        car.add(headLight);
-
-        const tailLight = new THREE.Mesh(
-          new THREE.BoxGeometry(0.22, 0.2, 0.06),
-          taillightMat
-        );
-        tailLight.position.set(lx, tireRadius + 0.5, -bodyLength / 2 - 0.02);
-        car.add(tailLight);
-      });
-
-      // 4 Wheels (THREE.CylinderGeometry rotated sideways)
-      const wheelGeo = new THREE.CylinderGeometry(tireRadius, tireRadius, tireWidth, 18);
-      wheelGeo.rotateZ(Math.PI / 2);
-      const hubGeo = new THREE.CylinderGeometry(tireRadius * 0.45, tireRadius * 0.45, tireWidth + 0.02, 12);
-      hubGeo.rotateZ(Math.PI / 2);
-
-      const wheelPositions: [number, number][] = [
-        [-bodyWidth / 2 - 0.02, 1.45],
-        [bodyWidth / 2 + 0.02, 1.45],
-        [-bodyWidth / 2 - 0.02, -1.45],
-        [bodyWidth / 2 + 0.02, -1.45],
-      ];
-
-      wheelPositions.forEach(([wx, wz]) => {
-        const wheel = new THREE.Mesh(wheelGeo, tireMat);
-        wheel.position.set(wx, tireRadius, wz);
-        const hub = new THREE.Mesh(hubGeo, chromeMat);
-        wheel.add(hub);
-        car.add(wheel);
-      });
-    } else {
-      // ════════════════════════════════════════════════════════
-      // ARCADE CIVILIAN TRAFFIC SEDAN (PROCEDURAL GEOMETRY)
-      // ════════════════════════════════════════════════════════
-      const carWidth = 1.9;
-      const carLength = 4.4;
-      const lowerHeight = 0.52;
-
-      // 1. Stacked Chassis Body: Lower body box
-      const lowerBody = new THREE.Mesh(
-        new THREE.BoxGeometry(carWidth, lowerHeight, carLength),
-        paintMat
-      );
-      lowerBody.position.set(0, tireRadius + lowerHeight / 2 + 0.04, 0);
-      car.add(lowerBody);
-
-      // 2. Bonnet / Hood step box
-      const hood = new THREE.Mesh(
-        new THREE.BoxGeometry(carWidth * 0.94, 0.18, 1.3),
-        paintMat
-      );
-      hood.position.set(0, tireRadius + lowerHeight + 0.06, 1.4);
-      car.add(hood);
-
-      // 3. Trunk / Rear Boot step box
-      const trunk = new THREE.Mesh(
-        new THREE.BoxGeometry(carWidth * 0.94, 0.18, 1.0),
-        paintMat
-      );
-      trunk.position.set(0, tireRadius + lowerHeight + 0.06, -1.55);
-      car.add(trunk);
-
-      // 4. Cabin & Roof stacked box
-      const cabinHeight = 0.56;
-      const cabinLength = 2.1;
-      const cabin = new THREE.Mesh(
-        new THREE.BoxGeometry(carWidth * 0.84, cabinHeight, cabinLength),
-        paintMat
-      );
-      cabin.position.set(0, tireRadius + lowerHeight + cabinHeight / 2 + 0.08, -0.15);
-      car.add(cabin);
-
-      // 5. Windows: Thin dark boxes with black tint, high gloss, transparency
-      const windshield = new THREE.Mesh(
-        new THREE.BoxGeometry(carWidth * 0.8, 0.5, 0.05),
-        glassMat
-      );
-      windshield.position.set(0, tireRadius + lowerHeight + 0.32, 0.88);
-      windshield.rotation.x = -0.38;
-      car.add(windshield);
-
-      const rearWindow = new THREE.Mesh(
-        new THREE.BoxGeometry(carWidth * 0.78, 0.46, 0.05),
-        glassMat
-      );
-      rearWindow.position.set(0, tireRadius + lowerHeight + 0.32, -1.18);
-      rearWindow.rotation.x = 0.34;
-      car.add(rearWindow);
-
-      [-1, 1].forEach((side) => {
-        const sideWindow = new THREE.Mesh(
-          new THREE.BoxGeometry(0.04, 0.42, 1.7),
-          glassMat
-        );
-        sideWindow.position.set(side * (carWidth * 0.84 / 2 + 0.01), tireRadius + lowerHeight + 0.3, -0.15);
-        car.add(sideWindow);
-      });
-
-      // Front & Rear Bumpers
-      const frontBumper = new THREE.Mesh(
-        new THREE.BoxGeometry(carWidth * 0.98, 0.16, 0.14),
-        chromeMat
-      );
-      frontBumper.position.set(0, tireRadius + 0.12, carLength / 2 + 0.04);
-      car.add(frontBumper);
-
-      const rearBumper = new THREE.Mesh(
-        new THREE.BoxGeometry(carWidth * 0.98, 0.16, 0.14),
-        chromeMat
-      );
-      rearBumper.position.set(0, tireRadius + 0.12, -carLength / 2 - 0.04);
-      car.add(rearBumper);
-
-      // Self-Illuminating Lights
-      [-0.68, 0.68].forEach((lx) => {
-        // Headlights: bright white glow
-        const headLight = new THREE.Mesh(
-          new THREE.BoxGeometry(0.24, 0.14, 0.05),
-          headlightMat
-        );
-        headLight.position.set(lx, tireRadius + 0.38, carLength / 2 + 0.02);
-        car.add(headLight);
-
-        // Taillights: bright red glow
-        const tailLight = new THREE.Mesh(
-          new THREE.BoxGeometry(0.24, 0.14, 0.05),
-          taillightMat
-        );
-        tailLight.position.set(lx, tireRadius + 0.4, -carLength / 2 - 0.02);
-        car.add(tailLight);
-      });
-
-      // 4 Wheels: cylinders rotated sideways with dark gray matte tires
-      const wheelGeo = new THREE.CylinderGeometry(tireRadius, tireRadius, tireWidth, 16);
-      wheelGeo.rotateZ(Math.PI / 2);
-      const hubGeo = new THREE.CylinderGeometry(tireRadius * 0.45, tireRadius * 0.45, tireWidth + 0.02, 12);
-      hubGeo.rotateZ(Math.PI / 2);
-
-      const wheelPositions: [number, number][] = [
-        [-carWidth / 2 - 0.01, 1.3],
-        [carWidth / 2 + 0.01, 1.3],
-        [-carWidth / 2 - 0.01, -1.3],
-        [carWidth / 2 + 0.01, -1.3],
-      ];
-
-      wheelPositions.forEach(([wx, wz]) => {
-        const wheel = new THREE.Mesh(wheelGeo, tireMat);
-        wheel.position.set(wx, tireRadius, wz);
-        const hub = new THREE.Mesh(hubGeo, chromeMat);
-        wheel.add(hub);
-        car.add(wheel);
-      });
-    }
 
     return car;
   }
 
-  private setupTrafficAndHazards() {
-    // 1. EXACTLY 9 NPC RIVAL BUS DRIVERS (ALL USING PROCEDURAL DANFO BUSES!)
-    const rivalDanfoDrivers = [
-      { name: 'Alhaji Agbaje', slogan: 'No King as God', speed: 12.5, lane: -5.5, z: 45 },
-      { name: 'Oshodi Overloader', slogan: 'Face Your Front', speed: 13.8, lane: 0, z: 90 },
-      { name: 'MC Oluomo Youth', slogan: 'Allahu Akbar', speed: 14.5, lane: 5.5, z: 135 },
-      { name: 'Baba Ibeji Shuttle', slogan: 'Lagos Boy', speed: 12.2, lane: -5.5, z: 180 },
-      { name: 'Rasaki Turbo 2.0', slogan: 'Destiny Child', speed: 15.2, lane: 0, z: 225 },
-      { name: 'Segun Speed Machine', slogan: 'Work and Pray', speed: 13.0, lane: 5.5, z: 270 },
-      { name: 'Jagaban Road King', slogan: 'Ise Oluwa', speed: 14.0, lane: -5.5, z: 315 },
-      { name: 'Airport Swift', slogan: 'God Time Best', speed: 13.4, lane: 0, z: 360 },
-      { name: 'Lekki Hustler', slogan: 'Eko Oni Baje', speed: 14.8, lane: 5.5, z: 405 },
-    ];
+  // 5. DISPATCH BIKE (OKADA / COURIER RIDER WITH DELIVERY BOX)
+  public createProceduralDispatchBike(boxColor: number = 0xea580c, brand: string = 'CHOWDECK'): THREE.Group {
+    const bike = new THREE.Group();
+    const frameMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4 });
+    const chromeMat = new THREE.MeshStandardMaterial({ color: 0xd1d5db, roughness: 0.1, metalness: 0.95 });
+    const tireMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.8 });
+    const boxMat = new THREE.MeshStandardMaterial({ color: boxColor, roughness: 0.25 });
+    const riderPantsMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.7 });
+    const riderVestMat = new THREE.MeshStandardMaterial({ color: 0x22c55e, roughness: 0.4 }); // High-vis vest
+    const helmetMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.2 });
+    const headlightMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const taillightMat = new THREE.MeshBasicMaterial({ color: 0xff1e1e });
 
-    rivalDanfoDrivers.forEach((driver) => {
-      const rivalBus = new THREE.Group();
-      rivalBus.userData = {
-        isRivalDanfo: true,
-        driverName: driver.name,
-        slogan: driver.slogan,
-        targetLaneX: driver.lane,
-        baseRotY: 0,
-        currentSpeed: driver.speed,
-        baseSpeed: driver.speed,
-        laneChangeCooldown: Math.random() * 2 + 1,
-        hasGlb: false
-      };
+    const wheelR = 0.32;
 
-      // Base pivot at bottom of tires snaps flat to road canvas at Y = 0
-      rivalBus.position.set(driver.lane, 0, driver.z);
-      this.scene.add(rivalBus);
-      this.trafficMeshes.push(rivalBus);
+    // Bike Frame spine
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.42, 1.4), frameMat);
+    frame.position.set(0, wheelR + 0.22, 0);
+    bike.add(frame);
 
-      // Realistic Procedural Danfo Bus (No external .glb downloads)
-      const proceduralDanfo = this.createProceduralTrafficCar(0xfacc15, true);
-      rivalBus.add(proceduralDanfo);
+    // Engine block & exhaust pipe
+    const engine = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.28, 0.45), chromeMat);
+    engine.position.set(0, wheelR + 0.12, 0.05);
+    bike.add(engine);
+
+    const exhaust = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.95), chromeMat);
+    exhaust.rotateX(Math.PI / 2);
+    exhaust.position.set(0.2, wheelR + 0.08, -0.35);
+    bike.add(exhaust);
+
+    // Two Spoked Wheels (Front & Rear)
+    const wheelGeo = new THREE.CylinderGeometry(wheelR, wheelR, 0.1, 16);
+    wheelGeo.rotateZ(Math.PI / 2);
+
+    const frontTire = new THREE.Mesh(wheelGeo, tireMat);
+    frontTire.position.set(0, wheelR, 0.92);
+    bike.add(frontTire);
+
+    const rearTire = new THREE.Mesh(wheelGeo, tireMat);
+    rearTire.position.set(0, wheelR, -0.78);
+    bike.add(rearTire);
+
+    // Handlebars
+    const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.75), chromeMat);
+    bar.rotateZ(Math.PI / 2);
+    bar.position.set(0, wheelR + 0.65, 0.65);
+    bike.add(bar);
+
+    // Front Headlight
+    const hl = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.05, 12), headlightMat);
+    hl.rotateX(Math.PI / 2);
+    hl.position.set(0, wheelR + 0.58, 0.95);
+    bike.add(hl);
+
+    // Courier Rider (Human 3D figure seated on bike)
+    // Torso with high-vis vest
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.5, 0.26), riderVestMat);
+    torso.position.set(0, wheelR + 0.78, 0.05);
+    torso.rotation.x = 0.15; // Leaning forward slightly
+    bike.add(torso);
+
+    // Helmet & Head
+    const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.16, 14, 14), helmetMat);
+    helmet.position.set(0, wheelR + 1.15, 0.12);
+    bike.add(helmet);
+
+    // Large Insulated Delivery Courier Box on Rear Luggage Rack
+    const box = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.62, 0.62), boxMat);
+    box.position.set(0, wheelR + 0.75, -0.65);
+    bike.add(box);
+
+    // Tail light under box
+    const tl = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 0.04), taillightMat);
+    tl.position.set(0, wheelR + 0.42, -0.92);
+    bike.add(tl);
+
+    return bike;
+  }
+
+  // 6. POLICE PATROL CAR (LAGOS RAPID RESPONSE SQUAD - RRS)
+  public createProceduralPoliceCar(): THREE.Group {
+    const police = new THREE.Group();
+    const whiteMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.15, metalness: 0.5 });
+    const blueStripeMat = new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.3 });
+    const glassMat = new THREE.MeshStandardMaterial({ color: 0x050812, roughness: 0.05, transparent: true, opacity: 0.7 });
+    const chromeMat = new THREE.MeshStandardMaterial({ color: 0xd1d5db, roughness: 0.1, metalness: 0.95 });
+    const tireMat = new THREE.MeshStandardMaterial({ color: 0x1f2124, roughness: 0.8 });
+    const headlightMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const taillightMat = new THREE.MeshBasicMaterial({ color: 0xff1e1e });
+
+    const carW = 1.95;
+    const carL = 4.6;
+    const tireR = 0.35;
+
+    // Body & Cabin
+    const body = new THREE.Mesh(new THREE.BoxGeometry(carW, 0.52, carL), whiteMat);
+    body.position.set(0, tireR + 0.3, 0);
+    police.add(body);
+
+    // Police Blue Side Stripes
+    [-carW / 2 - 0.01, carW / 2 + 0.01].forEach((sx) => {
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.16, carL * 0.92), blueStripeMat);
+      stripe.position.set(sx, tireR + 0.32, 0);
+      police.add(stripe);
     });
 
-    // 2. Civilian traffic vehicles (Lagos sedans, taxis, and commuter cars)
-    const civilianCars = [
-      { lane: -5.5, z: 68, speed: 8.5, color: 0x2563eb }, // Blue Lagos taxi
-      { lane: 0, z: 155, speed: 9.0, color: 0xdc2626 },    // Red commuter sedan
-      { lane: 5.5, z: 245, speed: 10.5, color: 0x475569 }, // Charcoal SUV
-      { lane: -5.5, z: 335, speed: 9.2, color: 0x16a34a }, // Green cab
-      { lane: 0, z: 200, speed: 8.0, color: 0x0f172a },    // Dark sedan
-      { lane: 5.5, z: 110, speed: 8.8, color: 0xe2e8f0 },  // White car
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(carW * 0.82, 0.54, carL * 0.52), whiteMat);
+    cabin.position.set(0, tireR + 0.75, -0.15);
+    police.add(cabin);
+
+    // Windshields
+    const ws = new THREE.Mesh(new THREE.BoxGeometry(carW * 0.78, 0.52, 0.04), glassMat);
+    ws.position.set(0, tireR + 0.72, 0.92);
+    ws.rotation.x = -0.35;
+    police.add(ws);
+
+    // ROOF EMERGENCY STROBE LIGHTBAR (Flashing Red & Blue)
+    const lightbarBase = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.06, 0.22), chromeMat);
+    lightbarBase.position.set(0, tireR + 1.05, -0.15);
+    police.add(lightbarBase);
+
+    const blueStrobe = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.1, 0.18), new THREE.MeshBasicMaterial({ color: 0x0284c7 }));
+    blueStrobe.position.set(-0.24, tireR + 1.12, -0.15);
+    police.add(blueStrobe);
+
+    const redStrobe = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.1, 0.18), new THREE.MeshBasicMaterial({ color: 0xef4444 }));
+    redStrobe.position.set(0.24, tireR + 1.12, -0.15);
+    police.add(redStrobe);
+
+    // 4 Wheels
+    const wheelGeo = new THREE.CylinderGeometry(tireR, tireR, 0.24, 16);
+    wheelGeo.rotateZ(Math.PI / 2);
+    [
+      [-carW / 2 - 0.01, 1.35],
+      [carW / 2 + 0.01, 1.35],
+      [-carW / 2 - 0.01, -1.35],
+      [carW / 2 + 0.01, -1.35],
+    ].forEach(([wx, wz]) => {
+      const wheel = new THREE.Mesh(wheelGeo, tireMat);
+      wheel.position.set(wx, tireR, wz);
+      police.add(wheel);
+    });
+
+    // Lights
+    [-0.7, 0.7].forEach((lx) => {
+      const hl = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.12, 0.05), headlightMat);
+      hl.position.set(lx, tireR + 0.38, carL / 2 + 0.02);
+      police.add(hl);
+
+      const tl = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.14, 0.05), taillightMat);
+      tl.position.set(lx, tireR + 0.4, -carL / 2 - 0.02);
+      police.add(tl);
+    });
+
+    return police;
+  }
+
+  // 7. CIVILIAN COMMUTER SEDAN
+  public createProceduralSedan(colorHex: number = 0x2563eb): THREE.Group {
+    return this.createProceduralLuxuryCar(colorHex);
+  }
+
+  // 8. PROCEDURAL DANFO BUS (RIVAL TRANSPORTER)
+  public createProceduralDanfo(colorHex: number = 0xfacc15, slogan: string = 'No King as God'): THREE.Group {
+    const bus = new THREE.Group();
+    const yellowMat = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.2, metalness: 0.3 });
+    const greenStripeMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.2, metalness: 0.2 });
+    const glassMat = new THREE.MeshStandardMaterial({ color: 0x050810, roughness: 0.05, transparent: true, opacity: 0.65 });
+    const tireMat = new THREE.MeshStandardMaterial({ color: 0x1f2124, roughness: 0.8 });
+    const chromeMat = new THREE.MeshStandardMaterial({ color: 0xd1d5db, roughness: 0.15, metalness: 0.85 });
+    const headlightMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const taillightMat = new THREE.MeshBasicMaterial({ color: 0xff1e1e });
+
+    const tireR = 0.35;
+    const bodyW = 2.15;
+    const bodyL = 4.85;
+    const bodyH = 1.1;
+    const cabinH = 0.85;
+
+    // Lower van body
+    const lower = new THREE.Mesh(new THREE.BoxGeometry(bodyW, bodyH, bodyL), yellowMat);
+    lower.position.set(0, tireR + bodyH / 2 + 0.04, 0);
+    bus.add(lower);
+
+    // Iconic twin green stripes
+    [-0.1, 0.15].forEach((sy) => {
+      [-bodyW / 2 - 0.01, bodyW / 2 + 0.01].forEach((sx) => {
+        const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.12, bodyL * 0.96), greenStripeMat);
+        stripe.position.set(sx, tireR + bodyH / 2 + sy, 0);
+        bus.add(stripe);
+      });
+    });
+
+    // Upper high roof cabin
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(bodyW * 0.96, cabinH, bodyL * 0.94), yellowMat);
+    cabin.position.set(0, tireR + bodyH + cabinH / 2, -0.05);
+    bus.add(cabin);
+
+    // Front windshield
+    const ws = new THREE.Mesh(new THREE.BoxGeometry(bodyW * 0.9, 0.72, 0.06), glassMat);
+    ws.position.set(0, tireR + bodyH + 0.38, bodyL * 0.47);
+    ws.rotation.x = -0.22;
+    bus.add(ws);
+
+    // Roof Slogan Lightbox
+    const sign = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.22, 0.3), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    sign.position.set(0, tireR + bodyH + cabinH + 0.12, 1.5);
+    bus.add(sign);
+
+    // 4 Wheels
+    const wheelGeo = new THREE.CylinderGeometry(tireR, tireR, 0.22, 16);
+    wheelGeo.rotateZ(Math.PI / 2);
+    [
+      [-bodyW / 2 - 0.02, 1.45],
+      [bodyW / 2 + 0.02, 1.45],
+      [-bodyW / 2 - 0.02, -1.45],
+      [bodyW / 2 + 0.02, -1.45],
+    ].forEach(([wx, wz]) => {
+      const wheel = new THREE.Mesh(wheelGeo, tireMat);
+      wheel.position.set(wx, tireR, wz);
+      bus.add(wheel);
+    });
+
+    // Lights
+    [-0.78, 0.78].forEach((lx) => {
+      const hl = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.16, 0.05), headlightMat);
+      hl.position.set(lx, tireR + 0.45, bodyL / 2 + 0.02);
+      bus.add(hl);
+
+      const tl = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.2, 0.05), taillightMat);
+      tl.position.set(lx, tireR + 0.5, -bodyL / 2 - 0.02);
+      bus.add(tl);
+    });
+
+    return bus;
+  }
+
+  /**
+   * SETUP DIVERSE LAGOS HIGHWAY TRAFFIC FLEET (26 VEHICLES)
+   * Keke Napeps, BRT Long Buses, Luxury SUVs, Executive Luxury Cars,
+   * Dispatch Courier Bikes, RRS Police Patrol Cars, and Rival Danfo Buses.
+   */
+  private setupTrafficAndHazards() {
+    this.trafficMeshes = [];
+
+    const trafficFleetConfig = [
+      // 1. KEKE NAPEP TRICYCLES (Nimble, outer & middle lanes)
+      { type: 'KEKE', lane: -5.8, z: 25, speed: 9.5, name: 'Maruwa Boy', slogan: 'GOD DEY' },
+      { type: 'KEKE', lane: 5.8, z: 65, speed: 10.0, name: 'Oshodi Keke', slogan: 'NO TELESCOPE' },
+      { type: 'KEKE', lane: -2.0, z: 120, speed: 9.2, name: 'Ikeja Shuttle', slogan: 'E GO BE' },
+      { type: 'KEKE', lane: 5.8, z: 175, speed: 10.5, name: 'Mile 12 Runner', slogan: 'WORK & PRAY' },
+      { type: 'KEKE', lane: 2.0, z: 230, speed: 9.8, name: 'Yaba Rider', slogan: 'BLESSING' },
+      { type: 'KEKE', lane: -5.8, z: 290, speed: 9.4, name: 'Obalende Trike', slogan: 'NO CONDITION PERMANENT' },
+      { type: 'KEKE', lane: 5.8, z: 350, speed: 10.2, name: 'Bariga Express', slogan: 'SLOW & STEADY' },
+      { type: 'KEKE', lane: -2.0, z: 410, speed: 9.6, name: 'Surulere Rider', slogan: 'ALUJANNA' },
+      { type: 'KEKE', lane: 2.0, z: 470, speed: 10.1, name: 'Alaba Shuttle', slogan: 'FAVOUR' },
+
+      // 2. MASSIVE BLUE BRT LONG BUSES (Cruising steadily)
+      { type: 'BRT', lane: -5.8, z: 45, speed: 11.0, name: 'BRT Ketu Express' },
+      { type: 'BRT', lane: 5.8, z: 110, speed: 11.5, name: 'BRT TBS Line 1' },
+      { type: 'BRT', lane: -2.0, z: 185, speed: 10.8, name: 'BRT Ikorodu Direct' },
+      { type: 'BRT', lane: 2.0, z: 260, speed: 11.2, name: 'BRT CMS Terminal' },
+      { type: 'BRT', lane: -5.8, z: 340, speed: 11.4, name: 'BRT Berger Shuttle' },
+      { type: 'BRT', lane: 5.8, z: 420, speed: 11.1, name: 'BRT Costain Line' },
+      { type: 'BRT', lane: 2.0, z: 500, speed: 11.6, name: 'BRT Ojota Flyer' },
+
+      // 3. LUXURY SUVS (Chunky high-riding Prado, G-Wagon, Land Cruiser, Range Rover)
+      { type: 'SUV', lane: 2.0, z: 35, speed: 16.5, color: 0x09090b, name: 'Black Prado V8' },
+      { type: 'SUV', lane: 5.8, z: 95, speed: 17.0, color: 0xf8fafc, name: 'Pearl White G-Wagon' },
+      { type: 'SUV', lane: -2.0, z: 155, speed: 15.8, color: 0x334155, name: 'Gunmetal Land Cruiser' },
+      { type: 'SUV', lane: 2.0, z: 220, speed: 16.2, color: 0x09090b, name: 'Lekki VIP SUV' },
+      { type: 'SUV', lane: 5.8, z: 310, speed: 17.5, color: 0x1e293b, name: 'Obsidian Range Rover' },
+      { type: 'SUV', lane: -5.8, z: 375, speed: 16.8, color: 0xd4af37, name: 'Champagne Prado TX' },
+      { type: 'SUV', lane: -2.0, z: 440, speed: 17.2, color: 0x111827, name: 'Matte Black G63 AMG' },
+      { type: 'SUV', lane: 2.0, z: 515, speed: 16.9, color: 0x1e3a8a, name: 'Sapphire Lexus LX570' },
+
+      // 4. EXECUTIVE LUXURY CARS (Mercedes-Benz, Lexus, AMG Sedans & Coupes)
+      { type: 'LUXURY_CAR', lane: -2.0, z: 50, speed: 18.0, color: 0x1e3a8a, name: 'Royal Blue Benz C300' },
+      { type: 'LUXURY_CAR', lane: 2.0, z: 80, speed: 18.5, color: 0xd4af37, name: 'Champagne Gold Lexus ES' },
+      { type: 'LUXURY_CAR', lane: -5.8, z: 140, speed: 17.5, color: 0x991b1b, name: 'Ruby Sport Coupe' },
+      { type: 'LUXURY_CAR', lane: 5.8, z: 205, speed: 19.0, color: 0xcbd5e1, name: 'Silver AMG Sedan' },
+      { type: 'LUXURY_CAR', lane: -2.0, z: 275, speed: 18.2, color: 0x0f172a, name: 'Midnight Executive Benz' },
+      { type: 'LUXURY_CAR', lane: 2.0, z: 330, speed: 18.4, color: 0x064e3b, name: 'Emerald Benz E-Class' },
+      { type: 'LUXURY_CAR', lane: 5.8, z: 395, speed: 18.8, color: 0x93c5fd, name: 'Diamond Silver BMW' },
+      { type: 'LUXURY_CAR', lane: -5.8, z: 465, speed: 18.1, color: 0x581c87, name: 'Deep Purple Coupe' },
+
+      // 5. DISPATCH BIKES (Okada courier riders weaving with branded cargo boxes)
+      { type: 'DISPATCH_BIKE', lane: 2.0, z: 40, speed: 15.5, boxColor: 0xea580c, brand: 'CHOWDECK' },
+      { type: 'DISPATCH_BIKE', lane: -2.0, z: 105, speed: 16.0, boxColor: 0x16a34a, brand: 'GOKADA' },
+      { type: 'DISPATCH_BIKE', lane: 5.8, z: 165, speed: 15.8, boxColor: 0xdc2626, brand: 'MAX.NG' },
+      { type: 'DISPATCH_BIKE', lane: -5.8, z: 245, speed: 16.5, boxColor: 0xea580c, brand: 'CHOWDECK' },
+      { type: 'DISPATCH_BIKE', lane: 2.0, z: 320, speed: 16.2, boxColor: 0xfacc15, brand: 'DHL' },
+      { type: 'DISPATCH_BIKE', lane: -2.0, z: 385, speed: 15.9, boxColor: 0xf97316, brand: 'JUMIA' },
+      { type: 'DISPATCH_BIKE', lane: 5.8, z: 450, speed: 16.4, boxColor: 0x16a34a, brand: 'GOKADA' },
+
+      // 6. LAGOS STATE POLICE RRS PATROL CARS
+      { type: 'POLICE', lane: -2.0, z: 70, speed: 14.5, name: 'RRS Rapid Response' },
+      { type: 'POLICE', lane: 5.8, z: 250, speed: 15.0, name: 'Highway Patrol 04' },
+      { type: 'POLICE', lane: -5.8, z: 430, speed: 14.8, name: 'Alausa Task Force' },
+
+      // 7. RIVAL DANFO BUSES (Aggressive Lagos transporter vans with twin green stripes)
+      { type: 'DANFO', lane: 2.0, z: 60, speed: 14.2, name: 'Alhaji Agbaje', slogan: 'Face Your Front' },
+      { type: 'DANFO', lane: -5.8, z: 135, speed: 13.8, name: 'Jagaban Express', slogan: 'No King as God' },
+      { type: 'DANFO', lane: 5.8, z: 215, speed: 14.5, name: 'Rasaki Turbo', slogan: 'Destiny Child' },
+      { type: 'DANFO', lane: -2.0, z: 280, speed: 14.0, name: 'Lekki Hustler', slogan: 'Eko Oni Baje' },
+      { type: 'DANFO', lane: 2.0, z: 360, speed: 14.6, name: 'Oshodi Bullet', slogan: 'God First' },
+      { type: 'DANFO', lane: -5.8, z: 485, speed: 14.4, name: 'Bariga Express', slogan: 'Clear Road' },
     ];
 
-    civilianCars.forEach((civ) => {
-      const traffic = new THREE.Group();
-      traffic.userData = {
-        isRivalDanfo: false,
-        targetLaneX: civ.lane,
+    trafficFleetConfig.forEach((veh) => {
+      const trafficGroup = new THREE.Group();
+      trafficGroup.userData = {
+        type: veh.type,
+        driverName: veh.name || veh.type,
+        slogan: veh.slogan || '',
+        targetLaneX: veh.lane,
         baseRotY: 0,
-        currentSpeed: civ.speed,
-        baseSpeed: civ.speed,
-        laneChangeCooldown: Math.random() * 3 + 1,
-        hasGlb: false
+        currentSpeed: veh.speed,
+        baseSpeed: veh.speed,
+        laneChangeCooldown: Math.random() * 2.5 + 1.0,
       };
 
-      traffic.position.set(civ.lane, 0, civ.z);
-      this.scene.add(traffic);
-      this.trafficMeshes.push(traffic);
+      trafficGroup.position.set(veh.lane, 0, veh.z);
+      this.scene.add(trafficGroup);
+      this.trafficMeshes.push(trafficGroup);
 
-      // Realistic Procedural Traffic Car (No external .glb downloads)
-      const proceduralCar = this.createProceduralTrafficCar(civ.color, false);
-      traffic.add(proceduralCar);
+      // Build model based on vehicle type
+      let modelMesh: THREE.Group;
+      if (veh.type === 'KEKE') {
+        modelMesh = this.createProceduralKeke(veh.slogan);
+      } else if (veh.type === 'BRT') {
+        modelMesh = this.createProceduralBRTLongBus();
+      } else if (veh.type === 'SUV') {
+        modelMesh = this.createProceduralLuxurySUV((veh as any).color || 0x09090b);
+      } else if (veh.type === 'LUXURY_CAR') {
+        modelMesh = this.createProceduralLuxuryCar((veh as any).color || 0x1e3a8a);
+      } else if (veh.type === 'DISPATCH_BIKE') {
+        modelMesh = this.createProceduralDispatchBike((veh as any).boxColor || 0xea580c, (veh as any).brand || 'CHOWDECK');
+      } else if (veh.type === 'POLICE') {
+        modelMesh = this.createProceduralPoliceCar();
+      } else {
+        modelMesh = this.createProceduralDanfo(0xfacc15, veh.slogan);
+      }
+
+      trafficGroup.add(modelMesh);
     });
   }
 
@@ -1849,23 +2147,21 @@ export class ThreeDrivingEngine {
     // ========================================================
     // 2. CANNON-ES RAYCAST VEHICLE DRIVING CONTROLS & PHYSICS
     // ========================================================
-    // 4. Bind WASD / Arrow key inputs to applyEngineForce, setSteeringValue, and setBrake
-    const maxEngineForce = 8500;
-    const maxSteerRad = 0.42; // ~24 deg max wheel lock
+    const maxSteerRad = 0.52; // ~30 deg responsive max wheel lock
     // steeringWheelAngleDeg: -90 (left) to +90 (right)
     const steerNorm = Math.max(-1.0, Math.min(1.0, (steeringWheelAngleDeg || 0) / 90));
-    const steerRad = steerNorm * maxSteerRad;
-    const clampedSteer = Math.max(-maxSteerRad, Math.min(maxSteerRad, steerRad));
 
-    this.vehicle.setSteeringValue(clampedSteer, 0);
-    this.vehicle.setSteeringValue(clampedSteer, 1);
+    // In Cannon RaycastVehicle with axleLocal=(1,0,0) and forward=+Z:
+    // Negative steer rotates wheels right (+X), positive rotates left (-X).
+    const vehicleSteer = -steerNorm * maxSteerRad;
+    this.vehicle.setSteeringValue(vehicleSteer, 0);
+    this.vehicle.setSteeringValue(vehicleSteer, 1);
 
     if (isEngineRunning && !isSteppedDown) {
       if (gear === 'D' || gear === 'L') {
-        const topSpeedMps = gear === 'L' ? 15 : 28; // ~54 km/h or ~100 km/h
-        const forceMult = gear === 'L' ? 1.35 : 1.0;
-        const driveForce = throttle > 0 ? (-4000 * throttle * forceMult) : 0;
-        // Apply engine force to wheels for realistic wheel spin
+        const topSpeedMps = gear === 'L' ? 16 : 28; // ~58 km/h or ~100 km/h
+        const forceMult = gear === 'L' ? 1.4 : 1.0;
+        const driveForce = throttle > 0 ? (-4200 * throttle * forceMult) : 0;
         for (let i = 0; i < 4; i++) {
           this.vehicle.applyEngineForce(driveForce, i);
         }
@@ -1873,7 +2169,7 @@ export class ThreeDrivingEngine {
         if (throttle > 0) {
           const currentFwdSpeed = this.chassisBody.velocity.z;
           if (currentFwdSpeed < topSpeedMps) {
-            this.chassisBody.velocity.z = Math.min(topSpeedMps, currentFwdSpeed + 16 * dt * throttle * forceMult);
+            this.chassisBody.velocity.z = Math.min(topSpeedMps, currentFwdSpeed + 18 * dt * throttle * forceMult);
           }
         }
       } else if (gear === 'R') {
@@ -1883,8 +2179,8 @@ export class ThreeDrivingEngine {
         }
         if (throttle > 0) {
           const currentRevSpeed = this.chassisBody.velocity.z;
-          if (currentRevSpeed > -8) {
-            this.chassisBody.velocity.z = Math.max(-8, currentRevSpeed - 12 * dt * throttle);
+          if (currentRevSpeed > -9) {
+            this.chassisBody.velocity.z = Math.max(-9, currentRevSpeed - 14 * dt * throttle);
           }
         }
       } else {
@@ -1900,12 +2196,12 @@ export class ThreeDrivingEngine {
 
     // Responsive braking & deceleration physics
     if (isBraking || gear === 'P' || !isEngineRunning) {
-      const brakeForce = isBraking ? 180 : (gear === 'P' ? 400 : 50);
+      const brakeForce = isBraking ? 200 : (gear === 'P' ? 450 : 60);
       for (let i = 0; i < 4; i++) {
         this.vehicle.setBrake(brakeForce, i);
       }
-      this.chassisBody.velocity.z *= Math.pow(0.08, dt);
-      this.chassisBody.velocity.x *= Math.pow(0.08, dt);
+      this.chassisBody.velocity.z *= Math.pow(0.06, dt);
+      this.chassisBody.velocity.x *= Math.pow(0.06, dt);
     } else {
       const rollingResistance = throttle > 0 ? 0 : 5;
       for (let i = 0; i < 4; i++) {
@@ -1916,68 +2212,44 @@ export class ThreeDrivingEngine {
       }
     }
 
-    // Natural progressive car steering physics with smooth yaw and lateral response
-    const physSpeedMps = this.chassisBody.velocity.length();
-    const isMoving = physSpeedMps > 0.15;
+    // DIRECT, RESPONSIVE LAGOS ARCADE STEERING & SYNCHRONIZED HIGHWAY POSITION
     const turnDir = gear === 'R' ? -1 : 1;
+    const targetX = Math.max(-8.8, Math.min(8.8, laneOffsetMeters));
 
-    if (Math.abs(steerNorm) > 0.015 && isMoving) {
-      const speedNorm = Math.min(1.0, physSpeedMps / 14);
-      // Smooth body yaw turning into corner
-      const targetYawVel = steerNorm * 1.6 * turnDir * speedNorm;
-      this.chassisBody.angularVelocity.y = THREE.MathUtils.lerp(
-        this.chassisBody.angularVelocity.y,
-        targetYawVel,
-        dt * 8.0
-      );
+    // Direct synchronization of physics chassis & visual 3D bus
+    this.chassisBody.position.x = targetX;
+    this.busRoot.position.x = targetX;
+    this.chassisBody.position.z = roadDistanceTraveled;
+    this.busRoot.position.z = roadDistanceTraveled;
+    this.chassisBody.velocity.z = speedMps;
 
-      // Smooth lateral displacement matching front wheel direction
-      const targetLatVel = steerNorm * 5.4 * turnDir * speedNorm;
-      this.chassisBody.velocity.x = THREE.MathUtils.lerp(
-        this.chassisBody.velocity.x,
-        targetLatVel,
-        dt * 6.5
-      );
-    } else {
-      this.chassisBody.angularVelocity.y *= Math.pow(0.05, dt);
-      this.chassisBody.velocity.x *= Math.pow(0.05, dt);
-    }
-
-    // Step physics world forward using fixedStep()
-    this.world.fixedStep();
-
-    // STRICT UPRIGHT STABILIZATION - GUARANTEES GAME / DANFO BUS NEVER TURNS UPSIDE DOWN
+    // Strict upright stabilization for chassis height
     if (this.chassisBody.position.y < 0.4 || isNaN(this.chassisBody.position.y)) {
       this.chassisBody.position.y = 0.85;
       this.chassisBody.velocity.y = 0;
     }
-    const qx = this.chassisBody.quaternion.x || 0;
-    const qy = this.chassisBody.quaternion.y || 0;
-    const qz = this.chassisBody.quaternion.z || 0;
-    const qw = typeof this.chassisBody.quaternion.w === 'number' ? this.chassisBody.quaternion.w : 1;
-    const currentThreeQuat = new THREE.Quaternion(qx, qy, qz, qw);
+    this.busRoot.position.y = this.chassisBody.position.y;
 
-    // Keep heading (yaw) clamped within safe forward highway orientation (-38° to +38°)
-    const euler = new THREE.Euler().setFromQuaternion(currentThreeQuat, 'YXZ');
-    const safeYaw = Math.max(-0.66, Math.min(0.66, euler.y));
-    const uprightQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, safeYaw, 0, 'YXZ'));
+    // Dynamic Heading Yaw & Chassis Suspension Banking Roll
+    const targetHeadingYaw = steerNorm * turnDir * 0.36; // ~21 deg heading into turn
+    const targetBodyRoll = -steerNorm * 0.055; // Authentic Danfo suspension lean
+    this.busRoot.rotation.order = 'YXZ';
+    this.busRoot.rotation.y = targetHeadingYaw;
+    this.busRoot.rotation.z = targetBodyRoll;
+    this.busRoot.rotation.x = 0;
 
+    const uprightQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, targetHeadingYaw, targetBodyRoll, 'YXZ'));
     this.chassisBody.quaternion.set(uprightQuat.x, uprightQuat.y, uprightQuat.z, uprightQuat.w);
-    this.chassisBody.angularVelocity.x = 0;
-    this.chassisBody.angularVelocity.z = 0;
+    this.chassisBody.angularVelocity.set(0, 0, 0);
 
-    // Copy physics chassis state to Three.js Danfo bus
-    this.busRoot.position.set(this.chassisBody.position.x, this.chassisBody.position.y, this.chassisBody.position.z);
-    this.busRoot.quaternion.copy(uprightQuat);
-
-    // Update wheel transforms and visual wheel rotations
+    // Update wheel transforms and front steering wheel angles
     for (let i = 0; i < this.vehicle.wheelInfos.length; i++) {
       this.vehicle.updateWheelTransform(i);
     }
-    this.leftFrontWheel.rotation.y = clampedSteer;
-    this.rightFrontWheel.rotation.y = clampedSteer;
+    this.leftFrontWheel.rotation.y = steerNorm * 0.52;
+    this.rightFrontWheel.rotation.y = steerNorm * 0.52;
 
-    const currentPhysSpeedMps = this.chassisBody.velocity.length();
+    const currentPhysSpeedMps = speedMps;
     this.wheelRotationRad += (gear === 'R' ? -1 : 1) * currentPhysSpeedMps * dt * 2.8;
     this.leftFrontWheel.rotation.x = this.wheelRotationRad;
     this.rightFrontWheel.rotation.x = this.wheelRotationRad;
@@ -2376,7 +2648,7 @@ export class ThreeDrivingEngine {
     });
 
     // 15. HIGH-PERFORMANCE TRAFFIC AI
-    const lanes = [-5.5, 0, 5.5];
+    const lanes = [-5.8, -2.0, 2.0, 5.8];
 
     for (let i = 0; i < this.trafficMeshes.length; i++) {
       const t = this.trafficMeshes[i];
@@ -2384,23 +2656,22 @@ export class ThreeDrivingEngine {
       if (!u) continue;
 
       u.laneChangeCooldown = Math.max(0, (u.laneChangeCooldown || 0) - dt);
-      let desiredSpeed = u.baseSpeed || 8.5;
+      let desiredSpeed = u.baseSpeed || 9.5;
 
       const distToPlayerZ = t.position.z - busZ;
-      const inPlayerLane = Math.abs(t.position.x - this.busRoot.position.x) < 2.2;
+      const inPlayerLane = Math.abs(t.position.x - this.busRoot.position.x) < 2.0;
 
       // 1. Avoid Player Vehicle:
       if (inPlayerLane) {
         if (distToPlayerZ < 0 && distToPlayerZ > -30) {
           if (u.laneChangeCooldown <= 0) {
-            const nextLane = u.targetLaneX === 0 
-              ? (this.busRoot.position.x > 0 ? -5.5 : 5.5)
-              : 0;
-            u.targetLaneX = nextLane;
+            const currentIdx = lanes.indexOf(u.targetLaneX);
+            const nextIdx = currentIdx > 1 ? currentIdx - 1 : currentIdx + 1;
+            u.targetLaneX = lanes[Math.max(0, Math.min(lanes.length - 1, nextIdx))];
             u.laneChangeCooldown = 2.5;
           }
-          if (distToPlayerZ > -8 && physSpeedMps < u.currentSpeed) {
-            desiredSpeed = Math.max(0, physSpeedMps * 0.9);
+          if (distToPlayerZ > -8 && speedMps < u.currentSpeed) {
+            desiredSpeed = Math.max(0, speedMps * 0.9);
           }
         }
       }
@@ -2413,7 +2684,8 @@ export class ThreeDrivingEngine {
         if (dz > 0 && dz < 18 && Math.abs(t.position.x - other.position.x) < 2.0) {
           desiredSpeed = Math.min(desiredSpeed, (other.userData?.currentSpeed || 8.0) * 0.9);
           if (u.laneChangeCooldown <= 0) {
-            u.targetLaneX = u.targetLaneX === 0 ? 5.5 : 0;
+            const laneChoice = lanes[Math.floor(Math.random() * lanes.length)];
+            u.targetLaneX = laneChoice;
             u.laneChangeCooldown = 2.5;
           }
           break;
@@ -2450,7 +2722,7 @@ export class ThreeDrivingEngine {
     // 16. Dynamic Lagos Danfo Exhaust Particles
     if (isEngineRunning) {
       this.exhaustParticles.visible = true;
-      const smokeFlow = (physSpeedMps * 0.45 + (throttle > 0 ? 3.5 : 0.8)) * dt;
+      const smokeFlow = (speedMps * 0.45 + (throttle > 0 ? 3.5 : 0.8)) * dt;
       for (let i = 0; i < this.exhaustPositions.length; i += 3) {
         this.exhaustPositions[i + 2] -= smokeFlow;
         this.exhaustPositions[i] += (Math.random() - 0.5) * 0.04;
@@ -2490,6 +2762,14 @@ export class ThreeDrivingEngine {
     return {
       position: new THREE.Vector3(x, y, z),
       speedKmH: spd,
+    };
+  }
+
+  public getBusPosition(): { x: number; y: number; z: number } {
+    return {
+      x: this.busRoot ? this.busRoot.position.x : 0,
+      y: this.busRoot ? this.busRoot.position.y : 0,
+      z: this.busRoot ? this.busRoot.position.z : 0,
     };
   }
 

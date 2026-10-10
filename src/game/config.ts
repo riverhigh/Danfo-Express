@@ -31,7 +31,7 @@ export const BUS_PRESETS: Record<string, Bus> = {
     turnSignal: 'OFF',
     hazardLights: false,
     wipersActive: false,
-    isEngineRunning: true,
+    isEngineRunning: false,
     doorState: 'CLOSED',
   },
   TURBO_SPRINTER: {
@@ -64,7 +64,7 @@ export const BUS_PRESETS: Record<string, Bus> = {
     turnSignal: 'OFF',
     hazardLights: false,
     wipersActive: false,
-    isEngineRunning: true,
+    isEngineRunning: false,
     doorState: 'CLOSED',
   },
   HIGH_RISER_COASTER: {
@@ -97,7 +97,7 @@ export const BUS_PRESETS: Record<string, Bus> = {
     turnSignal: 'OFF',
     hazardLights: false,
     wipersActive: false,
-    isEngineRunning: true,
+    isEngineRunning: false,
     doorState: 'CLOSED',
   },
 
@@ -131,7 +131,7 @@ export const BUS_PRESETS: Record<string, Bus> = {
     turnSignal: 'OFF',
     hazardLights: false,
     wipersActive: false,
-    isEngineRunning: true,
+    isEngineRunning: false,
     doorState: 'CLOSED',
   },
   HONDA_CIVIC: {
@@ -164,7 +164,7 @@ export const BUS_PRESETS: Record<string, Bus> = {
     turnSignal: 'OFF',
     hazardLights: false,
     wipersActive: false,
-    isEngineRunning: true,
+    isEngineRunning: false,
     doorState: 'CLOSED',
   },
   POLICE_CAR: {
@@ -197,7 +197,7 @@ export const BUS_PRESETS: Record<string, Bus> = {
     turnSignal: 'OFF',
     hazardLights: false,
     wipersActive: false,
-    isEngineRunning: true,
+    isEngineRunning: false,
     doorState: 'CLOSED',
   },
   ARMY_JEEP: {
@@ -230,7 +230,7 @@ export const BUS_PRESETS: Record<string, Bus> = {
     turnSignal: 'OFF',
     hazardLights: false,
     wipersActive: false,
-    isEngineRunning: true,
+    isEngineRunning: false,
     doorState: 'CLOSED',
   },
   TOYOTA_TOWNACE: {
@@ -263,7 +263,7 @@ export const BUS_PRESETS: Record<string, Bus> = {
     turnSignal: 'OFF',
     hazardLights: false,
     wipersActive: false,
-    isEngineRunning: true,
+    isEngineRunning: false,
     doorState: 'CLOSED',
   }
 };

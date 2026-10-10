@@ -538,11 +538,18 @@ class DanfoSoundEngine {
     osc.stop(t + 0.3);
   }
 
+  private isEngineRunningState: boolean = false;
+
   /**
    * Dynamic engine tone update based on speed (km/h)
    */
   public updateEngine(speedKmH: number) {
-    if (this.isMuted) return;
+    if (this.isMuted || !this.isEngineRunningState) {
+      if (this.engineGain && this.ctx) {
+        this.engineGain.gain.setValueAtTime(0, this.ctx.currentTime);
+      }
+      return;
+    }
     this.initCtx();
     if (!this.ctx) return;
 
@@ -559,17 +566,39 @@ class DanfoSoundEngine {
     }
 
     if (this.engineOsc && this.engineGain) {
-      const targetFreq = 45 + Math.min(180, (speedKmH / 100) * 120);
-      const targetVol = 0.015 + Math.min(0.06, (speedKmH / 100) * 0.05);
-      this.engineOsc.frequency.setTargetAtTime(targetFreq, this.ctx.currentTime, 0.05);
-      this.engineGain.gain.setTargetAtTime(targetVol, this.ctx.currentTime, 0.05);
+      const targetFreq = 48 + Math.min(195, (speedKmH / 100) * 135);
+      const targetVol = 0.02 + Math.min(0.07, (speedKmH / 100) * 0.06);
+      this.engineOsc.frequency.setTargetAtTime(targetFreq, this.ctx.currentTime, 0.04);
+      this.engineGain.gain.setTargetAtTime(targetVol, this.ctx.currentTime, 0.04);
     }
   }
 
   public stopEngine() {
+    this.isEngineRunningState = false;
     if (this.engineGain && this.ctx) {
       this.engineGain.gain.setValueAtTime(0, this.ctx.currentTime);
     }
+  }
+
+  /**
+   * Dead starter / ignition relay mechanical click when engine is off
+   */
+  public playStarterDeadClick() {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(650, t);
+    osc.frequency.exponentialRampToValueAtTime(140, t + 0.035);
+    gain.gain.setValueAtTime(0.3, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.045);
   }
 
   /**
@@ -582,49 +611,124 @@ class DanfoSoundEngine {
 
     const t = this.ctx.currentTime;
     if (turnOn) {
-      // 3 fast cranking pulses
-      for (let i = 0; i < 3; i++) {
-        const ct = t + i * 0.12;
+      this.isEngineRunningState = true;
+
+      // 0. Ignition switch mechanical click
+      const clickOsc = this.ctx.createOscillator();
+      const clickGain = this.ctx.createGain();
+      clickOsc.type = 'triangle';
+      clickOsc.frequency.setValueAtTime(800, t);
+      clickOsc.frequency.exponentialRampToValueAtTime(120, t + 0.04);
+      clickGain.gain.setValueAtTime(0.35, t);
+      clickGain.gain.exponentialRampToValueAtTime(0.001, t + 0.045);
+      clickOsc.connect(clickGain);
+      clickGain.connect(this.ctx.destination);
+      clickOsc.start(t);
+      clickOsc.stop(t + 0.05);
+
+      // 1. High-pitched starter motor electrical whine & alternator hum
+      const starterOsc = this.ctx.createOscillator();
+      const starterGain = this.ctx.createGain();
+      starterOsc.type = 'sawtooth';
+      starterOsc.frequency.setValueAtTime(240, t + 0.04);
+      starterOsc.frequency.linearRampToValueAtTime(360, t + 0.48);
+      starterGain.gain.setValueAtTime(0.12, t + 0.04);
+      starterGain.gain.exponentialRampToValueAtTime(0.001, t + 0.52);
+      starterOsc.connect(starterGain);
+      starterGain.connect(this.ctx.destination);
+      starterOsc.start(t + 0.04);
+      starterOsc.stop(t + 0.54);
+
+      // 2. 5 heavy diesel compression crank pulses ("chug-chug-chug-chug-VROOM!")
+      for (let i = 0; i < 5; i++) {
+        const ct = t + 0.05 + i * 0.095;
         const osc = this.ctx.createOscillator();
+        const sub = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(140, ct);
-        osc.frequency.exponentialRampToValueAtTime(80, ct + 0.08);
-        gain.gain.setValueAtTime(0.18, ct);
-        gain.gain.exponentialRampToValueAtTime(0.01, ct + 0.1);
-        osc.connect(gain);
+        const filter = this.ctx.createBiquadFilter();
+
+        osc.type = 'square';
+        sub.type = 'triangle';
+        osc.frequency.setValueAtTime(160, ct);
+        osc.frequency.exponentialRampToValueAtTime(50, ct + 0.075);
+        sub.frequency.setValueAtTime(90, ct);
+        sub.frequency.exponentialRampToValueAtTime(35, ct + 0.075);
+
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(650, ct);
+
+        gain.gain.setValueAtTime(0.3, ct);
+        gain.gain.exponentialRampToValueAtTime(0.005, ct + 0.085);
+
+        osc.connect(filter);
+        sub.connect(filter);
+        filter.connect(gain);
         gain.connect(this.ctx.destination);
+
         osc.start(ct);
-        osc.stop(ct + 0.11);
+        sub.start(ct);
+        osc.stop(ct + 0.09);
+        sub.stop(ct + 0.09);
       }
 
-      // Final engine combustion catch
-      const igniteTime = t + 0.38;
+      // 3. Deep diesel combustion roar & rev flare ("VROOOOM!")
+      const catchTime = t + 0.52;
       const roar = this.ctx.createOscillator();
+      const roarSub = this.ctx.createOscillator();
+      const roarFilter = this.ctx.createBiquadFilter();
       const roarGain = this.ctx.createGain();
+
       roar.type = 'sawtooth';
-      roar.frequency.setValueAtTime(70, igniteTime);
-      roar.frequency.exponentialRampToValueAtTime(180, igniteTime + 0.2);
-      roar.frequency.exponentialRampToValueAtTime(60, igniteTime + 0.5);
-      roarGain.gain.setValueAtTime(0.3, igniteTime);
-      roarGain.gain.exponentialRampToValueAtTime(0.02, igniteTime + 0.5);
-      roar.connect(roarGain);
+      roarSub.type = 'triangle';
+
+      // Rev pitch flare up to 220Hz then settles into 65Hz idling
+      roar.frequency.setValueAtTime(60, catchTime);
+      roar.frequency.exponentialRampToValueAtTime(220, catchTime + 0.25);
+      roar.frequency.exponentialRampToValueAtTime(65, catchTime + 0.75);
+
+      roarSub.frequency.setValueAtTime(45, catchTime);
+      roarSub.frequency.exponentialRampToValueAtTime(110, catchTime + 0.25);
+      roarSub.frequency.exponentialRampToValueAtTime(38, catchTime + 0.75);
+
+      roarFilter.type = 'lowpass';
+      roarFilter.frequency.setValueAtTime(1400, catchTime);
+      roarFilter.frequency.linearRampToValueAtTime(480, catchTime + 0.75);
+
+      roarGain.gain.setValueAtTime(0.48, catchTime);
+      roarGain.gain.exponentialRampToValueAtTime(0.07, catchTime + 0.8);
+
+      roar.connect(roarFilter);
+      roarSub.connect(roarFilter);
+      roarFilter.connect(roarGain);
       roarGain.connect(this.ctx.destination);
-      roar.start(igniteTime);
-      roar.stop(igniteTime + 0.55);
+
+      roar.start(catchTime);
+      roarSub.start(catchTime);
+      roar.stop(catchTime + 0.85);
+      roarSub.stop(catchTime + 0.85);
+
+      // Start continuous idling engine sound right after
+      setTimeout(() => {
+        if (!this.isMuted && this.isEngineRunningState) {
+          this.updateEngine(0);
+        }
+      }, 780);
     } else {
-      // Sputtering engine shutdown
+      this.isEngineRunningState = false;
+      this.stopEngine();
+
+      // Sputtering engine shutdown ("putt-putt-sputter-off")
       const osc = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
       osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(55, t);
-      osc.frequency.exponentialRampToValueAtTime(15, t + 0.4);
-      gain.gain.setValueAtTime(0.2, t);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+      osc.frequency.setValueAtTime(65, t);
+      osc.frequency.exponentialRampToValueAtTime(12, t + 0.45);
+      gain.gain.setValueAtTime(0.28, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
       osc.connect(gain);
       gain.connect(this.ctx.destination);
       osc.start(t);
-      osc.stop(t + 0.45);
+      osc.stop(t + 0.5);
       this.stopEngine();
     }
   }
