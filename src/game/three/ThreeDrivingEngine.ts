@@ -96,10 +96,8 @@ export class ThreeDrivingEngine {
   private trafficModels: THREE.Group[] = [];
   private npcModels: THREE.Group[] = [];
     
-  // In setupRoadAndCity, we pre-load Danfo model and Lagos pedestrians (no real car GLBs)
+  // Pre-load Lagos pedestrians with proper foot-level alignment (no vehicle GLBs downloaded)
   private loadTrafficModels() {
-    const loader = new GLTFLoader();
-    
     const npcLoader = new GLTFLoader();
     this.npcModels = [];
     const npcPaths = [
@@ -110,24 +108,20 @@ export class ThreeDrivingEngine {
     ];
     npcPaths.forEach(path => {
       npcLoader.load(path, (gltf) => {
+        // 1. Calculate the character's exact physical boundaries
+        const humanBox = new THREE.Box3().setFromObject(gltf.scene);
+        const lowestY = humanBox.min.y; // Finds the absolute bottom of their shoes
+
+        // 2. Shift the internal meshes up so the feet rest at Y = 0
+        gltf.scene.children.forEach(child => {
+          child.position.y -= lowestY;
+        });
+
         const m = gltf.scene;
         m.scale.set(1.4, 1.4, 1.4);
         m.position.set(0, 0, 0);
         this.npcModels.push(m);
-      });
-    });
-        
-    const modelsToLoad = [
-      '/models/danfo.glb'
-    ];
-      
-    modelsToLoad.forEach(path => {
-      loader.load(path, (gltf) => {
-        const m = gltf.scene;
-        m.scale.set(1.5, 1.5, 1.5);
-        m.position.set(0, 0.2, 0);
-        this.trafficModels.push(m);
-      });
+      }, undefined, (err) => console.warn('Pedestrian GLB load warning:', err));
     });
   }
 
@@ -277,13 +271,17 @@ export class ThreeDrivingEngine {
     rightBarrier.position.set(11.5, 2.0, 0);
     this.world.addBody(rightBarrier);
 
-    // 3. Implement a CANNON.RaycastVehicle setup for our Danfo bus .glb model
+    // 3. Implement a CANNON.RaycastVehicle setup for our Danfo bus
     // Give the chassis body a mass of 1500
     const chassisShape = new CANNON.Box(new CANNON.Vec3(1.06, 0.85, 2.45));
     this.chassisBody = new CANNON.Body({ mass: 1500 });
     this.chassisBody.addShape(chassisShape, new CANNON.Vec3(0, 0, 0));
     // Position chassis above ground
     this.chassisBody.position.set(0, 0.85, 0);
+    // CRITICAL: Strictly lock pitch (X) and roll (Z) so vehicle CANNOT flip upside down!
+    this.chassisBody.angularFactor.set(0, 1, 0);
+    this.chassisBody.angularDamping = 0.6;
+    this.chassisBody.linearDamping = 0.04;
     this.world.addBody(this.chassisBody);
 
     this.vehicle = new CANNON.RaycastVehicle({
@@ -293,17 +291,17 @@ export class ThreeDrivingEngine {
       indexForwardAxis: 2,
     });
 
-    // Configure 4 physical wheels with realistic suspension stiffness (25), damping (2.4), and friction slip (10.5)
+    // Configure 4 physical wheels with realistic suspension stiffness, damping, and zero roll influence
     const wheelOptions = {
       radius: 0.42,
       directionLocal: new CANNON.Vec3(0, -1, 0),
-      suspensionStiffness: 25,
+      suspensionStiffness: 28,
       suspensionRestLength: 0.4,
-      frictionSlip: 10.5,
-      dampingRelaxation: 2.4,
-      dampingCompression: 2.4,
+      frictionSlip: 12.0,
+      dampingRelaxation: 2.6,
+      dampingCompression: 2.6,
       maxSuspensionForce: 100000,
-      rollInfluence: 0.1,
+      rollInfluence: 0.0, // Zero roll influence so suspension cannot flip or tilt the bus!
       axleLocal: new CANNON.Vec3(1, 0, 0),
       chassisConnectionPointLocal: new CANNON.Vec3(0, 0, 0),
       maxSuspensionTravel: 0.3,
@@ -1296,7 +1294,8 @@ export class ThreeDrivingEngine {
 
         const pX = 10.5 + (p % 2) * 1.5;
         const pZ = -2.5 + p * 2.2;
-        pGroup.position.set(pX, 0, pZ);
+        // Sidewalk top surface is at Y = 0.25 so feet sit flat on sidewalk grid
+        pGroup.position.set(pX, 0.25, pZ);
         pGroup.rotation.y = -Math.PI / 2;
         pGroup.userData = { origX: pX, origZ: pZ, boarded: false };
 
@@ -1311,6 +1310,15 @@ export class ThreeDrivingEngine {
           applyCharModel(ThreeDrivingEngine.modelCache.get(charPath)!);
         } else {
           charLoader.load(charPath, (gltf) => {
+            // 1. Calculate the character's exact physical boundaries
+            const humanBox = new THREE.Box3().setFromObject(gltf.scene);
+            const lowestY = humanBox.min.y; // Finds the absolute bottom of their shoes
+
+            // 2. Shift the internal meshes up so the feet rest at Y = 0
+            gltf.scene.children.forEach(child => {
+              child.position.y -= lowestY;
+            });
+
             const charScene = gltf.scene;
             const bbox = new THREE.Box3().setFromObject(charScene);
             const size = bbox.getSize(new THREE.Vector3());
@@ -1319,8 +1327,12 @@ export class ThreeDrivingEngine {
               const targetHeight = 1.75;
               const rawHeight = size.y > 0.5 ? size.y : maxDim;
               charScene.scale.setScalar(targetHeight / rawHeight);
-              const finalBox = new THREE.Box3().setFromObject(charScene);
-              charScene.position.y = -finalBox.min.y;
+              // Re-check bounding box after scaling to ensure shoes rest flat at Y = 0
+              const postBox = new THREE.Box3().setFromObject(charScene);
+              const postLowest = postBox.min.y;
+              charScene.children.forEach(child => {
+                child.position.y -= postLowest;
+              });
             }
             ThreeDrivingEngine.modelCache.set(charPath, charScene);
             applyCharModel(charScene);
@@ -1336,67 +1348,324 @@ export class ThreeDrivingEngine {
     });
   }
 
-  private createFallbackTrafficCar(colorHex: number): THREE.Group {
+  /**
+   * Procedural factory function called createProceduralTrafficCar(colorHex)
+   * Constructs realistic arcade vehicles using Procedural Geometry and Advanced Materials.
+   * Completely eliminates external .glb downloads for traffic cars.
+   */
+  public createProceduralTrafficCar(colorHex: number, isDanfo: boolean = false): THREE.Group {
     const car = new THREE.Group();
-    const bodyMat = new THREE.MeshStandardMaterial({ color: colorHex, metalness: 0.5, roughness: 0.3 });
-    const glassMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.1, transparent: true, opacity: 0.7 });
-    const tireMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.85 });
-    const lightMat = new THREE.MeshStandardMaterial({ color: 0xfffbeb, emissive: 0xfef08a, emissiveIntensity: 1.2 });
-    const brakeMat = new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0xb91c1c, emissiveIntensity: 1.0 });
 
-    // Lower body (sedan proportions: 1.9m wide, 0.7m tall, 4.4m long)
-    const body = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.7, 4.4), bodyMat);
-    body.position.y = 0.65;
-    car.add(body);
-
-    // Cabin / Roof (1.6m wide, 0.65m tall, 2.3m long)
-    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.65, 2.3), bodyMat);
-    cabin.position.set(0, 1.25, -0.2);
-    car.add(cabin);
-
-    // Windshields
-    const ws = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.55), glassMat);
-    ws.position.set(0, 1.2, 0.96);
-    ws.rotation.x = -0.3;
-    car.add(ws);
-
-    const rw = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.5), glassMat);
-    rw.position.set(0, 1.2, -1.36);
-    rw.rotation.x = 0.3;
-    rw.rotation.y = Math.PI;
-    car.add(rw);
-
-    // Headlights & Taillights
-    [-0.7, 0.7].forEach(lx => {
-      const hl = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.05, 12), lightMat);
-      hl.rotation.x = Math.PI / 2;
-      hl.position.set(lx, 0.65, 2.21);
-      car.add(hl);
-
-      const tl = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.05, 12), brakeMat);
-      tl.rotation.x = Math.PI / 2;
-      tl.position.set(lx, 0.65, -2.21);
-      car.add(tl);
+    // Chassis Body Material: MeshStandardMaterial with roughness: 0.1 and metalness: 0.6
+    // Highly reflective, glossy automotive paint finish
+    const paintMat = new THREE.MeshStandardMaterial({
+      color: isDanfo ? 0xfacc15 : colorHex,
+      roughness: 0.1,
+      metalness: 0.6,
     });
 
-    // 4 Wheels
-    const wGeo = new THREE.CylinderGeometry(0.34, 0.34, 0.22, 16);
-    wGeo.rotateZ(Math.PI / 2);
-    [[-0.95, 1.3], [0.95, 1.3], [-0.95, -1.3], [0.95, -1.3]].forEach(([wx, wz]) => {
-      const w = new THREE.Mesh(wGeo, tireMat);
-      w.position.set(wx, 0.34, wz);
-      car.add(w);
+    // Windows Material: thin dark boxes with black tint, high gloss, and transparency (transparent: true, opacity: 0.7)
+    const glassMat = new THREE.MeshStandardMaterial({
+      color: 0x050810,
+      roughness: 0.05,
+      metalness: 0.3,
+      transparent: true,
+      opacity: 0.7,
     });
+
+    // Tires Material: dark gray matte material (roughness: 0.8)
+    const tireMat = new THREE.MeshStandardMaterial({
+      color: 0x1f2124,
+      roughness: 0.8,
+      metalness: 0.1,
+    });
+
+    // Shiny metallic trim for bumpers & wheel hubs
+    const chromeMat = new THREE.MeshStandardMaterial({
+      color: 0xd1d5db,
+      roughness: 0.15,
+      metalness: 0.85,
+    });
+
+    // Self-Illuminating Lights: THREE.MeshBasicMaterial with bright white glow for headlights
+    const headlightMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+    });
+
+    // Taillights: bright red for taillights (active at night without laggy lights)
+    const taillightMat = new THREE.MeshBasicMaterial({
+      color: 0xff1e1e,
+    });
+
+    const tireRadius = 0.35;
+    const tireWidth = 0.22;
+    // Set model base pivot point EXACTLY at bottom of tires so it snaps flat to road canvas (bottom of tires at Y = 0)
+    // Axle center is therefore at Y = tireRadius = 0.35
+
+    if (isDanfo) {
+      // ════════════════════════════════════════════════════════
+      // LAGOS DANFO COMMUTER VAN (PROCEDURAL GEOMETRY)
+      // ════════════════════════════════════════════════════════
+      const bodyWidth = 2.1;
+      const bodyHeight = 1.1;
+      const bodyLength = 4.8;
+
+      // 1. Lower Van Body Box
+      const bodyMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(bodyWidth, bodyHeight, bodyLength),
+        paintMat
+      );
+      bodyMesh.position.set(0, tireRadius + bodyHeight / 2 + 0.04, 0);
+      car.add(bodyMesh);
+
+      // Signature Lagos Danfo Dual Green Stripes along body
+      const greenStripeMat = new THREE.MeshStandardMaterial({
+        color: 0x15803d,
+        roughness: 0.2,
+        metalness: 0.2,
+      });
+      [-0.1, 0.15].forEach((sy) => {
+        const stripeL = new THREE.Mesh(
+          new THREE.BoxGeometry(0.04, 0.12, bodyLength * 0.96),
+          greenStripeMat
+        );
+        stripeL.position.set(bodyWidth / 2 + 0.01, tireRadius + bodyHeight / 2 + sy, 0);
+        car.add(stripeL);
+
+        const stripeR = new THREE.Mesh(
+          new THREE.BoxGeometry(0.04, 0.12, bodyLength * 0.96),
+          greenStripeMat
+        );
+        stripeR.position.set(-bodyWidth / 2 - 0.01, tireRadius + bodyHeight / 2 + sy, 0);
+        car.add(stripeR);
+      });
+
+      // 2. Upper Cabin / High Roof Box
+      const cabinHeight = 0.85;
+      const cabinMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(bodyWidth * 0.96, cabinHeight, bodyLength * 0.94),
+        paintMat
+      );
+      cabinMesh.position.set(0, tireRadius + bodyHeight + cabinHeight / 2, -0.05);
+      car.add(cabinMesh);
+
+      // 3. Windows (Thin dark boxes with black tint, high gloss, transparency)
+      // Front Windshield
+      const windshield = new THREE.Mesh(
+        new THREE.BoxGeometry(bodyWidth * 0.9, 0.72, 0.06),
+        glassMat
+      );
+      windshield.position.set(0, tireRadius + bodyHeight + 0.38, bodyLength * 0.47);
+      windshield.rotation.x = -0.22;
+      car.add(windshield);
+
+      // Rear Window
+      const rearGlass = new THREE.Mesh(
+        new THREE.BoxGeometry(bodyWidth * 0.85, 0.65, 0.06),
+        glassMat
+      );
+      rearGlass.position.set(0, tireRadius + bodyHeight + 0.38, -bodyLength * 0.47);
+      car.add(rearGlass);
+
+      // Side Windows
+      [-1, 1].forEach((side) => {
+        const sideGlass = new THREE.Mesh(
+          new THREE.BoxGeometry(0.06, 0.62, bodyLength * 0.72),
+          glassMat
+        );
+        sideGlass.position.set(side * (bodyWidth / 2 + 0.01), tireRadius + bodyHeight + 0.36, -0.15);
+        car.add(sideGlass);
+      });
+
+      // 4. Roof Destination Board Lightbox
+      const signLight = new THREE.Mesh(
+        new THREE.BoxGeometry(1.5, 0.22, 0.28),
+        new THREE.MeshBasicMaterial({ color: 0xffffff })
+      );
+      signLight.position.set(0, tireRadius + bodyHeight + cabinHeight + 0.12, 1.6);
+      car.add(signLight);
+
+      // Bumpers
+      const frontBumper = new THREE.Mesh(
+        new THREE.BoxGeometry(bodyWidth + 0.06, 0.2, 0.2),
+        chromeMat
+      );
+      frontBumper.position.set(0, tireRadius + 0.15, bodyLength / 2 + 0.1);
+      car.add(frontBumper);
+
+      const rearBumper = new THREE.Mesh(
+        new THREE.BoxGeometry(bodyWidth + 0.06, 0.2, 0.2),
+        chromeMat
+      );
+      rearBumper.position.set(0, tireRadius + 0.15, -bodyLength / 2 - 0.1);
+      car.add(rearBumper);
+
+      // Self-Illuminating Headlights & Taillights
+      [-0.78, 0.78].forEach((lx) => {
+        const headLight = new THREE.Mesh(
+          new THREE.BoxGeometry(0.25, 0.18, 0.06),
+          headlightMat
+        );
+        headLight.position.set(lx, tireRadius + 0.45, bodyLength / 2 + 0.02);
+        car.add(headLight);
+
+        const tailLight = new THREE.Mesh(
+          new THREE.BoxGeometry(0.22, 0.2, 0.06),
+          taillightMat
+        );
+        tailLight.position.set(lx, tireRadius + 0.5, -bodyLength / 2 - 0.02);
+        car.add(tailLight);
+      });
+
+      // 4 Wheels (THREE.CylinderGeometry rotated sideways)
+      const wheelGeo = new THREE.CylinderGeometry(tireRadius, tireRadius, tireWidth, 18);
+      wheelGeo.rotateZ(Math.PI / 2);
+      const hubGeo = new THREE.CylinderGeometry(tireRadius * 0.45, tireRadius * 0.45, tireWidth + 0.02, 12);
+      hubGeo.rotateZ(Math.PI / 2);
+
+      const wheelPositions: [number, number][] = [
+        [-bodyWidth / 2 - 0.02, 1.45],
+        [bodyWidth / 2 + 0.02, 1.45],
+        [-bodyWidth / 2 - 0.02, -1.45],
+        [bodyWidth / 2 + 0.02, -1.45],
+      ];
+
+      wheelPositions.forEach(([wx, wz]) => {
+        const wheel = new THREE.Mesh(wheelGeo, tireMat);
+        wheel.position.set(wx, tireRadius, wz);
+        const hub = new THREE.Mesh(hubGeo, chromeMat);
+        wheel.add(hub);
+        car.add(wheel);
+      });
+    } else {
+      // ════════════════════════════════════════════════════════
+      // ARCADE CIVILIAN TRAFFIC SEDAN (PROCEDURAL GEOMETRY)
+      // ════════════════════════════════════════════════════════
+      const carWidth = 1.9;
+      const carLength = 4.4;
+      const lowerHeight = 0.52;
+
+      // 1. Stacked Chassis Body: Lower body box
+      const lowerBody = new THREE.Mesh(
+        new THREE.BoxGeometry(carWidth, lowerHeight, carLength),
+        paintMat
+      );
+      lowerBody.position.set(0, tireRadius + lowerHeight / 2 + 0.04, 0);
+      car.add(lowerBody);
+
+      // 2. Bonnet / Hood step box
+      const hood = new THREE.Mesh(
+        new THREE.BoxGeometry(carWidth * 0.94, 0.18, 1.3),
+        paintMat
+      );
+      hood.position.set(0, tireRadius + lowerHeight + 0.06, 1.4);
+      car.add(hood);
+
+      // 3. Trunk / Rear Boot step box
+      const trunk = new THREE.Mesh(
+        new THREE.BoxGeometry(carWidth * 0.94, 0.18, 1.0),
+        paintMat
+      );
+      trunk.position.set(0, tireRadius + lowerHeight + 0.06, -1.55);
+      car.add(trunk);
+
+      // 4. Cabin & Roof stacked box
+      const cabinHeight = 0.56;
+      const cabinLength = 2.1;
+      const cabin = new THREE.Mesh(
+        new THREE.BoxGeometry(carWidth * 0.84, cabinHeight, cabinLength),
+        paintMat
+      );
+      cabin.position.set(0, tireRadius + lowerHeight + cabinHeight / 2 + 0.08, -0.15);
+      car.add(cabin);
+
+      // 5. Windows: Thin dark boxes with black tint, high gloss, transparency
+      const windshield = new THREE.Mesh(
+        new THREE.BoxGeometry(carWidth * 0.8, 0.5, 0.05),
+        glassMat
+      );
+      windshield.position.set(0, tireRadius + lowerHeight + 0.32, 0.88);
+      windshield.rotation.x = -0.38;
+      car.add(windshield);
+
+      const rearWindow = new THREE.Mesh(
+        new THREE.BoxGeometry(carWidth * 0.78, 0.46, 0.05),
+        glassMat
+      );
+      rearWindow.position.set(0, tireRadius + lowerHeight + 0.32, -1.18);
+      rearWindow.rotation.x = 0.34;
+      car.add(rearWindow);
+
+      [-1, 1].forEach((side) => {
+        const sideWindow = new THREE.Mesh(
+          new THREE.BoxGeometry(0.04, 0.42, 1.7),
+          glassMat
+        );
+        sideWindow.position.set(side * (carWidth * 0.84 / 2 + 0.01), tireRadius + lowerHeight + 0.3, -0.15);
+        car.add(sideWindow);
+      });
+
+      // Front & Rear Bumpers
+      const frontBumper = new THREE.Mesh(
+        new THREE.BoxGeometry(carWidth * 0.98, 0.16, 0.14),
+        chromeMat
+      );
+      frontBumper.position.set(0, tireRadius + 0.12, carLength / 2 + 0.04);
+      car.add(frontBumper);
+
+      const rearBumper = new THREE.Mesh(
+        new THREE.BoxGeometry(carWidth * 0.98, 0.16, 0.14),
+        chromeMat
+      );
+      rearBumper.position.set(0, tireRadius + 0.12, -carLength / 2 - 0.04);
+      car.add(rearBumper);
+
+      // Self-Illuminating Lights
+      [-0.68, 0.68].forEach((lx) => {
+        // Headlights: bright white glow
+        const headLight = new THREE.Mesh(
+          new THREE.BoxGeometry(0.24, 0.14, 0.05),
+          headlightMat
+        );
+        headLight.position.set(lx, tireRadius + 0.38, carLength / 2 + 0.02);
+        car.add(headLight);
+
+        // Taillights: bright red glow
+        const tailLight = new THREE.Mesh(
+          new THREE.BoxGeometry(0.24, 0.14, 0.05),
+          taillightMat
+        );
+        tailLight.position.set(lx, tireRadius + 0.4, -carLength / 2 - 0.02);
+        car.add(tailLight);
+      });
+
+      // 4 Wheels: cylinders rotated sideways with dark gray matte tires
+      const wheelGeo = new THREE.CylinderGeometry(tireRadius, tireRadius, tireWidth, 16);
+      wheelGeo.rotateZ(Math.PI / 2);
+      const hubGeo = new THREE.CylinderGeometry(tireRadius * 0.45, tireRadius * 0.45, tireWidth + 0.02, 12);
+      hubGeo.rotateZ(Math.PI / 2);
+
+      const wheelPositions: [number, number][] = [
+        [-carWidth / 2 - 0.01, 1.3],
+        [carWidth / 2 + 0.01, 1.3],
+        [-carWidth / 2 - 0.01, -1.3],
+        [carWidth / 2 + 0.01, -1.3],
+      ];
+
+      wheelPositions.forEach(([wx, wz]) => {
+        const wheel = new THREE.Mesh(wheelGeo, tireMat);
+        wheel.position.set(wx, tireRadius, wz);
+        const hub = new THREE.Mesh(hubGeo, chromeMat);
+        wheel.add(hub);
+        car.add(wheel);
+      });
+    }
 
     return car;
   }
 
   private setupTrafficAndHazards() {
-    const loader = new GLTFLoader();
-    const lanes = [-5.5, 0, 5.5];
-    const danfoGlbPath = '/models/danfo.glb';
-
-    // 1. EXACTLY 9 NPC RIVAL BUS DRIVERS (ALL USING danfo.glb!)
+    // 1. EXACTLY 9 NPC RIVAL BUS DRIVERS (ALL USING PROCEDURAL DANFO BUSES!)
     const rivalDanfoDrivers = [
       { name: 'Alhaji Agbaje', slogan: 'No King as God', speed: 12.5, lane: -5.5, z: 45 },
       { name: 'Oshodi Overloader', slogan: 'Face Your Front', speed: 13.8, lane: 0, z: 90 },
@@ -1409,7 +1678,7 @@ export class ThreeDrivingEngine {
       { name: 'Lekki Hustler', slogan: 'Eko Oni Baje', speed: 14.8, lane: 5.5, z: 405 },
     ];
 
-    rivalDanfoDrivers.forEach((driver, idx) => {
+    rivalDanfoDrivers.forEach((driver) => {
       const rivalBus = new THREE.Group();
       rivalBus.userData = {
         isRivalDanfo: true,
@@ -1423,31 +1692,14 @@ export class ThreeDrivingEngine {
         hasGlb: false
       };
 
+      // Base pivot at bottom of tires snaps flat to road canvas at Y = 0
       rivalBus.position.set(driver.lane, 0, driver.z);
       this.scene.add(rivalBus);
       this.trafficMeshes.push(rivalBus);
 
-      // Instant fallback yellow Danfo vehicle so it is never blank while loading
-      const fallbackDanfo = this.createFallbackTrafficCar(0xf59e0b);
-      rivalBus.add(fallbackDanfo);
-
-      const applyModel = (prototype: THREE.Group) => {
-        const clone = prototype.clone(true);
-        fallbackDanfo.visible = false;
-        rivalBus.add(clone);
-        rivalBus.userData.hasGlb = true;
-      };
-
-      if (ThreeDrivingEngine.modelCache.has(danfoGlbPath)) {
-        applyModel(ThreeDrivingEngine.modelCache.get(danfoGlbPath)!);
-      } else {
-        loader.load(danfoGlbPath, (gltf) => {
-          const m = gltf.scene;
-          this.normalizeVehicleModel(m, danfoGlbPath);
-          ThreeDrivingEngine.modelCache.set(danfoGlbPath, m);
-          applyModel(m);
-        }, undefined, (err) => console.warn('Rival Danfo GLB cache error:', err));
-      }
+      // Realistic Procedural Danfo Bus (No external .glb downloads)
+      const proceduralDanfo = this.createProceduralTrafficCar(0xfacc15, true);
+      rivalBus.add(proceduralDanfo);
     });
 
     // 2. Civilian traffic vehicles (Lagos sedans, taxis, and commuter cars)
@@ -1476,8 +1728,9 @@ export class ThreeDrivingEngine {
       this.scene.add(traffic);
       this.trafficMeshes.push(traffic);
 
-      const fallbackCar = this.createFallbackTrafficCar(civ.color);
-      traffic.add(fallbackCar);
+      // Realistic Procedural Traffic Car (No external .glb downloads)
+      const proceduralCar = this.createProceduralTrafficCar(civ.color, false);
+      traffic.add(proceduralCar);
     });
   }
 
@@ -1576,43 +1829,95 @@ export class ThreeDrivingEngine {
 
     if (isEngineRunning && !isSteppedDown) {
       if (gear === 'D' || gear === 'L') {
-        const forceMult = gear === 'L' ? 1.3 : 1.0;
-        const driveForce = throttle > 0 ? (-maxEngineForce * throttle * forceMult) : 0;
-        this.vehicle.applyEngineForce(driveForce, 2);
-        this.vehicle.applyEngineForce(driveForce, 3);
+        const topSpeedMps = gear === 'L' ? 15 : 28; // ~54 km/h or ~100 km/h
+        const forceMult = gear === 'L' ? 1.35 : 1.0;
+        const driveForce = throttle > 0 ? (-4000 * throttle * forceMult) : 0;
+        // Apply engine force to wheels for realistic wheel spin
+        for (let i = 0; i < 4; i++) {
+          this.vehicle.applyEngineForce(driveForce, i);
+        }
+        // Direct snappy arcade throttle assist to guarantee instant acceleration response
+        if (throttle > 0) {
+          const currentFwdSpeed = this.chassisBody.velocity.z;
+          if (currentFwdSpeed < topSpeedMps) {
+            this.chassisBody.velocity.z = Math.min(topSpeedMps, currentFwdSpeed + 16 * dt * throttle * forceMult);
+          }
+        }
       } else if (gear === 'R') {
-        const revForce = throttle > 0 ? (maxEngineForce * 0.7 * throttle) : 0;
-        this.vehicle.applyEngineForce(revForce, 2);
-        this.vehicle.applyEngineForce(revForce, 3);
+        const revForce = throttle > 0 ? (3500 * throttle) : 0;
+        for (let i = 0; i < 4; i++) {
+          this.vehicle.applyEngineForce(revForce, i);
+        }
+        if (throttle > 0) {
+          const currentRevSpeed = this.chassisBody.velocity.z;
+          if (currentRevSpeed > -8) {
+            this.chassisBody.velocity.z = Math.max(-8, currentRevSpeed - 12 * dt * throttle);
+          }
+        }
       } else {
-        this.vehicle.applyEngineForce(0, 2);
-        this.vehicle.applyEngineForce(0, 3);
+        for (let i = 0; i < 4; i++) {
+          this.vehicle.applyEngineForce(0, i);
+        }
       }
     } else {
-      this.vehicle.applyEngineForce(0, 2);
-      this.vehicle.applyEngineForce(0, 3);
+      for (let i = 0; i < 4; i++) {
+        this.vehicle.applyEngineForce(0, i);
+      }
     }
 
-    // Braking physics
+    // Responsive braking & deceleration physics
     if (isBraking || gear === 'P' || !isEngineRunning) {
-      const brakeForce = isBraking ? 150 : (gear === 'P' ? 300 : 50);
-      this.vehicle.setBrake(brakeForce, 0);
-      this.vehicle.setBrake(brakeForce, 1);
-      this.vehicle.setBrake(brakeForce, 2);
-      this.vehicle.setBrake(brakeForce, 3);
+      const brakeForce = isBraking ? 180 : (gear === 'P' ? 400 : 50);
+      for (let i = 0; i < 4; i++) {
+        this.vehicle.setBrake(brakeForce, i);
+      }
+      this.chassisBody.velocity.z *= Math.pow(0.08, dt);
+      this.chassisBody.velocity.x *= Math.pow(0.08, dt);
     } else {
-      const rollingResistance = throttle > 0 ? 0 : 8;
-      this.vehicle.setBrake(rollingResistance, 0);
-      this.vehicle.setBrake(rollingResistance, 1);
-      this.vehicle.setBrake(rollingResistance, 2);
-      this.vehicle.setBrake(rollingResistance, 3);
+      const rollingResistance = throttle > 0 ? 0 : 5;
+      for (let i = 0; i < 4; i++) {
+        this.vehicle.setBrake(rollingResistance, i);
+      }
+      if (throttle <= 0) {
+        this.chassisBody.velocity.z *= Math.pow(0.92, dt);
+      }
     }
 
-    // 5. In requestAnimationFrame loop: step physics world forward using world.fixedStep()
-    // and copy position and rotation (quaternion) of physics chassis body directly onto Three.js Danfo bus mesh
+    // Snappy responsive arcade lateral steering assist
+    if (Math.abs(clampedSteer) > 0.01 && this.chassisBody.velocity.length() > 0.3) {
+      const speedNorm = Math.min(1.0, this.chassisBody.velocity.length() / 15);
+      const latTarget = -steerFactor * 5.2 * speedNorm;
+      this.chassisBody.velocity.x = THREE.MathUtils.lerp(this.chassisBody.velocity.x, latTarget, dt * 6.5);
+    } else {
+      this.chassisBody.velocity.x *= Math.pow(0.08, dt);
+    }
+
+    // Step physics world forward using fixedStep()
     this.world.fixedStep();
-    this.busRoot.position.copy(this.chassisBody.position as any);
-    this.busRoot.quaternion.copy(this.chassisBody.quaternion as any);
+
+    // STRICT UPRIGHT STABILIZATION - GUARANTEES GAME / DANFO BUS NEVER TURNS UPSIDE DOWN
+    if (this.chassisBody.position.y < 0.4 || isNaN(this.chassisBody.position.y)) {
+      this.chassisBody.position.y = 0.85;
+      this.chassisBody.velocity.y = 0;
+    }
+    const qx = this.chassisBody.quaternion.x || 0;
+    const qy = this.chassisBody.quaternion.y || 0;
+    const qz = this.chassisBody.quaternion.z || 0;
+    const qw = typeof this.chassisBody.quaternion.w === 'number' ? this.chassisBody.quaternion.w : 1;
+    const currentThreeQuat = new THREE.Quaternion(qx, qy, qz, qw);
+
+    const euler = new THREE.Euler().setFromQuaternion(currentThreeQuat, 'YXZ');
+    euler.x = 0; // strictly zero out pitch
+    euler.z = 0; // strictly zero out roll
+    const uprightQuat = new THREE.Quaternion().setFromEuler(euler);
+
+    this.chassisBody.quaternion.set(uprightQuat.x, uprightQuat.y, uprightQuat.z, uprightQuat.w);
+    this.chassisBody.angularVelocity.x = 0;
+    this.chassisBody.angularVelocity.z = 0;
+
+    // Copy physics chassis state to Three.js Danfo bus
+    this.busRoot.position.set(this.chassisBody.position.x, this.chassisBody.position.y, this.chassisBody.position.z);
+    this.busRoot.quaternion.copy(uprightQuat);
 
     // Update wheel transforms and visual wheel rotations
     for (let i = 0; i < this.vehicle.wheelInfos.length; i++) {
@@ -1675,11 +1980,15 @@ export class ThreeDrivingEngine {
       const pitchWobble = Math.sin(this.bumpTimer * 1.2) * this.bumpImpulse * 0.07 * decay;
       const rollWobble = Math.cos(this.bumpTimer * 0.9) * this.bumpImpulse * 0.035 * decay;
 
-      this.busRoot.position.y = bounceY;
-      this.busRoot.rotation.x += pitchWobble;
-      this.busRoot.rotation.z += rollWobble;
+      this.busBody.position.y = -0.85 + bounceY;
+      this.busBody.rotation.x = pitchWobble;
+      this.busBody.rotation.z = rollWobble;
 
       this.bumpImpulse *= Math.pow(0.12, dt);
+    } else {
+      this.busBody.position.y = -0.85;
+      this.busBody.rotation.x = 0;
+      this.busBody.rotation.z = 0;
     }
 
     // 5. Blinker flashers
@@ -1772,6 +2081,7 @@ export class ThreeDrivingEngine {
     // 11. STRICT CAMERA MODES & VIEW LOGIC
     // ========================================================
     if (isSteppedDown) {
+      this.camera.up.set(0, 1, 0);
       if (!this.wasSteppedDown) {
         this.driverWalkPos.set(laneOffsetMeters + 2.5, 0, 0.5);
       }
@@ -1816,14 +2126,16 @@ export class ThreeDrivingEngine {
       // SATELLITE BIRD'S EYE VIEW: High above directly centered over the Danfo bus
       const targetX = this.busRoot.position.x;
       const targetZ = this.busRoot.position.z;
-      const camPos = new THREE.Vector3(targetX, this.busRoot.position.y + 24, targetZ - 2.0);
+      const camPos = new THREE.Vector3(targetX, this.busRoot.position.y + 24, targetZ - 1.5);
       this.camera.position.lerp(camPos, 0.2);
       const lookTarget = new THREE.Vector3(targetX, this.busRoot.position.y + 0.8, targetZ + 1.2);
+      this.camera.up.set(0, 0, 1); // +Z is up in top-down screen orientation
       this.camera.lookAt(lookTarget);
       this.camera.fov = 48;
       this.camera.updateProjectionMatrix();
     } else if (params.cameraMode === 'THIRD_PERSON') {
       this.wasSteppedDown = false;
+      this.camera.up.set(0, 1, 0); // Strict world upright orientation (+Y up)
       // DYNAMIC CHASE CAM: Full cinematic view of the Danfo bus with dynamic speed FOV, spring swing lag, and acceleration/braking pitch
       const isReversing = gear === 'R';
       const physSpeedKmH = Math.round(this.chassisBody.velocity.length() * 3.6);
@@ -1875,11 +2187,14 @@ export class ThreeDrivingEngine {
       this.currentChaseLookTarget.lerp(lookPos, Math.min(1.0, dt * 10.0));
       this.camera.lookAt(this.currentChaseLookTarget);
 
-      // Subtle dynamic camera bank (Dutch tilt) into high-speed corners
-      this.camera.rotation.z = clampedSteer * (0.015 + speedRatio * 0.035);
+      // Bank into turns safely using rotateZ without ever overriding rotation.z or flipping upside down!
+      if (Math.abs(clampedSteer) > 0.001) {
+        this.camera.rotateZ(clampedSteer * (0.015 + speedRatio * 0.035));
+      }
       this.camera.updateProjectionMatrix();
     } else if (params.cameraMode === 'ORBIT') {
       this.wasSteppedDown = false;
+      this.camera.up.set(0, 1, 0);
       // 360 ORBIT VIEW: Free cinematic rotation around the full Danfo bus
       const orbitDist = 9.5;
       const orbitHeight = 3.6;
@@ -1894,6 +2209,7 @@ export class ThreeDrivingEngine {
       this.camera.updateProjectionMatrix();
     } else {
       this.wasSteppedDown = false;
+      this.camera.up.set(0, 1, 0);
       // FIRST PERSON / DRIVER COCKPIT VIEW:
       // STRICT LOGIC: Frame of the bus ONLY! No 360 rotation bug!
       // The driver's view is strictly clamped to windscreen, mirrors & dashboard.
@@ -1921,7 +2237,7 @@ export class ThreeDrivingEngine {
       this.camera.rotation.order = 'YXZ';
       this.camera.rotation.y = baseYaw + this.busRoot.rotation.y + clampedLookYaw;
       this.camera.rotation.x = pitchG + clampedLookPitch;
-      this.camera.rotation.z = this.busRoot.rotation.z;
+      this.camera.rotation.z = 0; // Strictly upright, no accidental roll
       this.camera.fov = 70;
       this.camera.updateProjectionMatrix();
     }
@@ -2081,7 +2397,7 @@ export class ThreeDrivingEngine {
    * Physics getters for HUD telemetry and simulation synchronization
    */
   public getPhysicalSpeedKmH(): number {
-    if (!this.chassisBody) return 0;
+    if (!this.chassisBody || !this.chassisBody.velocity || isNaN(this.chassisBody.velocity.length())) return 0;
     return Math.round(this.chassisBody.velocity.length() * 3.6);
   }
 
@@ -2089,9 +2405,15 @@ export class ThreeDrivingEngine {
     if (!this.chassisBody) {
       return { position: new THREE.Vector3(), speedKmH: 0 };
     }
+    const x = isNaN(this.chassisBody.position.x) ? 0 : this.chassisBody.position.x;
+    const y = isNaN(this.chassisBody.position.y) ? 0.85 : this.chassisBody.position.y;
+    const z = isNaN(this.chassisBody.position.z) ? 0 : this.chassisBody.position.z;
+    const spd = (this.chassisBody.velocity && !isNaN(this.chassisBody.velocity.length()))
+      ? Math.round(this.chassisBody.velocity.length() * 3.6)
+      : 0;
     return {
-      position: new THREE.Vector3(this.chassisBody.position.x, this.chassisBody.position.y, this.chassisBody.position.z),
-      speedKmH: Math.round(this.chassisBody.velocity.length() * 3.6),
+      position: new THREE.Vector3(x, y, z),
+      speedKmH: spd,
     };
   }
 

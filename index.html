@@ -18,20 +18,19 @@
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=Bungee&family=Black+Han+Sans&display=swap" rel="stylesheet">
     <script>
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(function(registrations) {
-          for(let registration of registrations) {
-            registration.unregister();
-          }
-        });
+        try {
+          navigator.serviceWorker.getRegistrations().then(function(registrations) {
+            for(let registration of registrations) {
+              registration.unregister().catch(function() {});
+            }
+          }).catch(function() {});
+        } catch (e) {}
       }
-    </script>
-  
-    <script>
       window.addEventListener('error', function(e) {
-        document.body.innerHTML = '<div style="background:red;color:white;padding:20px;font-family:sans-serif;z-index:999999;position:absolute;inset:0;overflow:auto;"><h1>Crash!</h1><pre>' + e.error?.stack + '</pre></div>';
+        console.error('Danfo Express Runtime Error:', e.error || e.message);
       });
       window.addEventListener('unhandledrejection', function(e) {
-        document.body.innerHTML = '<div style="background:red;color:white;padding:20px;font-family:sans-serif;z-index:999999;position:absolute;inset:0;overflow:auto;"><h1>Promise Crash!</h1><pre>' + e.reason?.stack + '</pre></div>';
+        console.warn('Danfo Express Unhandled Rejection:', e.reason);
       });
     </script>
 </head>

@@ -68,6 +68,8 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
   const [wipersActive, setWipersActive] = useState<boolean>(false);
   const [gyroEnabled, setGyroEnabled] = useState<boolean>(false);
   const [wheelVisualAngle, setWheelVisualAngle] = useState<number>(0);
+  const [isGasPressed, setIsGasPressed] = useState<boolean>(false);
+  const [isBrakePressed, setIsBrakePressed] = useState<boolean>(false);
   const [isBoarding, setIsBoarding] = useState<boolean>(false);
   const [cameraMode, setCameraMode] = useState<CameraViewMode>('THIRD_PERSON');
   const cameraModeRef = useRef<CameraViewMode>('THIRD_PERSON');
@@ -498,19 +500,25 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           inputsRef.current.gear = 'D';
         }
         inputsRef.current.gas = true;
+        setIsGasPressed(true);
       }
       if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
         if (inputsRef.current.gear === 'D' && simRef.current.speed < 2) {
           setGear('R');
           inputsRef.current.gear = 'R';
           inputsRef.current.gas = true;
+          setIsGasPressed(true);
           inputsRef.current.brake = false;
+          setIsBrakePressed(false);
           // soundEngine.playReverseBeep();
         } else if (inputsRef.current.gear === 'R') {
           inputsRef.current.gas = true;
+          setIsGasPressed(true);
           inputsRef.current.brake = false;
+          setIsBrakePressed(false);
         } else {
           inputsRef.current.brake = true;
+          setIsBrakePressed(true);
           soundEngine.playAirBrakeHiss();
         }
       }
@@ -544,10 +552,17 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
     };
 
     const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') inputsRef.current.gas = false;
+      if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+        inputsRef.current.gas = false;
+        setIsGasPressed(false);
+      }
       if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
         inputsRef.current.brake = false;
-        if (inputsRef.current.gear === 'R') inputsRef.current.gas = false;
+        setIsBrakePressed(false);
+        if (inputsRef.current.gear === 'R') {
+          inputsRef.current.gas = false;
+          setIsGasPressed(false);
+        }
       }
       if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') inputsRef.current.steerLeft = false;
       if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') inputsRef.current.steerRight = false;
@@ -853,9 +868,11 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         );
 
         const phys = engineRef.current.getPhysicsChassis();
-        sim.speed = phys.speedKmH;
-        sim.laneOffset = phys.position.x;
-        sim.distanceTraveled = Math.max(0, phys.position.z);
+        if (phys && !isNaN(phys.speedKmH) && !isNaN(phys.position.x) && !isNaN(phys.position.z)) {
+          sim.speed = phys.speedKmH;
+          sim.laneOffset = phys.position.x;
+          sim.distanceTraveled = Math.max(0, phys.position.z);
+        }
       }
 
       // 6. Decoupled UI Telemetry at 10 Hz
@@ -1130,7 +1147,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       })()}
 
       {/* ═══════ BOTTOM-LEFT: Wheel / Joystick ═══════ */}
-      <div className="absolute bottom-4 left-2 z-30 pointer-events-auto flex flex-col items-start">
+      <div className="absolute bottom-4 left-2 z-50 pointer-events-auto flex flex-col items-start">
         <button onClick={() => setShowLeftPanel(v => !v)}
           className="mb-1 w-8 h-5 bg-stone-900/80 border border-stone-700/50 rounded text-stone-400 text-[8px] flex items-center justify-center">
           {showLeftPanel ? '◀' : '▶'}
@@ -1138,7 +1155,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         <div className={`flex items-end gap-2 transition-opacity duration-300 origin-bottom-left ${showLeftPanel ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
           {!isSteppedDown ? (
             <>
-              <div className="flex flex-col gap-1" style={{ transform: 'scale(0.85)', transformOrigin: 'bottom left' }}>
+              <div className="flex flex-col gap-1.5" style={{ transform: 'scale(0.9)', transformOrigin: 'bottom left' }}>
                 <button onClick={() => triggerTurnSignal('LEFT')} className={`w-10 p-1.5 rounded border text-[9px] font-bold text-center ${turnSignal === 'LEFT' ? 'bg-amber-400 text-stone-950 border-amber-300' : 'bg-stone-900/80 border-stone-700 text-stone-300'}`}>⬅️</button>
                 <button onClick={() => triggerTurnSignal('RIGHT')} className={`w-10 p-1.5 rounded border text-[9px] font-bold text-center ${turnSignal === 'RIGHT' ? 'bg-amber-400 text-stone-950 border-amber-300' : 'bg-stone-900/80 border-stone-700 text-stone-300'}`}>➡️</button>
                 <button onClick={toggleHazards} className={`w-10 p-1.5 rounded border text-[9px] font-bold text-center ${hazardLights ? 'bg-amber-500 text-stone-950 animate-pulse' : 'bg-stone-900/80 border-stone-700 text-stone-300'}`}>🚨</button>
@@ -1150,19 +1167,19 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                 onPointerMove={handleWheelPointerMove}
                 onPointerUp={handleWheelPointerUp}
                 onPointerCancel={handleWheelPointerUp}
-                className="relative w-28 h-28 rounded-full cursor-grab active:cursor-grabbing touch-none select-none flex items-center justify-center shadow-2xl"
+                className="relative w-48 h-48 sm:w-52 sm:h-52 rounded-full cursor-grab active:cursor-grabbing touch-none select-none flex items-center justify-center shadow-2xl"
                 style={{
                   transform: `rotate(${wheelVisualAngle}deg)`,
-                  background: 'radial-gradient(circle, rgba(41,37,36,0.65) 35%, rgba(12,10,9,0.92) 100%)',
-                  border: '7px solid rgba(68,64,60,0.85)',
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.85), inset 0 2px 4px rgba(255,255,255,0.15)',
+                  background: 'radial-gradient(circle, rgba(41,37,36,0.7) 35%, rgba(12,10,9,0.95) 100%)',
+                  border: '10px solid rgba(87,83,78,0.95)',
+                  boxShadow: '0 12px 32px rgba(0,0,0,0.95), inset 0 2px 8px rgba(255,255,255,0.25)',
                 }}>
-                <div className="absolute top-0 w-3 h-2 bg-amber-400 rounded-sm" />
-                <div className="absolute bottom-0 w-3 h-2 bg-amber-400 rounded-sm" />
-                <div className="absolute w-full h-1.5 bg-stone-600/80 pointer-events-none" />
-                <div className="absolute h-full w-1.5 bg-stone-600/80 pointer-events-none" />
+                <div className="absolute top-0 w-4 h-3 bg-amber-400 rounded-sm" />
+                <div className="absolute bottom-0 w-4 h-3 bg-amber-400 rounded-sm" />
+                <div className="absolute w-full h-2.5 bg-stone-600/80 pointer-events-none" />
+                <div className="absolute h-full w-2.5 bg-stone-600/80 pointer-events-none" />
                 <button onClick={(e) => { e.stopPropagation(); handleHorn(); }}
-                  className="relative w-9 h-9 bg-amber-400/90 active:bg-amber-300 text-stone-950 rounded-full font-black text-[8px] font-['Bungee'] flex items-center justify-center shadow-lg border border-stone-900 transition-transform active:scale-95">
+                  className="relative w-14 h-14 bg-amber-400 hover:bg-amber-300 active:bg-amber-200 text-stone-950 rounded-full font-black text-xs font-['Bungee'] flex items-center justify-center shadow-xl border-2 border-stone-900 transition-transform active:scale-95">
                   HORN
                 </button>
               </div>
@@ -1174,14 +1191,14 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                 onPointerMove={handleWalkJoyPointerMove}
                 onPointerUp={handleWalkJoyPointerUp}
                 onPointerCancel={handleWalkJoyPointerUp}
-                className="relative w-28 h-28 rounded-full bg-stone-950/90 backdrop-blur-md border-2 border-amber-400/80 shadow-2xl touch-none select-none flex items-center justify-center cursor-grab active:cursor-grabbing"
+                className="relative w-32 h-32 rounded-full bg-stone-950/90 backdrop-blur-md border-2 border-amber-400/80 shadow-2xl touch-none select-none flex items-center justify-center cursor-grab active:cursor-grabbing"
               >
                 <div className="absolute top-1 text-[8px] font-black text-amber-400/80 font-mono">▲ W</div>
                 <div className="absolute bottom-1 text-[8px] font-black text-amber-400/80 font-mono">▼ S</div>
                 <div className="absolute left-1.5 text-[8px] font-black text-amber-400/80 font-mono">◀ A</div>
                 <div className="absolute right-1.5 text-[8px] font-black text-amber-400/80 font-mono">D ▶</div>
                 <div
-                  className="w-12 h-12 rounded-full bg-gradient-to-b from-amber-300 to-amber-500 text-stone-950 font-black text-[9px] shadow-xl border-2 border-amber-200 flex items-center justify-center pointer-events-none transition-transform duration-75"
+                  className="w-14 h-14 rounded-full bg-gradient-to-b from-amber-300 to-amber-500 text-stone-950 font-black text-[10px] shadow-xl border-2 border-amber-200 flex items-center justify-center pointer-events-none transition-transform duration-75"
                   style={{
                     transform: `translate(${walkJoyVisual.x}px, ${walkJoyVisual.y}px)`,
                   }}
@@ -1207,7 +1224,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       </div>
 
       {/* ═══════ BOTTOM-RIGHT: Pedals & Gear ═══════ */}
-      <div className="absolute bottom-4 right-2 z-30 pointer-events-auto flex flex-col items-end">
+      <div className="absolute bottom-4 right-2 z-50 pointer-events-auto flex flex-col items-end">
         <button onClick={() => setShowRightPanel(v => !v)}
           className="mb-1 w-8 h-5 bg-stone-900/80 border border-stone-700/50 rounded text-stone-400 text-[8px] flex items-center justify-center">
           {showRightPanel ? '▶' : '◀'}
@@ -1225,24 +1242,57 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                   </button>
                 ))}
               </div>
-              <div className="flex items-end gap-1.5">
+              <div className="flex items-end gap-2">
                 <button
-                  onMouseDown={() => { inputsRef.current.brake = true; soundEngine.playAirBrakeHiss(); }}
-                  onMouseUp={() => { inputsRef.current.brake = false; }}
-                  onTouchStart={() => { inputsRef.current.brake = true; soundEngine.playAirBrakeHiss(); }}
-                  onTouchEnd={() => { inputsRef.current.brake = false; }}
-                  className="w-14 h-16 bg-stone-900/90 active:bg-rose-900/90 border border-stone-600 active:border-rose-500 rounded-xl flex items-center justify-center shadow-xl transition-transform active:translate-y-1"
+                  onPointerDown={(e) => {
+                    try { (e.target as HTMLElement).setPointerCapture(e.pointerId); } catch {}
+                    inputsRef.current.brake = true;
+                    setIsBrakePressed(true);
+                    soundEngine.playAirBrakeHiss();
+                  }}
+                  onPointerUp={(e) => {
+                    try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
+                    inputsRef.current.brake = false;
+                    setIsBrakePressed(false);
+                  }}
+                  onPointerCancel={() => {
+                    inputsRef.current.brake = false;
+                    setIsBrakePressed(false);
+                  }}
+                  className={`w-14 h-18 bg-stone-900/95 rounded-xl flex flex-col items-center justify-center shadow-xl transition-all select-none touch-none ${
+                    isBrakePressed
+                      ? 'bg-rose-950 border-2 border-rose-500 scale-95 shadow-[0_0_15px_rgba(244,63,94,0.6)]'
+                      : 'border border-stone-600 active:border-rose-500'
+                  }`}
                   style={{ backgroundImage: 'repeating-linear-gradient(to bottom, transparent 0, transparent 4px, rgba(255,255,255,0.05) 4px, rgba(255,255,255,0.05) 8px)' }}>
-                  <span className="text-[9px] font-mono font-black text-rose-400">BRAKE</span>
+                  <span className={`text-[10px] font-mono font-black ${isBrakePressed ? 'text-rose-300' : 'text-rose-400'}`}>BRAKE</span>
+                  <span className="text-[7px] text-stone-400 font-mono mt-0.5">STOP</span>
                 </button>
                 <button
-                  onMouseDown={() => { inputsRef.current.gas = true; }}
-                  onMouseUp={() => { inputsRef.current.gas = false; }}
-                  onTouchStart={() => { inputsRef.current.gas = true; }}
-                  onTouchEnd={() => { inputsRef.current.gas = false; }}
-                  className={`w-12 h-24 bg-stone-900/90 rounded-xl flex items-center justify-center shadow-xl transition-transform active:translate-y-1 ${isEngineRunning ? 'active:bg-amber-400/90 active:text-stone-950 border border-stone-600 active:border-amber-500' : 'border border-stone-700 opacity-60'}`}
+                  onPointerDown={(e) => {
+                    try { (e.target as HTMLElement).setPointerCapture(e.pointerId); } catch {}
+                    inputsRef.current.gas = true;
+                    setIsGasPressed(true);
+                  }}
+                  onPointerUp={(e) => {
+                    try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
+                    inputsRef.current.gas = false;
+                    setIsGasPressed(false);
+                  }}
+                  onPointerCancel={() => {
+                    inputsRef.current.gas = false;
+                    setIsGasPressed(false);
+                  }}
+                  className={`w-14 h-26 rounded-xl flex flex-col items-center justify-center shadow-xl transition-all select-none touch-none ${
+                    isGasPressed
+                      ? 'bg-amber-400 text-stone-950 border-2 border-amber-300 scale-95 shadow-[0_0_20px_rgba(251,191,36,0.6)]'
+                      : isEngineRunning
+                      ? 'bg-stone-900/95 border border-stone-600 active:border-amber-500'
+                      : 'bg-stone-900/60 border border-stone-700 opacity-60'
+                  }`}
                   style={{ backgroundImage: 'repeating-linear-gradient(to bottom, transparent 0, transparent 6px, rgba(251,191,36,0.1) 6px, rgba(251,191,36,0.1) 10px)' }}>
-                  <span className="text-[9px] font-mono font-black text-amber-400">GAS</span>
+                  <span className={`text-[10px] font-mono font-black ${isGasPressed ? 'text-stone-950' : 'text-amber-400'}`}>GAS</span>
+                  <span className={`text-[7px] font-mono mt-0.5 ${isGasPressed ? 'text-stone-800' : 'text-stone-400'}`}>DRIVE</span>
                 </button>
               </div>
             </>
@@ -1273,35 +1323,32 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         />
       )}
     
-      {/* 2D DASHBOARD OVERLAY */}
+      {/* 2D DASHBOARD OVERLAY - CENTERED COMPACT INSTRUMENT CLUSTER (NEVER BLOCKS STEERING WHEEL) */}
       {!isSteppedDown && cameraMode === 'FIRST_PERSON' && (
-        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 w-[800px] max-w-[95vw] h-40 pointer-events-none z-[80] flex items-end justify-center">
-          <div className="relative w-[600px] h-32 bg-gradient-to-t from-stone-900 via-stone-800 to-transparent border-t-4 border-stone-700/50 rounded-t-full opacity-90 shadow-[0_-10px_40px_rgba(0,0,0,0.8)] backdrop-blur-sm flex justify-between px-16 pb-4 items-end overflow-hidden">
+        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 w-80 max-w-[50vw] h-24 pointer-events-none z-20 flex items-end justify-center">
+          <div className="relative w-full h-20 bg-stone-950/90 border border-stone-700/60 rounded-2xl shadow-[0_-5px_25px_rgba(0,0,0,0.8)] backdrop-blur-md flex items-center justify-around px-4">
             
-            {/* Speedometer Left */}
-            <div className="relative w-28 h-28 border-4 border-stone-600/50 rounded-full bg-stone-950/80 shadow-inner flex flex-col items-center justify-center">
-              <div className="text-3xl text-sky-400 font-black tracking-tighter" style={{ textShadow: '0 0 10px rgba(56,189,248,0.5)' }}>
+            {/* Speedometer Center-Left of cluster */}
+            <div className="flex flex-col items-center justify-center">
+              <div className="text-2xl text-sky-400 font-black tracking-tight" style={{ textShadow: '0 0 10px rgba(56,189,248,0.5)' }}>
                 {Math.round(simRef.current?.speed || 0)}
               </div>
-              <div className="text-[10px] text-stone-400 font-bold tracking-widest uppercase">KM/H</div>
+              <div className="text-[9px] text-stone-400 font-bold uppercase tracking-wider">KM/H</div>
             </div>
 
-            {/* Center Info Screen */}
-            <div className="flex flex-col items-center justify-end pb-2">
-              <div className="px-3 py-1 bg-stone-950 border border-stone-700 rounded text-amber-500 font-mono text-xs shadow-inner">
+            {/* Center Gear Info */}
+            <div className="flex flex-col items-center">
+              <div className="px-2.5 py-0.5 bg-stone-900 border border-stone-700 rounded text-amber-400 font-mono text-[11px] font-black shadow-inner">
                 {gear} - AUTO
               </div>
             </div>
 
-            {/* RPM / Heat Right */}
-            <div className="relative w-28 h-28 border-4 border-stone-600/50 rounded-full bg-stone-950/80 shadow-inner flex flex-col items-center justify-center">
-              <div className="text-xl text-rose-500 font-black tracking-tighter">
+            {/* Engine Temp Center-Right */}
+            <div className="flex flex-col items-center justify-center">
+              <div className="text-base text-rose-400 font-black tracking-tight">
                 {Math.round(gameState.bus.heat)}°
               </div>
-              <div className="text-[10px] text-stone-400 font-bold tracking-widest uppercase">TEMP</div>
-              <div className="absolute bottom-2 w-16 h-1.5 bg-stone-800 rounded-full overflow-hidden">
-                <div className="h-full bg-gradient-to-r from-emerald-500 via-amber-500 to-rose-500" style={{ width: `${gameState.bus.heat}%` }} />
-              </div>
+              <div className="text-[9px] text-stone-400 font-bold uppercase tracking-wider">TEMP</div>
             </div>
 
           </div>

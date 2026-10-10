@@ -6,7 +6,7 @@ interface CharacterCreationProps {
 }
 
 export const CharacterCreation: React.FC<CharacterCreationProps> = ({ onComplete }) => {
-  const [name, setName] = useState('');
+  const [name, setName] = useState('Bamidele');
   const [gender, setGender] = useState<'MALE' | 'FEMALE'>('MALE');
 
   return (
