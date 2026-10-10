@@ -58,11 +58,14 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
 }) => {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const engineRef = useRef<ThreeDrivingEngine | null>(null);
+  const leftMirrorCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const rightMirrorCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const lookRef = useRef({ yaw: 0, pitch: 0, isDragging: false, startX: 0, startY: 0, startYaw: 0, startPitch: 0 });
+  const wheelDragRef = useRef({ startPointerAngle: 0, startSteeringAngle: 0 });
 
   // UI Interactive States
-  const [gear, setGear] = useState<GearPosition>('N');
-  const [isEngineRunning, setIsEngineRunning] = useState<boolean>(false);
+  const [gear, setGear] = useState<GearPosition>('D');
+  const [isEngineRunning, setIsEngineRunning] = useState<boolean>(true);
   const [doorState, setDoorState] = useState<DoorState>(gameState.bus.doorState || 'CLOSED');
   const [bootState, setBootState] = useState<'OPEN' | 'CLOSED'>('CLOSED');
   const [isSteppedDown, setIsSteppedDown] = useState<boolean>(false);
@@ -74,8 +77,8 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
   const [isGasPressed, setIsGasPressed] = useState<boolean>(false);
   const [isBrakePressed, setIsBrakePressed] = useState<boolean>(false);
   const [isBoarding, setIsBoarding] = useState<boolean>(false);
-  const [cameraMode, setCameraMode] = useState<CameraViewMode>('THIRD_PERSON');
-  const cameraModeRef = useRef<CameraViewMode>('THIRD_PERSON');
+  const [cameraMode, setCameraMode] = useState<CameraViewMode>('FIRST_PERSON');
+  const cameraModeRef = useRef<CameraViewMode>('FIRST_PERSON');
 
   useEffect(() => {
     cameraModeRef.current = cameraMode;
@@ -115,14 +118,17 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
   const [currentDist, setCurrentDist] = useState<number>(0);
   const [activeJuncIndex, setActiveJuncIndex] = useState<number>(gameState.activeJunctionIndex || 0);
 
+  // Start parked inside the Oshodi Danfo Bus Park (-15.5m lateral offset) when beginning a shift
+  const initialLaneOffset = (gameState.distanceTraveledMeters || 0) < 10 ? -15.5 : 0;
+
   // Mutable Simulation & Physics References
   const simRef = useRef({
     speed: 0,
     heat: gameState.bus.heat,
     fuel: gameState.bus.fuelPercent,
     comfort: gameState.bus.comfortMeter,
-    laneOffset: 0,
-    distanceTraveled: gameState.distanceTraveledMeters,
+    laneOffset: initialLaneOffset,
+    distanceTraveled: gameState.distanceTraveledMeters || 0,
     targetDistance: gameState.targetDistanceMeters,
     steeringAngle: 0,
     doorState: (gameState.bus.doorState || 'CLOSED') as DoorState,
@@ -139,8 +145,8 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
     brake: false,
     steerLeft: false,
     steerRight: false,
-    gear: 'N' as GearPosition,
-    isEngineRunning: false,
+    gear: 'D' as GearPosition,
+    isEngineRunning: true,
     turnSignal: 'OFF' as 'OFF' | 'LEFT' | 'RIGHT',
     hazardLights: false,
     wipersActive: false,
@@ -156,6 +162,9 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
     simRef.current.busSlogan = gameState.bus.slogan;
     simRef.current.targetDistance = gameState.targetDistanceMeters || 15000;
     simRef.current.distanceTraveled = gameState.distanceTraveledMeters || 0;
+    if ((gameState.distanceTraveledMeters || 0) < 10) {
+      simRef.current.laneOffset = -15.5;
+    }
     simRef.current.finished = false;
   }, [gameState.bus.upgrades, gameState.bus.slogan, gameState.targetDistanceMeters]);
 
@@ -170,17 +179,25 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
     simRef.current.isSteppedDown = isSteppedDown;
   }, [gear, isEngineRunning, turnSignal, hazardLights, wipersActive, gyroEnabled, doorState, isSteppedDown]);
 
-  // Initialize Three.js Engine on mount
+  // Initialize Three.js Engine on mount & connect live rear-view mirror canvases
   useEffect(() => {
     if (!mountRef.current) return;
     const engine = new ThreeDrivingEngine(mountRef.current, gameState.bus.id);
     engineRef.current = engine;
+    engine.setMirrorCanvases(leftMirrorCanvasRef.current, rightMirrorCanvasRef.current);
 
     return () => {
       engine.dispose();
       engineRef.current = null;
     };
   }, [gameState.bus.id]);
+
+  // Keep mirror canvases synced if camera mode or step-down state changes
+  useEffect(() => {
+    if (engineRef.current) {
+      engineRef.current.setMirrorCanvases(leftMirrorCanvasRef.current, rightMirrorCanvasRef.current);
+    }
+  }, [cameraMode, isSteppedDown]);
 
   const toggleEngine = () => {
     const nextState = !isEngineRunning;
@@ -192,7 +209,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         setGear('D');
         inputsRef.current.gear = 'D';
       }
-      addFeedMessage('🔑 IGNITION ON: Diesel engine rumbles to life! Shift into Drive (D) to move.');
+      addFeedMessage('🔑 IGNITION ON: Diesel engine rumbles to life! Drive out of the Bus Park onto the expressway.');
     } else {
       addFeedMessage('🛑 ENGINE STOPPED: Ignition key turned off.');
     }
@@ -219,11 +236,11 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       return;
     }
     setCameraMode((prev) => {
-      let next: CameraViewMode = 'THIRD_PERSON';
-      if (prev === 'THIRD_PERSON') next = 'FIRST_PERSON';
-      else if (prev === 'FIRST_PERSON') next = 'TOP_DOWN';
+      let next: CameraViewMode = 'FIRST_PERSON';
+      if (prev === 'FIRST_PERSON') next = 'THIRD_PERSON';
+      else if (prev === 'THIRD_PERSON') next = 'TOP_DOWN';
       else if (prev === 'TOP_DOWN') next = 'ORBIT';
-      else next = 'THIRD_PERSON';
+      else next = 'FIRST_PERSON';
 
       cameraModeRef.current = next;
 
@@ -232,7 +249,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       lookRef.current.pitch = 0;
 
       const labels: Record<string, string> = {
-        FIRST_PERSON: '🎥 1ST PERSON (COCKPIT - BUS FRAME ONLY)',
+        FIRST_PERSON: '🎥 1ST PERSON (DR. DRIVING BUS DASH)',
         THIRD_PERSON: '🚗 3RD PERSON (CHASE CAM)',
         TOP_DOWN: '🦅 TOP-DOWN (BIRD EYE)',
         ORBIT: '🔄 360 FREE ORBIT',
@@ -499,13 +516,18 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
   const handleWheelPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (gyroEnabled || isSteppedDown) return;
     inputsRef.current.isDraggingWheel = true;
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch {}
 
-    if (wheelElementRef.current) {
-      const rect = wheelElementRef.current.getBoundingClientRect();
-      wheelCenterRef.current = {
-        x: rect.left + rect.width / 2,
-        y: rect.top + rect.height / 2,
+    const el = wheelElementRef.current || (e.currentTarget as HTMLDivElement);
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      wheelCenterRef.current = { x: cx, y: cy };
+      const ptrAngle = (Math.atan2(e.clientY - cy, e.clientX - cx) * 180) / Math.PI;
+      wheelDragRef.current = {
+        startPointerAngle: ptrAngle,
+        startSteeringAngle: simRef.current.steeringAngle,
       };
     }
   };
@@ -514,11 +536,11 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
     if (!inputsRef.current.isDraggingWheel || gyroEnabled || isSteppedDown) return;
     const dx = e.clientX - wheelCenterRef.current.x;
     const dy = e.clientY - wheelCenterRef.current.y;
-    const angleRad = Math.atan2(dy, dx);
-    const angleDeg = (angleRad * 180) / Math.PI;
-    let normalized = angleDeg + 90;
-    if (normalized > 180) normalized -= 360;
-    const clamped = Math.max(-90, Math.min(90, normalized));
+    const ptrAngle = (Math.atan2(dy, dx) * 180) / Math.PI;
+    let deltaAngle = ptrAngle - wheelDragRef.current.startPointerAngle;
+    while (deltaAngle > 180) deltaAngle -= 360;
+    while (deltaAngle < -180) deltaAngle += 360;
+    const clamped = Math.max(-90, Math.min(90, wheelDragRef.current.startSteeringAngle + deltaAngle));
     simRef.current.steeringAngle = clamped;
     setWheelVisualAngle(clamped);
   };
@@ -708,15 +730,14 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         sim.heat = Math.max(10, sim.heat - 4.5 * fanMult * dt);
       }
 
-      // Lateral lane offset - responsive, smooth arcade handling
-      // Positive steer (Right / D) -> moves +X towards right lane & curb
-      // Negative steer (Left / A) -> moves -X towards left lane & barrier
+      // Lateral lane offset - FIXED so Steering Left (negative angle) moves LEFT (+X on screen)
+      // and Steering Right (positive angle) moves RIGHT (-X on screen)!
       const turnDir = inp.gear === 'R' ? -1 : 1;
-      // High-agility Lagos arcade steering: nimble at low speeds and sharp at cruising speeds
       const speedMultiplier = Math.max(5.8, (sim.speed / 28) * 9.5);
-      sim.laneOffset += turnDir * steerFactor * speedMultiplier * dt;
-      // Clamp cleanly to highway road boundaries (-8.5m left barrier to +8.5m right curb)
-      sim.laneOffset = Math.max(-8.5, Math.min(8.5, sim.laneOffset));
+      sim.laneOffset -= turnDir * steerFactor * speedMultiplier * dt;
+      // Allow wider right-side boundary (-26.5m) at the start (z < 48m) so player can drive out of the Oshodi Danfo Bus Park!
+      const minLaneX = sim.distanceTraveled < 48 ? -26.5 : -8.5;
+      sim.laneOffset = Math.max(minLaneX, Math.min(8.5, sim.laneOffset));
 
       // Distance traveled: increases in D, decreases in R
       const deltaM = (sim.speed * 1000 / 3600) * dt;
@@ -728,7 +749,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
 
       // 3. Gas Station Detection
       const gasBays = gameState.gasStations || [];
-      const nearGas = gasBays.find((g) => Math.abs(g.distanceMarkerMeters - sim.distanceTraveled) < 18 && sim.laneOffset > 2.8);
+      const nearGas = gasBays.find((g) => Math.abs(g.distanceMarkerMeters - sim.distanceTraveled) < 18 && Math.abs(sim.laneOffset) > 2.5);
       if (nearGas && sim.speed < 5) {
         if (!activeGasStationRef.current) { activeGasStationRef.current = nearGas; setActiveGasStation(nearGas); }
       } else if (activeGasStation) {
@@ -737,7 +758,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
 
       // 4. Roadside Shop Detection (Pulling up near shop curb)
       const shops = gameState.roadsideShops || [];
-      const nearShop = shops.find((s) => Math.abs(s.distanceMarkerMeters - sim.distanceTraveled) < 18 && sim.laneOffset > 2.5);
+      const nearShop = shops.find((s) => Math.abs(s.distanceMarkerMeters - sim.distanceTraveled) < 18 && Math.abs(sim.laneOffset) > 2.5);
       if (nearShop && sim.speed < 6) {
         if (!activeShopRef.current) { activeShopRef.current = nearShop; setActiveShop(nearShop); }
       } else if (activeShop) {
@@ -993,6 +1014,12 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           sim.speed = phys.speedKmH;
           sim.laneOffset = phys.position.x;
           sim.distanceTraveled = Math.max(0, phys.position.z);
+        }
+
+        const collisionMsg = engineRef.current.consumeCollisionMessage();
+        if (collisionMsg) {
+          sim.comfort = Math.max(10, sim.comfort - 8);
+          addFeedMessage(collisionMsg);
         }
       }
 
@@ -1413,162 +1440,765 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         return null;
       })()}
 
-      {/* ═══════ BOTTOM-LEFT: Wheel / Joystick ═══════ */}
-      <div className="absolute bottom-4 left-2 z-50 pointer-events-auto flex flex-col items-start">
-        <button onClick={() => setShowLeftPanel(v => !v)}
-          className="mb-1 w-8 h-5 bg-stone-900/80 border border-stone-700/50 rounded text-stone-400 text-[8px] flex items-center justify-center">
-          {showLeftPanel ? '◀' : '▶'}
-        </button>
-        <div className={`flex items-end gap-2 transition-opacity duration-300 origin-bottom-left ${showLeftPanel ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-          {!isSteppedDown ? (
-            <>
-              <div className="flex flex-col gap-1.5" style={{ transform: 'scale(0.9)', transformOrigin: 'bottom left' }}>
-                <button onClick={() => triggerTurnSignal('LEFT')} className={`w-10 p-1.5 rounded border text-[9px] font-bold text-center ${turnSignal === 'LEFT' ? 'bg-amber-400 text-stone-950 border-amber-300' : 'bg-stone-900/80 border-stone-700 text-stone-300'}`}>⬅️</button>
-                <button onClick={() => triggerTurnSignal('RIGHT')} className={`w-10 p-1.5 rounded border text-[9px] font-bold text-center ${turnSignal === 'RIGHT' ? 'bg-amber-400 text-stone-950 border-amber-300' : 'bg-stone-900/80 border-stone-700 text-stone-300'}`}>➡️</button>
-                <button onClick={toggleHazards} className={`w-10 p-1.5 rounded border text-[9px] font-bold text-center ${hazardLights ? 'bg-amber-500 text-stone-950 animate-pulse' : 'bg-stone-900/80 border-stone-700 text-stone-300'}`}>🚨</button>
-                <button onClick={toggleWipers} className={`w-10 p-1.5 rounded border text-[9px] font-bold text-center ${wipersActive ? 'bg-sky-500 text-stone-950' : 'bg-stone-900/80 border-stone-700 text-stone-300'}`}>🌧️</button>
-              </div>
-              <div
-                ref={wheelElementRef}
-                onPointerDown={handleWheelPointerDown}
-                onPointerMove={handleWheelPointerMove}
-                onPointerUp={handleWheelPointerUp}
-                onPointerCancel={handleWheelPointerUp}
-                className="relative w-32 h-32 sm:w-36 sm:h-36 rounded-full cursor-grab active:cursor-grabbing touch-none select-none flex items-center justify-center shadow-2xl"
-                style={{
-                  transform: `rotate(${wheelVisualAngle}deg)`,
-                  background: 'radial-gradient(circle, rgba(41,37,36,0.7) 35%, rgba(12,10,9,0.95) 100%)',
-                  border: '6px solid rgba(87,83,78,0.95)',
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.9), inset 0 2px 6px rgba(255,255,255,0.25)',
-                }}>
-                <div className="absolute top-0 w-3 h-2 bg-amber-400 rounded-sm" />
-                <div className="absolute bottom-0 w-3 h-2 bg-amber-400 rounded-sm" />
-                <div className="absolute w-full h-1.5 bg-stone-600/80 pointer-events-none" />
-                <div className="absolute h-full w-1.5 bg-stone-600/80 pointer-events-none" />
-                <button onClick={(e) => { e.stopPropagation(); handleHorn(); }}
-                  className="relative w-10 h-10 bg-amber-400 hover:bg-amber-300 active:bg-amber-200 text-stone-950 rounded-full font-black text-[9px] font-['Bungee'] flex items-center justify-center shadow-lg border border-stone-900 transition-transform active:scale-95">
-                  HORN
-                </button>
-              </div>
-            </>
-          ) : (
-            <div className="flex flex-col items-center">
-              <div
-                onPointerDown={handleWalkJoyPointerDown}
-                onPointerMove={handleWalkJoyPointerMove}
-                onPointerUp={handleWalkJoyPointerUp}
-                onPointerCancel={handleWalkJoyPointerUp}
-                className="relative w-32 h-32 rounded-full bg-stone-950/90 backdrop-blur-md border-2 border-amber-400/80 shadow-2xl touch-none select-none flex items-center justify-center cursor-grab active:cursor-grabbing"
-              >
-                <div className="absolute top-1 text-[8px] font-black text-amber-400/80 font-mono">▲ W</div>
-                <div className="absolute bottom-1 text-[8px] font-black text-amber-400/80 font-mono">▼ S</div>
-                <div className="absolute left-1.5 text-[8px] font-black text-amber-400/80 font-mono">◀ A</div>
-                <div className="absolute right-1.5 text-[8px] font-black text-amber-400/80 font-mono">D ▶</div>
-                <div
-                  className="w-14 h-14 rounded-full bg-gradient-to-b from-amber-300 to-amber-500 text-stone-950 font-black text-[10px] shadow-xl border-2 border-amber-200 flex items-center justify-center pointer-events-none transition-transform duration-75"
-                  style={{
-                    transform: `translate(${walkJoyVisual.x}px, ${walkJoyVisual.y}px)`,
-                  }}
-                >
-                  WALK
+      {/* 🚌 OSHODI DANFO BUS PARK DEPARTURE BANNER (At start of shift) */}
+      {!isSteppedDown && currentDist < 36 && (
+        <div className="absolute top-12 left-1/2 -translate-x-1/2 z-40 pointer-events-none flex items-center gap-2.5 bg-stone-950/90 border-2 border-amber-400 rounded-2xl px-4 py-1.5 shadow-[0_8px_25px_rgba(0,0,0,0.85)] backdrop-blur-md">
+          <span className="text-base">🚌</span>
+          <div>
+            <div className="text-[9px] font-mono font-black text-amber-400 uppercase tracking-wider">
+              OSHODI DANFO MOTOR PARK • DEPARTURE BAY 1
+            </div>
+            <div className="text-[10px] text-stone-200 font-semibold">
+              Hold <span className="text-amber-300 font-black">GAS (W)</span> & steer <span className="text-emerald-300 font-black">LEFT (A)</span> through the Park Exit Gate onto the Lagos Expressway!
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════ LIVE REAR-VIEW SIDE MIRRORS (LEFT & RIGHT) ═══════ */}
+      {!isSteppedDown && (
+        <>
+          {/* LEFT SIDE MIRROR (Accurate Live Rear View) */}
+          <div
+            className={`absolute z-30 pointer-events-none transition-all duration-300 flex items-center ${
+              cameraMode === 'FIRST_PERSON'
+                ? 'left-0 top-[18%] sm:top-[16%]'
+                : 'left-2 top-11'
+            }`}
+          >
+            {/* Mirror Mounting Bracket Arm in First-Person Cockpit */}
+            {cameraMode === 'FIRST_PERSON' && (
+              <div className="w-3 sm:w-5 h-7 bg-gradient-to-r from-amber-500 via-stone-800 to-stone-900 border-y-2 border-stone-700 shadow-lg" />
+            )}
+            <div className="relative rounded-r-2xl rounded-l-lg bg-stone-950 p-1 sm:p-1.5 border-[3px] border-stone-700 shadow-[0_10px_28px_rgba(0,0,0,0.95)] ring-2 ring-amber-400/70 overflow-hidden">
+              <div className="relative w-[108px] h-[64px] sm:w-[148px] sm:h-[86px] rounded-lg overflow-hidden bg-stone-900 border border-stone-600/80">
+                <canvas
+                  ref={leftMirrorCanvasRef}
+                  width={220}
+                  height={130}
+                  className="w-full h-full object-cover block"
+                />
+                {/* Subtle convex mirror glare & blind-spot line */}
+                <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/[0.04] to-sky-300/[0.08] pointer-events-none" />
+                <div className="absolute top-0 bottom-0 left-[22%] w-px border-l border-dashed border-amber-300/40 pointer-events-none" />
+                <div className="absolute top-1 left-1.5 px-1 py-0.2 bg-stone-950/75 rounded text-[7px] font-mono font-black text-amber-400 tracking-wider">
+                  L-MIRROR • LIVE REAR
                 </div>
-              </div>
-              <div className="mt-1 text-[8px] font-mono font-bold text-amber-400 bg-stone-950/90 px-2 py-0.5 rounded-full border border-amber-500/40">
-                DRAG TO WALK
+                {turnSignal === 'LEFT' || hazardLights ? (
+                  <div className="absolute bottom-1 left-1.5 text-[9px] font-black text-amber-400 animate-pulse">
+                    ◀ BLINK
+                  </div>
+                ) : null}
               </div>
             </div>
-          )}
-        </div>
-      </div>
+          </div>
 
-      {/* ═══════ BOTTOM-CENTER: Action Feed ═══════ */}
-      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-30 pointer-events-none flex flex-col gap-0.5 items-center" style={{ maxWidth: '50vw' }}>
+          {/* RIGHT SIDE MIRROR (Accurate Live Rear View) */}
+          <div
+            className={`absolute z-30 pointer-events-none transition-all duration-300 flex items-center ${
+              cameraMode === 'FIRST_PERSON'
+                ? 'right-0 top-[18%] sm:top-[16%]'
+                : 'right-2 top-20'
+            }`}
+          >
+            <div className="relative rounded-l-2xl rounded-r-lg bg-stone-950 p-1 sm:p-1.5 border-[3px] border-stone-700 shadow-[0_10px_28px_rgba(0,0,0,0.95)] ring-2 ring-amber-400/70 overflow-hidden">
+              <div className="relative w-[108px] h-[64px] sm:w-[148px] sm:h-[86px] rounded-lg overflow-hidden bg-stone-900 border border-stone-600/80">
+                <canvas
+                  ref={rightMirrorCanvasRef}
+                  width={220}
+                  height={130}
+                  className="w-full h-full object-cover block"
+                />
+                {/* Subtle convex mirror glare & blind-spot line */}
+                <div className="absolute inset-0 bg-gradient-to-tl from-transparent via-white/[0.04] to-sky-300/[0.08] pointer-events-none" />
+                <div className="absolute top-0 bottom-0 right-[22%] w-px border-r border-dashed border-amber-300/40 pointer-events-none" />
+                <div className="absolute top-1 right-1.5 px-1 py-0.2 bg-stone-950/75 rounded text-[7px] font-mono font-black text-amber-400 tracking-wider">
+                  LIVE REAR • R-MIRROR
+                </div>
+                {turnSignal === 'RIGHT' || hazardLights ? (
+                  <div className="absolute bottom-1 right-1.5 text-[9px] font-black text-amber-400 animate-pulse">
+                    BLINK ▶
+                  </div>
+                ) : null}
+              </div>
+            </div>
+            {cameraMode === 'FIRST_PERSON' && (
+              <div className="w-3 sm:w-5 h-7 bg-gradient-to-l from-amber-500 via-stone-800 to-stone-900 border-y-2 border-stone-700 shadow-lg" />
+            )}
+          </div>
+        </>
+      )}
+
+      {/* ═══════ FIRST-PERSON DR. DRIVING STYLE COMMERCIAL BUS COCKPIT DASHBOARD ═══════ */}
+      {!isSteppedDown && cameraMode === 'FIRST_PERSON' && (
+        <>
+          {/* Bus Windshield Frame: Left & Right Yellow Danfo A-Pillars */}
+          <div className="absolute top-9 bottom-[34%] left-0 w-3 sm:w-4 bg-gradient-to-r from-amber-500 via-amber-600 to-stone-900 border-r-2 border-stone-800 z-20 pointer-events-none shadow-2xl" />
+          <div className="absolute top-9 bottom-[34%] right-0 w-3 sm:w-4 bg-gradient-to-l from-amber-500 via-amber-600 to-stone-900 border-l-2 border-stone-800 z-20 pointer-events-none shadow-2xl" />
+
+          {/* Full-Width Molded Bus Dashboard Panel (Dr. Driving Inspired) */}
+          <div className="absolute inset-x-0 bottom-0 h-[36%] min-h-[210px] max-h-[285px] z-40 pointer-events-auto select-none flex flex-col justify-end">
+            {/* Curved Upper Dash Glare Shield & Instrument Binnacle Arch */}
+            <div className="relative w-full h-full bg-gradient-to-b from-stone-800 via-stone-900 to-stone-950 border-t-[4px] border-stone-600/90 rounded-t-[28px] shadow-[0_-14px_35px_rgba(0,0,0,0.95)] flex items-stretch justify-between px-2 sm:px-5 pt-2 pb-2.5 overflow-visible">
+              {/* Top Yellow-Black Danfo Trim Accent Line */}
+              <div className="absolute top-0 left-6 right-6 h-1 bg-gradient-to-r from-amber-400/80 via-stone-500/40 to-amber-400/80 rounded-full pointer-events-none" />
+
+              {/* ── LEFT SECTION: INSTRUMENT BINNACLE HOOD + REDESIGNED 3-SPOKE BUS STEERING WHEEL ── */}
+              <div className="relative flex items-end gap-1.5 sm:gap-3 w-[46%] sm:w-[44%] h-full">
+                {/* Left Quick-Switch Stalk Column */}
+                <div className="flex flex-col justify-end gap-1 pb-1 shrink-0 z-30">
+                  <button
+                    onClick={() => triggerTurnSignal('LEFT')}
+                    className={`w-8 sm:w-9 py-1 rounded-lg border text-[9px] font-mono font-black transition-all ${
+                      turnSignal === 'LEFT'
+                        ? 'bg-emerald-400 text-stone-950 border-emerald-200 shadow-[0_0_10px_rgba(52,211,153,0.8)]'
+                        : 'bg-stone-900/90 border-stone-700 text-stone-300 hover:border-stone-500'
+                    }`}
+                    title="Left Turn Signal"
+                  >
+                    ◀ L
+                  </button>
+                  <button
+                    onClick={() => triggerTurnSignal('RIGHT')}
+                    className={`w-8 sm:w-9 py-1 rounded-lg border text-[9px] font-mono font-black transition-all ${
+                      turnSignal === 'RIGHT'
+                        ? 'bg-emerald-400 text-stone-950 border-emerald-200 shadow-[0_0_10px_rgba(52,211,153,0.8)]'
+                        : 'bg-stone-900/90 border-stone-700 text-stone-300 hover:border-stone-500'
+                    }`}
+                    title="Right Turn Signal"
+                  >
+                    R ▶
+                  </button>
+                  <button
+                    onClick={toggleWipers}
+                    className={`w-8 sm:w-9 py-1 rounded-lg border text-[9px] font-mono font-bold transition-all ${
+                      wipersActive
+                        ? 'bg-sky-400 text-stone-950 border-sky-200'
+                        : 'bg-stone-900/90 border-stone-700 text-stone-300'
+                    }`}
+                    title="Windshield Wipers"
+                  >
+                    🌧️
+                  </button>
+                  <button
+                    onClick={toggleDoor}
+                    className={`w-8 sm:w-9 py-1 rounded-lg border text-[9px] font-mono font-bold transition-all ${
+                      doorState === 'OPEN'
+                        ? 'bg-amber-400 text-stone-950 border-amber-200'
+                        : 'bg-stone-900/90 border-stone-700 text-stone-300'
+                    }`}
+                    title="Passenger Sliding Door (O)"
+                  >
+                    🚪
+                  </button>
+                </div>
+
+                {/* Instrument Cluster Binnacle + Bus Steering Wheel Assembly */}
+                <div className="relative flex-1 h-full flex flex-col items-center justify-end">
+                  {/* Raised Instrument Cluster Hood (Visible above & through top of Steering Wheel like Dr. Driving) */}
+                  <div className="absolute -top-7 sm:-top-8 w-[175px] sm:w-[225px] h-[82px] sm:h-[92px] bg-stone-950 border-[3px] border-stone-700 rounded-t-[44px] rounded-b-xl shadow-[inset_0_4px_16px_rgba(0,0,0,0.95),0_-4px_14px_rgba(0,0,0,0.85)] px-3 pt-1.5 pb-1 flex flex-col justify-between pointer-events-none z-10">
+                    {/* Top Row: Blinker Arrows + Analog Arc + Digital Speedometer */}
+                    <div className="flex items-center justify-between px-1">
+                      <span
+                        className={`text-xs sm:text-sm font-black transition-opacity ${
+                          turnSignal === 'LEFT' || hazardLights
+                            ? 'text-emerald-400 opacity-100 drop-shadow-[0_0_8px_rgba(52,211,153,0.9)] animate-pulse'
+                            : 'text-emerald-950 opacity-40'
+                        }`}
+                      >
+                        ◀
+                      </span>
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-lg sm:text-2xl font-black font-mono text-amber-300 tabular-nums tracking-tight drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]">
+                          {hudSpeed}
+                        </span>
+                        <span className="text-[8px] font-mono font-bold text-stone-400">KM/H</span>
+                      </div>
+                      <span
+                        className={`text-xs sm:text-sm font-black transition-opacity ${
+                          turnSignal === 'RIGHT' || hazardLights
+                            ? 'text-emerald-400 opacity-100 drop-shadow-[0_0_8px_rgba(52,211,153,0.9)] animate-pulse'
+                            : 'text-emerald-950 opacity-40'
+                        }`}
+                      >
+                        ▶
+                      </span>
+                    </div>
+
+                    {/* Middle Row: RPM Bar & Gear / Fuel / Temp Cluster */}
+                    <div className="w-full bg-stone-900/90 h-2 rounded-full overflow-hidden border border-stone-800 p-0.5">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-amber-400 to-rose-500 transition-all duration-100"
+                        style={{ width: `${Math.min(100, Math.round((hudRPM / 5200) * 100))}%` }}
+                      />
+                    </div>
+
+                    {/* Bottom Row of Cluster: Fuel, Gear Indicator, Engine Temp */}
+                    <div className="flex items-center justify-between text-[8px] sm:text-[9px] font-mono px-1">
+                      <span className={hudFuel < 20 ? 'text-rose-400 font-black animate-pulse' : 'text-emerald-300 font-bold'}>
+                        ⛽{hudFuel}%
+                      </span>
+                      <span className="px-1.5 py-0.2 rounded bg-amber-400/20 border border-amber-400/60 text-amber-300 font-black">
+                        GEAR {gear}
+                      </span>
+                      <span className={hudHeat > 80 ? 'text-rose-400 font-black animate-pulse' : 'text-sky-300 font-bold'}>
+                        🌡️{hudHeat}°C
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* REDESIGNED 3-SPOKE COMMERCIAL BUS STEERING WHEEL (Dr. Driving Inspired) */}
+                  <div
+                    ref={wheelElementRef}
+                    onPointerDown={handleWheelPointerDown}
+                    onPointerMove={handleWheelPointerMove}
+                    onPointerUp={handleWheelPointerUp}
+                    onPointerCancel={handleWheelPointerUp}
+                    className="relative w-[154px] h-[154px] sm:w-[186px] sm:h-[186px] rounded-full cursor-grab active:cursor-grabbing touch-none select-none flex items-center justify-center z-20 -mb-2"
+                    style={{
+                      transform: `rotate(${wheelVisualAngle}deg)`,
+                      filter: 'drop-shadow(0 12px 20px rgba(0,0,0,0.95))',
+                    }}
+                  >
+                    {/* SVG Commercial 3-Spoke Bus Steering Wheel */}
+                    <svg viewBox="0 0 200 200" className="w-full h-full overflow-visible pointer-events-none">
+                      <defs>
+                        <radialGradient id="busRimGrad" cx="50%" cy="50%" r="50%">
+                          <stop offset="72%" stopColor="#1c1917" />
+                          <stop offset="86%" stopColor="#3f3f46" />
+                          <stop offset="95%" stopColor="#18181b" />
+                          <stop offset="100%" stopColor="#09090b" />
+                        </radialGradient>
+                        <linearGradient id="spokeMetal" x1="0%" y1="0%" x2="100%" y2="100%">
+                          <stop offset="0%" stopColor="#71717a" />
+                          <stop offset="50%" stopColor="#3f3f46" />
+                          <stop offset="100%" stopColor="#18181b" />
+                        </linearGradient>
+                        <linearGradient id="woodTopGrip" x1="0%" y1="0%" x2="100%" y2="0%">
+                          <stop offset="0%" stopColor="#78350f" />
+                          <stop offset="50%" stopColor="#b45309" />
+                          <stop offset="100%" stopColor="#78350f" />
+                        </linearGradient>
+                      </defs>
+
+                      {/* Outer Shadow Ring */}
+                      <circle cx="100" cy="100" r="90" fill="none" stroke="rgba(0,0,0,0.65)" strokeWidth="18" />
+
+                      {/* 3 Sculpted Commercial Bus Spokes (Left, Right, Bottom) leaving top window wide open for gauges! */}
+                      {/* Left Spoke */}
+                      <path
+                        d="M 18 102 L 72 90 L 74 114 L 18 118 Z"
+                        fill="url(#spokeMetal)"
+                        stroke="#52525b"
+                        strokeWidth="1.5"
+                      />
+                      {/* Right Spoke */}
+                      <path
+                        d="M 182 102 L 128 90 L 126 114 L 182 118 Z"
+                        fill="url(#spokeMetal)"
+                        stroke="#52525b"
+                        strokeWidth="1.5"
+                      />
+                      {/* Bottom Center Spoke */}
+                      <path
+                        d="M 88 124 L 112 124 L 116 184 L 84 184 Z"
+                        fill="url(#spokeMetal)"
+                        stroke="#52525b"
+                        strokeWidth="1.5"
+                      />
+                      {/* Chrome Spoke Accent Slots */}
+                      <rect x="32" y="101" width="28" height="5" rx="2.5" fill="#a1a1aa" opacity="0.75" />
+                      <rect x="140" y="101" width="28" height="5" rx="2.5" fill="#a1a1aa" opacity="0.75" />
+                      <rect x="97" y="140" width="6" height="28" rx="3" fill="#a1a1aa" opacity="0.75" />
+
+                      {/* Main Heavy-Duty Perforated Leather Rim */}
+                      <circle
+                        cx="100"
+                        cy="100"
+                        r="86"
+                        fill="none"
+                        stroke="url(#busRimGrad)"
+                        strokeWidth="18"
+                      />
+
+                      {/* Classic Woodgrain / Amber Top Rim Arc */}
+                      <path
+                        d="M 32 50 A 86 86 0 0 1 168 50"
+                        fill="none"
+                        stroke="url(#woodTopGrip)"
+                        strokeWidth="16"
+                        strokeLinecap="round"
+                      />
+
+                      {/* Inner Rim Stitching Highlight */}
+                      <circle
+                        cx="100"
+                        cy="100"
+                        r="77"
+                        fill="none"
+                        stroke="rgba(255,255,255,0.12)"
+                        strokeWidth="1.2"
+                        strokeDasharray="6 4"
+                      />
+
+                      {/* Top-Center Yellow Alignment Stripe (Shows exact wheel angle at a glance) */}
+                      <rect x="96" y="5" width="8" height="19" rx="2" fill="#facc15" stroke="#18181b" strokeWidth="1.5" />
+
+                      {/* Center Bus Horn Pad Housing */}
+                      <circle cx="100" cy="105" r="34" fill="#18181b" stroke="#52525b" strokeWidth="3" />
+                      <circle cx="100" cy="105" r="28" fill="#27272a" stroke="#facc15" strokeWidth="1.5" strokeOpacity="0.6" />
+                    </svg>
+
+                    {/* Interactive Center Danfo Horn Button */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleHorn();
+                      }}
+                      className="absolute w-12 h-12 sm:w-14 sm:h-14 mt-1 rounded-full bg-gradient-to-b from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 active:scale-95 text-stone-950 font-black text-[8px] sm:text-[9px] font-['Bungee'] flex flex-col items-center justify-center shadow-[0_4px_12px_rgba(0,0,0,0.85)] border-2 border-stone-900 pointer-events-auto"
+                    >
+                      <span>🚌</span>
+                      <span>HORN</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── CENTER SECTION: AC LOUVERS, RED HAZARD SWITCH & DANFO INFOTAINMENT CONSOLE ── */}
+              <div className="hidden sm:flex flex-col justify-between items-center w-[24%] h-full py-1 px-2 border-x border-stone-800/80">
+                {/* Dual Bus AC Louvers + Red Hazard Button (Just like Dr. Driving!) */}
+                <div className="w-full flex items-center justify-between gap-1.5 bg-stone-950/90 px-2 py-1.5 rounded-xl border border-stone-700/80 shadow-inner">
+                  {/* Left AC Vent */}
+                  <div className="flex-1 h-7 bg-stone-900 rounded border border-stone-700 flex flex-col justify-evenly px-1">
+                    <div className="w-full h-0.5 bg-stone-600" />
+                    <div className="w-full h-0.5 bg-stone-600" />
+                    <div className="w-full h-0.5 bg-stone-600" />
+                  </div>
+                  {/* Red Hazard Switch Button */}
+                  <button
+                    onClick={toggleHazards}
+                    className={`w-8 h-7 rounded-lg font-black text-xs flex items-center justify-center border transition-all shadow-md ${
+                      hazardLights
+                        ? 'bg-rose-500 text-white border-rose-200 animate-pulse shadow-[0_0_12px_rgba(244,63,94,0.9)]'
+                        : 'bg-rose-700 hover:bg-rose-600 text-rose-100 border-rose-900'
+                    }`}
+                    title="Hazard Warning Lights"
+                  >
+                    ⚠️
+                  </button>
+                  {/* Right AC Vent */}
+                  <div className="flex-1 h-7 bg-stone-900 rounded border border-stone-700 flex flex-col justify-evenly px-1">
+                    <div className="w-full h-0.5 bg-stone-600" />
+                    <div className="w-full h-0.5 bg-stone-600" />
+                    <div className="w-full h-0.5 bg-stone-600" />
+                  </div>
+                </div>
+
+                {/* Recessed Danfo Route & Conductor Digital Display */}
+                <div className="w-full flex-1 my-1 bg-stone-950 border-2 border-stone-700/90 rounded-xl p-1.5 flex flex-col justify-between shadow-inner">
+                  <div className="flex items-center justify-between text-[8px] font-mono">
+                    <span className="text-amber-400 font-black truncate">
+                      🚏 {currentJunction ? currentJunction.name : 'TERMINAL'}
+                    </span>
+                    <span className="text-emerald-400 font-black">
+                      {Math.max(0, distToJunc)}m
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-[9px] font-mono bg-stone-900/90 px-1.5 py-0.5 rounded border border-stone-800">
+                    <span className="text-sky-300 font-bold">
+                      👥 {gameState.bus.passengers?.length || 0}/{gameState.bus.capacity}
+                    </span>
+                    <span className="text-emerald-400 font-black">
+                      ₦{gameState.conductor.collectedCash.toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={handleCollectFares}
+                      className="flex-1 py-0.5 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/50 rounded text-[8px] font-mono font-black text-emerald-300 active:scale-95"
+                    >
+                      💵 FARES (C)
+                    </button>
+                    <button
+                      onClick={toggleEngine}
+                      className={`px-1.5 py-0.5 rounded border text-[8px] font-mono font-black ${
+                        isEngineRunning
+                          ? 'bg-stone-800 border-stone-600 text-emerald-400'
+                          : 'bg-amber-400 text-stone-950 border-amber-200 animate-pulse'
+                      }`}
+                    >
+                      🔑 {isEngineRunning ? 'ON' : 'START'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── RIGHT SECTION: DR. DRIVING VERTICAL GEAR SHIFTER + RIBBED BRAKE & GAS PEDALS ── */}
+              <div className="flex items-end justify-end gap-2 sm:gap-3.5 w-[52%] sm:w-[32%] h-full pr-1">
+                {/* Mobile Hazard Button (visible on small screens) */}
+                <button
+                  onClick={toggleHazards}
+                  className={`sm:hidden mb-2 w-8 h-8 rounded-lg font-black text-xs flex items-center justify-center border ${
+                    hazardLights
+                      ? 'bg-rose-500 text-white border-rose-200 animate-pulse'
+                      : 'bg-rose-700 text-rose-100 border-rose-900'
+                  }`}
+                >
+                  ⚠️
+                </button>
+
+                {/* DR. DRIVING VERTICAL GEAR SHIFTER TRACK (R - N - D - P) */}
+                <div className="relative h-[142px] sm:h-[158px] w-14 sm:w-16 bg-gradient-to-b from-stone-900 to-stone-950 border-[3px] border-stone-600 rounded-2xl p-1.5 flex flex-col justify-between shadow-[inset_0_4px_12px_rgba(0,0,0,0.95),0_6px_16px_rgba(0,0,0,0.85)]">
+                  {/* Center Vertical Shifter Slot */}
+                  <div className="absolute top-3 bottom-3 right-3 w-2 bg-stone-950 border border-stone-700 rounded-full pointer-events-none" />
+                  {(['R', 'N', 'D', 'P'] as const).map((g) => {
+                    const isActive = gear === g;
+                    return (
+                      <button
+                        key={g}
+                        onClick={() => {
+                          setGear(g);
+                          inputsRef.current.gear = g;
+                          if (g === 'R') soundEngine.playReverseBeep();
+                        }}
+                        className={`relative z-10 w-full h-7 sm:h-8 rounded-xl font-mono font-black text-xs flex items-center justify-between px-2 transition-all ${
+                          isActive
+                            ? g === 'R'
+                              ? 'bg-rose-500 text-white shadow-[0_0_12px_rgba(244,63,94,0.8)] border border-rose-200 scale-105'
+                              : g === 'D'
+                              ? 'bg-amber-400 text-stone-950 shadow-[0_0_12px_rgba(251,191,36,0.8)] border border-amber-200 scale-105'
+                              : 'bg-sky-400 text-stone-950 shadow-[0_0_12px_rgba(56,189,248,0.8)] border border-sky-200 scale-105'
+                            : 'text-stone-400 hover:text-white bg-stone-900/60'
+                        }`}
+                      >
+                        <span>{g}</span>
+                        {/* Shift Knob Handle on Active Gear */}
+                        <span
+                          className={`w-3.5 h-3.5 rounded-full border ${
+                            isActive
+                              ? 'bg-stone-950 border-white shadow-md'
+                              : 'bg-stone-800 border-stone-600'
+                          }`}
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* DR. DRIVING RIBBED RUBBER BRAKE & GAS PEDALS */}
+                <div className="flex items-end gap-2 sm:gap-2.5 h-full pb-0.5">
+                  {/* BRAKE PEDAL (Wide Ribbed Tread) */}
+                  <button
+                    onPointerDown={(e) => {
+                      try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch {}
+                      inputsRef.current.brake = true;
+                      setIsBrakePressed(true);
+                      soundEngine.playAirBrakeHiss();
+                    }}
+                    onPointerUp={(e) => {
+                      try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
+                      inputsRef.current.brake = false;
+                      setIsBrakePressed(false);
+                    }}
+                    onPointerCancel={() => {
+                      inputsRef.current.brake = false;
+                      setIsBrakePressed(false);
+                    }}
+                    className={`w-14 sm:w-16 h-[92px] sm:h-[104px] rounded-xl flex flex-col items-center justify-between py-2.5 px-1.5 select-none touch-none transition-all ${
+                      isBrakePressed
+                        ? 'bg-rose-950 border-[3px] border-rose-400 translate-y-1.5 scale-95 shadow-[0_0_20px_rgba(244,63,94,0.75)]'
+                        : 'bg-gradient-to-b from-stone-700 via-stone-800 to-stone-900 border-[3px] border-stone-500 shadow-[0_8px_16px_rgba(0,0,0,0.9)]'
+                    }`}
+                  >
+                    <div className="w-full flex flex-col gap-1">
+                      <div className="w-full h-1.5 bg-stone-950/80 rounded-full" />
+                      <div className="w-full h-1.5 bg-stone-950/80 rounded-full" />
+                      <div className="w-full h-1.5 bg-stone-950/80 rounded-full" />
+                    </div>
+                    <span className={`text-[10px] font-mono font-black tracking-wider ${isBrakePressed ? 'text-rose-300' : 'text-rose-400'}`}>
+                      BRAKE
+                    </span>
+                    <div className="w-full flex flex-col gap-1">
+                      <div className="w-full h-1.5 bg-stone-950/80 rounded-full" />
+                      <div className="w-full h-1.5 bg-stone-950/80 rounded-full" />
+                    </div>
+                  </button>
+
+                  {/* GAS / ACCELERATOR PEDAL (Tall Vertical Ribbed Tread like Dr. Driving) */}
+                  <button
+                    onPointerDown={(e) => {
+                      try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch {}
+                      if (!inputsRef.current.isEngineRunning) {
+                        toggleEngine();
+                      }
+                      inputsRef.current.gas = true;
+                      setIsGasPressed(true);
+                    }}
+                    onPointerUp={(e) => {
+                      try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
+                      inputsRef.current.gas = false;
+                      setIsGasPressed(false);
+                    }}
+                    onPointerCancel={() => {
+                      inputsRef.current.gas = false;
+                      setIsGasPressed(false);
+                    }}
+                    className={`w-14 sm:w-16 h-[132px] sm:h-[148px] rounded-xl flex flex-col items-center justify-between py-3 px-2 select-none touch-none transition-all ${
+                      isGasPressed
+                        ? 'bg-amber-400 text-stone-950 border-[3px] border-amber-200 translate-y-1.5 scale-95 shadow-[0_0_24px_rgba(251,191,36,0.85)]'
+                        : 'bg-gradient-to-b from-stone-700 via-stone-800 to-stone-900 border-[3px] border-amber-400/80 shadow-[0_8px_16px_rgba(0,0,0,0.9)]'
+                    }`}
+                  >
+                    <div className="w-full flex justify-between gap-1 h-8">
+                      <div className={`flex-1 rounded-full ${isGasPressed ? 'bg-stone-900/40' : 'bg-stone-950/80'}`} />
+                      <div className={`flex-1 rounded-full ${isGasPressed ? 'bg-stone-900/40' : 'bg-stone-950/80'}`} />
+                      <div className={`flex-1 rounded-full ${isGasPressed ? 'bg-stone-900/40' : 'bg-stone-950/80'}`} />
+                    </div>
+                    <span className={`text-[11px] font-mono font-black tracking-wider ${isGasPressed ? 'text-stone-950' : 'text-amber-400'}`}>
+                      GAS
+                    </span>
+                    <div className="w-full flex justify-between gap-1 h-8">
+                      <div className={`flex-1 rounded-full ${isGasPressed ? 'bg-stone-900/40' : 'bg-stone-950/80'}`} />
+                      <div className={`flex-1 rounded-full ${isGasPressed ? 'bg-stone-900/40' : 'bg-stone-950/80'}`} />
+                      <div className={`flex-1 rounded-full ${isGasPressed ? 'bg-stone-900/40' : 'bg-stone-950/80'}`} />
+                    </div>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ═══════ EXTERNAL CAMERA MODES (3RD PERSON / BIRD EYE / 360) OR ON-FOOT CONTROLS ═══════ */}
+      {(isSteppedDown || cameraMode !== 'FIRST_PERSON') && (
+        <>
+          {/* BOTTOM-LEFT: Redesigned 3-Spoke Wheel or Walk Joystick */}
+          <div className="absolute bottom-4 left-2 z-50 pointer-events-auto flex flex-col items-start">
+            <button
+              onClick={() => setShowLeftPanel((v) => !v)}
+              className="mb-1 w-8 h-5 bg-stone-900/80 border border-stone-700/50 rounded text-stone-400 text-[8px] flex items-center justify-center"
+            >
+              {showLeftPanel ? '◀' : '▶'}
+            </button>
+            <div
+              className={`flex items-end gap-2 transition-opacity duration-300 origin-bottom-left ${
+                showLeftPanel ? 'opacity-100' : 'opacity-0 pointer-events-none'
+              }`}
+            >
+              {!isSteppedDown ? (
+                <>
+                  <div className="flex flex-col gap-1.5" style={{ transform: 'scale(0.9)', transformOrigin: 'bottom left' }}>
+                    <button
+                      onClick={() => triggerTurnSignal('LEFT')}
+                      className={`w-10 p-1.5 rounded border text-[9px] font-bold text-center ${
+                        turnSignal === 'LEFT' ? 'bg-amber-400 text-stone-950 border-amber-300' : 'bg-stone-900/80 border-stone-700 text-stone-300'
+                      }`}
+                    >
+                      ⬅️
+                    </button>
+                    <button
+                      onClick={() => triggerTurnSignal('RIGHT')}
+                      className={`w-10 p-1.5 rounded border text-[9px] font-bold text-center ${
+                        turnSignal === 'RIGHT' ? 'bg-amber-400 text-stone-950 border-amber-300' : 'bg-stone-900/80 border-stone-700 text-stone-300'
+                      }`}
+                    >
+                      ➡️
+                    </button>
+                    <button
+                      onClick={toggleHazards}
+                      className={`w-10 p-1.5 rounded border text-[9px] font-bold text-center ${
+                        hazardLights ? 'bg-amber-500 text-stone-950 animate-pulse' : 'bg-stone-900/80 border-stone-700 text-stone-300'
+                      }`}
+                    >
+                      🚨
+                    </button>
+                    <button
+                      onClick={toggleWipers}
+                      className={`w-10 p-1.5 rounded border text-[9px] font-bold text-center ${
+                        wipersActive ? 'bg-sky-500 text-stone-950' : 'bg-stone-900/80 border-stone-700 text-stone-300'
+                      }`}
+                    >
+                      🌧️
+                    </button>
+                  </div>
+                  <div
+                    ref={wheelElementRef}
+                    onPointerDown={handleWheelPointerDown}
+                    onPointerMove={handleWheelPointerMove}
+                    onPointerUp={handleWheelPointerUp}
+                    onPointerCancel={handleWheelPointerUp}
+                    className="relative w-36 h-36 sm:w-40 sm:h-40 rounded-full cursor-grab active:cursor-grabbing touch-none select-none flex items-center justify-center"
+                    style={{
+                      transform: `rotate(${wheelVisualAngle}deg)`,
+                      filter: 'drop-shadow(0 10px 18px rgba(0,0,0,0.9))',
+                    }}
+                  >
+                    <svg viewBox="0 0 200 200" className="w-full h-full overflow-visible pointer-events-none">
+                      <circle cx="100" cy="100" r="86" fill="none" stroke="#18181b" strokeWidth="18" />
+                      <path d="M 18 102 L 72 90 L 74 114 L 18 118 Z" fill="#3f3f46" stroke="#71717a" strokeWidth="1.5" />
+                      <path d="M 182 102 L 128 90 L 126 114 L 182 118 Z" fill="#3f3f46" stroke="#71717a" strokeWidth="1.5" />
+                      <path d="M 88 124 L 112 124 L 116 184 L 84 184 Z" fill="#3f3f46" stroke="#71717a" strokeWidth="1.5" />
+                      <path d="M 32 50 A 86 86 0 0 1 168 50" fill="none" stroke="#b45309" strokeWidth="15" strokeLinecap="round" />
+                      <rect x="96" y="5" width="8" height="19" rx="2" fill="#facc15" stroke="#18181b" strokeWidth="1.5" />
+                      <circle cx="100" cy="105" r="32" fill="#18181b" stroke="#52525b" strokeWidth="3" />
+                    </svg>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleHorn();
+                      }}
+                      className="absolute w-11 h-11 mt-1 bg-amber-400 hover:bg-amber-300 active:bg-amber-200 text-stone-950 rounded-full font-black text-[9px] font-['Bungee'] flex items-center justify-center shadow-lg border border-stone-900 transition-transform active:scale-95"
+                    >
+                      HORN
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-col items-center">
+                  <div
+                    onPointerDown={handleWalkJoyPointerDown}
+                    onPointerMove={handleWalkJoyPointerMove}
+                    onPointerUp={handleWalkJoyPointerUp}
+                    onPointerCancel={handleWalkJoyPointerUp}
+                    className="relative w-32 h-32 rounded-full bg-stone-950/90 backdrop-blur-md border-2 border-amber-400/80 shadow-2xl touch-none select-none flex items-center justify-center cursor-grab active:cursor-grabbing"
+                  >
+                    <div className="absolute top-1 text-[8px] font-black text-amber-400/80 font-mono">▲ W</div>
+                    <div className="absolute bottom-1 text-[8px] font-black text-amber-400/80 font-mono">▼ S</div>
+                    <div className="absolute left-1.5 text-[8px] font-black text-amber-400/80 font-mono">◀ A</div>
+                    <div className="absolute right-1.5 text-[8px] font-black text-amber-400/80 font-mono">D ▶</div>
+                    <div
+                      className="w-14 h-14 rounded-full bg-gradient-to-b from-amber-300 to-amber-500 text-stone-950 font-black text-[10px] shadow-xl border-2 border-amber-200 flex items-center justify-center pointer-events-none transition-transform duration-75"
+                      style={{
+                        transform: `translate(${walkJoyVisual.x}px, ${walkJoyVisual.y}px)`,
+                      }}
+                    >
+                      WALK
+                    </div>
+                  </div>
+                  <div className="mt-1 text-[8px] font-mono font-bold text-amber-400 bg-stone-950/90 px-2 py-0.5 rounded-full border border-amber-500/40">
+                    DRAG TO WALK
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* BOTTOM-RIGHT: Pedals & Gear */}
+          <div className="absolute bottom-4 right-2 z-50 pointer-events-auto flex flex-col items-end">
+            <button
+              onClick={() => setShowRightPanel((v) => !v)}
+              className="mb-1 w-8 h-5 bg-stone-900/80 border border-stone-700/50 rounded text-stone-400 text-[8px] flex items-center justify-center"
+            >
+              {showRightPanel ? '▶' : '◀'}
+            </button>
+            <div
+              className={`flex items-end gap-2 transition-opacity duration-300 origin-bottom-right ${
+                showRightPanel ? 'opacity-100' : 'opacity-0 pointer-events-none'
+              }`}
+            >
+              {!isSteppedDown ? (
+                <>
+                  <div className="flex flex-col bg-stone-900/90 backdrop-blur border-2 border-stone-700 p-1 rounded-xl shadow-lg">
+                    {(['R', 'N', 'D', 'P'] as const).map((g) => (
+                      <button
+                        key={g}
+                        onClick={() => {
+                          setGear(g);
+                          inputsRef.current.gear = g;
+                        }}
+                        className={`w-7 h-7 rounded-lg font-mono font-black text-[10px] transition-all flex items-center justify-center my-0.5 ${
+                          gear === g
+                            ? 'bg-amber-400 text-stone-950 shadow-md ring-1 ring-amber-300 scale-105'
+                            : 'text-stone-400 hover:text-white'
+                        }`}
+                      >
+                        {g}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-end gap-2">
+                    <button
+                      onPointerDown={(e) => {
+                        try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch {}
+                        inputsRef.current.brake = true;
+                        setIsBrakePressed(true);
+                        soundEngine.playAirBrakeHiss();
+                      }}
+                      onPointerUp={(e) => {
+                        try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
+                        inputsRef.current.brake = false;
+                        setIsBrakePressed(false);
+                      }}
+                      onPointerCancel={() => {
+                        inputsRef.current.brake = false;
+                        setIsBrakePressed(false);
+                      }}
+                      className={`w-14 h-20 bg-stone-900/95 rounded-xl flex flex-col items-center justify-center shadow-xl transition-all select-none touch-none ${
+                        isBrakePressed
+                          ? 'bg-rose-950 border-2 border-rose-500 scale-95 shadow-[0_0_15px_rgba(244,63,94,0.6)]'
+                          : 'border border-stone-600 active:border-rose-500'
+                      }`}
+                    >
+                      <span className={`text-[10px] font-mono font-black ${isBrakePressed ? 'text-rose-300' : 'text-rose-400'}`}>BRAKE</span>
+                      <span className="text-[7px] text-stone-400 font-mono mt-0.5">STOP</span>
+                    </button>
+                    <button
+                      onPointerDown={(e) => {
+                        try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch {}
+                        inputsRef.current.gas = true;
+                        setIsGasPressed(true);
+                      }}
+                      onPointerUp={(e) => {
+                        try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
+                        inputsRef.current.gas = false;
+                        setIsGasPressed(false);
+                      }}
+                      onPointerCancel={() => {
+                        inputsRef.current.gas = false;
+                        setIsGasPressed(false);
+                      }}
+                      className={`w-14 h-28 rounded-xl flex flex-col items-center justify-center shadow-xl transition-all select-none touch-none ${
+                        isGasPressed
+                          ? 'bg-amber-400 text-stone-950 border-2 border-amber-300 scale-95 shadow-[0_0_20px_rgba(251,191,36,0.6)]'
+                          : 'bg-stone-900/95 border border-stone-600 active:border-amber-500'
+                      }`}
+                    >
+                      <span className={`text-[10px] font-mono font-black ${isGasPressed ? 'text-stone-950' : 'text-amber-400'}`}>GAS</span>
+                      <span className={`text-[7px] font-mono mt-0.5 ${isGasPressed ? 'text-stone-800' : 'text-stone-400'}`}>DRIVE</span>
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <button
+                  onClick={toggleStepDown}
+                  className="px-6 py-4 bg-amber-400 text-stone-950 font-black rounded-xl shadow-2xl active:scale-95 animate-bounce mb-8"
+                >
+                  GET IN BUS
+                </button>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ═══════ ACTION FEED (Positioned cleanly above dashboard in First-Person) ═══════ */}
+      <div
+        className={`absolute left-1/2 -translate-x-1/2 z-30 pointer-events-none flex flex-col gap-0.5 items-center transition-all ${
+          !isSteppedDown && cameraMode === 'FIRST_PERSON' ? 'bottom-[37%]' : 'bottom-3'
+        }`}
+        style={{ maxWidth: '52vw' }}
+      >
         {actionFeed.slice(0, 2).map((msg, i) => (
-          <div key={i} className={`text-[9px] px-2 py-0.5 rounded-full bg-stone-950/80 backdrop-blur font-mono truncate max-w-full ${i === 0 ? 'text-amber-300' : 'text-stone-500 opacity-60'}`}>
+          <div
+            key={i}
+            className={`text-[9px] px-2.5 py-0.5 rounded-full bg-stone-950/85 border border-stone-800/80 backdrop-blur font-mono truncate max-w-full ${
+              i === 0 ? 'text-amber-300 font-bold' : 'text-stone-400 opacity-75'
+            }`}
+          >
             {msg}
           </div>
         ))}
-      </div>
-
-      {/* ═══════ BOTTOM-RIGHT: Pedals & Gear ═══════ */}
-      <div className="absolute bottom-4 right-2 z-50 pointer-events-auto flex flex-col items-end">
-        <button onClick={() => setShowRightPanel(v => !v)}
-          className="mb-1 w-8 h-5 bg-stone-900/80 border border-stone-700/50 rounded text-stone-400 text-[8px] flex items-center justify-center">
-          {showRightPanel ? '▶' : '◀'}
-        </button>
-        <div className={`flex items-end gap-2 transition-opacity duration-300 origin-bottom-right ${showRightPanel ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-          {!isSteppedDown ? (
-            <>
-              <div className="flex flex-col bg-stone-900/85 backdrop-blur border border-stone-700/50 p-1 rounded-xl shadow-lg">
-                {(['P', 'R', 'N', 'D', 'L'] as const).map((g) => (
-                  <button key={g} onClick={() => setGear(g)}
-                    className={`w-6 h-6 rounded-lg font-mono font-black text-[10px] transition-all flex items-center justify-center my-0.5 ${
-                      gear === g ? 'bg-amber-400 text-stone-950 shadow-md ring-1 ring-amber-300 scale-105' : 'text-stone-400 hover:text-white'
-                    }`}>
-                    {g}
-                  </button>
-                ))}
-              </div>
-              <div className="flex items-end gap-2">
-                <button
-                  onPointerDown={(e) => {
-                    try { (e.target as HTMLElement).setPointerCapture(e.pointerId); } catch {}
-                    inputsRef.current.brake = true;
-                    setIsBrakePressed(true);
-                    soundEngine.playAirBrakeHiss();
-                  }}
-                  onPointerUp={(e) => {
-                    try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
-                    inputsRef.current.brake = false;
-                    setIsBrakePressed(false);
-                  }}
-                  onPointerCancel={() => {
-                    inputsRef.current.brake = false;
-                    setIsBrakePressed(false);
-                  }}
-                  className={`w-14 h-18 bg-stone-900/95 rounded-xl flex flex-col items-center justify-center shadow-xl transition-all select-none touch-none ${
-                    isBrakePressed
-                      ? 'bg-rose-950 border-2 border-rose-500 scale-95 shadow-[0_0_15px_rgba(244,63,94,0.6)]'
-                      : 'border border-stone-600 active:border-rose-500'
-                  }`}
-                  style={{ backgroundImage: 'repeating-linear-gradient(to bottom, transparent 0, transparent 4px, rgba(255,255,255,0.05) 4px, rgba(255,255,255,0.05) 8px)' }}>
-                  <span className={`text-[10px] font-mono font-black ${isBrakePressed ? 'text-rose-300' : 'text-rose-400'}`}>BRAKE</span>
-                  <span className="text-[7px] text-stone-400 font-mono mt-0.5">STOP</span>
-                </button>
-                <button
-                  onPointerDown={(e) => {
-                    try { (e.target as HTMLElement).setPointerCapture(e.pointerId); } catch {}
-                    inputsRef.current.gas = true;
-                    setIsGasPressed(true);
-                  }}
-                  onPointerUp={(e) => {
-                    try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
-                    inputsRef.current.gas = false;
-                    setIsGasPressed(false);
-                  }}
-                  onPointerCancel={() => {
-                    inputsRef.current.gas = false;
-                    setIsGasPressed(false);
-                  }}
-                  className={`w-14 h-26 rounded-xl flex flex-col items-center justify-center shadow-xl transition-all select-none touch-none ${
-                    isGasPressed
-                      ? 'bg-amber-400 text-stone-950 border-2 border-amber-300 scale-95 shadow-[0_0_20px_rgba(251,191,36,0.6)]'
-                      : isEngineRunning
-                      ? 'bg-stone-900/95 border border-stone-600 active:border-amber-500'
-                      : 'bg-stone-900/60 border border-stone-700 opacity-60'
-                  }`}
-                  style={{ backgroundImage: 'repeating-linear-gradient(to bottom, transparent 0, transparent 6px, rgba(251,191,36,0.1) 6px, rgba(251,191,36,0.1) 10px)' }}>
-                  <span className={`text-[10px] font-mono font-black ${isGasPressed ? 'text-stone-950' : 'text-amber-400'}`}>GAS</span>
-                  <span className={`text-[7px] font-mono mt-0.5 ${isGasPressed ? 'text-stone-800' : 'text-stone-400'}`}>DRIVE</span>
-                </button>
-              </div>
-            </>
-          ) : (
-            <button onClick={toggleStepDown} className="px-6 py-4 bg-amber-400 text-stone-950 font-black rounded-xl shadow-2xl active:scale-95 animate-bounce mb-8">
-              GET IN BUS
-            </button>
-          )}
-        </div>
       </div>
 
       {/* NPC Modal */}
@@ -1589,39 +2219,6 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           }}
         />
       )}
-    
-      {/* 2D DASHBOARD OVERLAY - CENTERED COMPACT INSTRUMENT CLUSTER (NEVER BLOCKS STEERING WHEEL) */}
-      {!isSteppedDown && cameraMode === 'FIRST_PERSON' && (
-        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 w-80 max-w-[50vw] h-24 pointer-events-none z-20 flex items-end justify-center">
-          <div className="relative w-full h-20 bg-stone-950/90 border border-stone-700/60 rounded-2xl shadow-[0_-5px_25px_rgba(0,0,0,0.8)] backdrop-blur-md flex items-center justify-around px-4">
-            
-            {/* Speedometer Center-Left of cluster */}
-            <div className="flex flex-col items-center justify-center">
-              <div className="text-2xl text-sky-400 font-black tracking-tight" style={{ textShadow: '0 0 10px rgba(56,189,248,0.5)' }}>
-                {Math.round(simRef.current?.speed || 0)}
-              </div>
-              <div className="text-[9px] text-stone-400 font-bold uppercase tracking-wider">KM/H</div>
-            </div>
-
-            {/* Center Gear Info */}
-            <div className="flex flex-col items-center">
-              <div className="px-2.5 py-0.5 bg-stone-900 border border-stone-700 rounded text-amber-400 font-mono text-[11px] font-black shadow-inner">
-                {gear} - AUTO
-              </div>
-            </div>
-
-            {/* Engine Temp Center-Right */}
-            <div className="flex flex-col items-center justify-center">
-              <div className="text-base text-rose-400 font-black tracking-tight">
-                {Math.round(gameState.bus.heat)}°
-              </div>
-              <div className="text-[9px] text-stone-400 font-bold uppercase tracking-wider">TEMP</div>
-            </div>
-
-          </div>
-        </div>
-      )}
-
-</div>
+    </div>
   );
 };

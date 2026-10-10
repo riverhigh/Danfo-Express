@@ -54,9 +54,15 @@ export class ThreeDrivingEngine {
   private bumpTimer: number = 0;
   private bumpImpulse: number = 0;
   private bumpCooldown: number = 0;
+  private lastCollisionAlertTime: number = 0;
+  private pendingCollisionMessage: string | null = null;
   private container: HTMLElement;
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
+  private leftMirrorCamera: THREE.PerspectiveCamera;
+  private rightMirrorCamera: THREE.PerspectiveCamera;
+  private leftMirrorCanvas: HTMLCanvasElement | null = null;
+  private rightMirrorCanvas: HTMLCanvasElement | null = null;
   private renderer: THREE.WebGLRenderer;
 
   // Cannon-es Physics World & Raycast Vehicle
@@ -166,6 +172,8 @@ export class ThreeDrivingEngine {
 
     // 2. Camera (Wide-Angle Cockpit View Looking Forward Out Windshield)
     this.camera = new THREE.PerspectiveCamera(70, width / height, 0.45, 480);
+    this.leftMirrorCamera = new THREE.PerspectiveCamera(56, 220 / 130, 0.4, 240);
+    this.rightMirrorCamera = new THREE.PerspectiveCamera(56, 220 / 130, 0.4, 240);
 
     // 3. WebGL Renderer
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
@@ -242,6 +250,17 @@ export class ThreeDrivingEngine {
     this.renderer.setSize(width, height);
   };
 
+  public setMirrorCanvases(left: HTMLCanvasElement | null, right: HTMLCanvasElement | null) {
+    this.leftMirrorCanvas = left;
+    this.rightMirrorCanvas = right;
+  }
+
+  public consumeCollisionMessage(): string | null {
+    const msg = this.pendingCollisionMessage;
+    this.pendingCollisionMessage = null;
+    return msg;
+  }
+
   /**
    * Cannon.js / cannon-es physics setup for realistic Lagos Danfo driving dynamics
    */
@@ -265,7 +284,7 @@ export class ThreeDrivingEngine {
     // Road side physical safety barriers along expressway shoulders (curbs)
     const barrierShape = new CANNON.Box(new CANNON.Vec3(1.2, 2.5, 50000));
     const leftBarrier = new CANNON.Body({ mass: 0, type: CANNON.Body.STATIC, shape: barrierShape });
-    leftBarrier.position.set(-11.5, 2.0, 0);
+    leftBarrier.position.set(-28.5, 2.0, 0);
     this.world.addBody(leftBarrier);
 
     const rightBarrier = new CANNON.Body({ mass: 0, type: CANNON.Body.STATIC, shape: barrierShape });
@@ -429,72 +448,80 @@ export class ThreeDrivingEngine {
       });
 
       // 2. Curbs & Sidewalks (wider Lagos-style)
+      const rightSideProps = new THREE.Group();
+      rightSideProps.visible = i > 0; // Hidden at segment 0 so the starting Bus Park connects cleanly to the expressway!
+      group.add(rightSideProps);
+      group.userData.rightSideProps = rightSideProps;
+
       [-10.5, 10.5].forEach((curbX, idx) => {
         const curb = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.3, roadLength), new THREE.MeshStandardMaterial({ map: curbTex, roughness: 0.7 }));
         curb.position.set(curbX, 0.15, 0);
         curb.receiveShadow = true;
-        group.add(curb);
+        if (idx === 0) rightSideProps.add(curb);
+        else group.add(curb);
 
         // Sidewalk
         const walk = new THREE.Mesh(new THREE.BoxGeometry(7, 0.25, roadLength), new THREE.MeshStandardMaterial({ color: 0x3a3732, roughness: 0.95 }));
         walk.position.set(idx === 0 ? -14.5 : 14.5, 0.12, 0);
-        group.add(walk);
+        if (idx === 0) rightSideProps.add(walk);
+        else group.add(walk);
       });
 
       // 2.5 Diverse Road Scenery (Trees & Pedestrian Bridges)
-        if (i % 2 === 1) {
-          // Add a pedestrian bridge every other segment
-          const bridgeGroup = new THREE.Group();
-          const bridgePillarMat = new THREE.MeshStandardMaterial({ color: 0x9ca3af, roughness: 0.8 });
-          const bridgeSpanMat = new THREE.MeshStandardMaterial({ color: 0x1e3a8a, metalness: 0.4, roughness: 0.6 });
-          
-          // Pillars
-          [-11, 11].forEach(px => {
-            const pillar = new THREE.Mesh(new THREE.BoxGeometry(1.5, 7, 1.5), bridgePillarMat);
-            pillar.position.set(px, 3.5, 0);
-            pillar.castShadow = true;
-            bridgeGroup.add(pillar);
-          });
-          
-          // Span
-          const span = new THREE.Mesh(new THREE.BoxGeometry(24, 1, 3), bridgeSpanMat);
-          span.position.set(0, 7.5, 0);
-          span.castShadow = true;
-          bridgeGroup.add(span);
-          
-          // Bridge Signboard
-          const sign = new THREE.Mesh(new THREE.PlaneGeometry(16, 1.5), new THREE.MeshBasicMaterial({ color: 0x15803d }));
-          sign.position.set(0, 7.5, 1.55);
-          bridgeGroup.add(sign);
-          
-          group.add(bridgeGroup);
-        }
-
-        // Add some random Trees along the road
-        const treeGeo = new THREE.ConeGeometry(2, 6, 8);
-        const trunkGeo = new THREE.CylinderGeometry(0.4, 0.4, 2);
-        const leafMat = new THREE.MeshStandardMaterial({ color: 0x166534, roughness: 0.9 });
-        const trunkMat = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.9 });
+      if (i % 2 === 1) {
+        // Add a pedestrian bridge every other segment
+        const bridgeGroup = new THREE.Group();
+        const bridgePillarMat = new THREE.MeshStandardMaterial({ color: 0x9ca3af, roughness: 0.8 });
+        const bridgeSpanMat = new THREE.MeshStandardMaterial({ color: 0x1e3a8a, metalness: 0.4, roughness: 0.6 });
         
-        for (let t = -roadLength / 2; t < roadLength / 2; t += 30) {
-          if (Math.random() > 0.5) {
-            [-12.5, 12.5].forEach(tx => {
-              if (Math.random() > 0.3) {
-                 const tree = new THREE.Group();
-                 const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-                 trunk.position.y = 1;
-                 const leaves = new THREE.Mesh(treeGeo, leafMat);
-                 leaves.position.y = 4;
-                 tree.add(trunk, leaves);
-                 tree.position.set(tx, 0, t + Math.random() * 10);
-                 tree.castShadow = true;
-                 group.add(tree);
-              }
-            });
-          }
-        }
+        // Pillars
+        [-11, 11].forEach(px => {
+          const pillar = new THREE.Mesh(new THREE.BoxGeometry(1.5, 7, 1.5), bridgePillarMat);
+          pillar.position.set(px, 3.5, 0);
+          pillar.castShadow = true;
+          bridgeGroup.add(pillar);
+        });
+        
+        // Span
+        const span = new THREE.Mesh(new THREE.BoxGeometry(24, 1, 3), bridgeSpanMat);
+        span.position.set(0, 7.5, 0);
+        span.castShadow = true;
+        bridgeGroup.add(span);
+        
+        // Bridge Signboard
+        const sign = new THREE.Mesh(new THREE.PlaneGeometry(16, 1.5), new THREE.MeshBasicMaterial({ color: 0x15803d }));
+        sign.position.set(0, 7.5, 1.55);
+        bridgeGroup.add(sign);
+        
+        group.add(bridgeGroup);
+      }
 
-        // 3. Buildings — varied heights & colors
+      // Add some random Trees along the road
+      const treeGeo = new THREE.ConeGeometry(2, 6, 8);
+      const trunkGeo = new THREE.CylinderGeometry(0.4, 0.4, 2);
+      const leafMat = new THREE.MeshStandardMaterial({ color: 0x166534, roughness: 0.9 });
+      const trunkMat = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.9 });
+      
+      for (let t = -roadLength / 2; t < roadLength / 2; t += 30) {
+        if (Math.random() > 0.5) {
+          [-12.5, 12.5].forEach(tx => {
+            if (Math.random() > 0.3) {
+               const tree = new THREE.Group();
+               const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+               trunk.position.y = 1;
+               const leaves = new THREE.Mesh(treeGeo, leafMat);
+               leaves.position.y = 4;
+               tree.add(trunk, leaves);
+               tree.position.set(tx, 0, t + Math.random() * 10);
+               tree.castShadow = true;
+               if (tx < 0) rightSideProps.add(tree);
+               else group.add(tree);
+            }
+          });
+        }
+      }
+
+      // 3. Buildings — varied heights & colors
       const shopVariants: [string, string, number, number][] = [
         ['EKO PHARMACY & CHEMIST',    '#0284c7', 14, 22],
         ['MAMA PUT AMALA BUKKA',      '#dc2626', 10, 20],
@@ -516,7 +543,7 @@ export class ThreeDrivingEngine {
         const bMeshL = new THREE.Mesh(new THREE.BoxGeometry(11, hL, shopL[3]), new THREE.MeshStandardMaterial({ map: bTexL, roughness: 0.85 }));
         bMeshL.position.set(-20, hL / 2, s);
         bMeshL.castShadow = true;
-        group.add(bMeshL);
+        rightSideProps.add(bMeshL);
 
         const bTexR = createBuildingFacadeTexture(shopR[0], shopR[1]);
         const hR = shopR[2];
@@ -529,15 +556,18 @@ export class ThreeDrivingEngine {
         [-11, 11].forEach((lx) => {
           const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 8), new THREE.MeshStandardMaterial({ color: 0x52525b, metalness: 0.7 }));
           pole.position.set(lx, 4, s);
-          group.add(pole);
           const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 8), new THREE.MeshStandardMaterial({ color: 0xfef3c7, emissive: 0xfef08a, emissiveIntensity: 1.2 }));
           bulb.position.set(lx, 8.2, s);
-          group.add(bulb);
+          if (lx < 0) {
+            rightSideProps.add(pole, bulb);
+          } else {
+            group.add(pole, bulb);
+          }
         });
       }
 
       // 3D Road Speed Bump / Asphalt Ridge across lanes
-      if (i % 2 === 0) {
+      if (i % 2 === 0 && i > 0) {
         const bumpGeo = new THREE.CylinderGeometry(0.5, 0.5, 17, 12, 1, false, 0, Math.PI);
         const bumpMat = new THREE.MeshStandardMaterial({
           color: 0x332a20,
@@ -570,12 +600,173 @@ export class ThreeDrivingEngine {
     }
 
     // ================================================
-    // MAJOR LANDMARK AREAS (fixed world positions)
-    // These scroll with the road to simulate movement
+    // STARTING MOTOR PARK & MAJOR LANDMARK AREAS
     // ================================================
+    this.buildBusPark();
     this.buildIkejaArea();
     this.buildOshodiArea();
     this.buildSurulereArea();
+  }
+
+  /**
+   * STARTING LAGOS DANFO MOTOR PARK (BUS GARAGE TERMINAL)
+   * Player spawns parked in Departure Bay 02 (-15.5, 0) and drives forward + steers LEFT
+   * through the Motor Park Exit Gate onto the main expressway!
+   */
+  private buildBusPark() {
+    const park = new THREE.Group();
+    park.position.set(0, 0, 0);
+
+    // 1. Concrete Tarmac Yard on right-hand side of expressway (-X is right side when looking down +Z)
+    const tarmacMat = new THREE.MeshStandardMaterial({ color: 0x292524, roughness: 0.88, metalness: 0.05 });
+    const tarmac = new THREE.Mesh(new THREE.BoxGeometry(22, 0.06, 85), tarmacMat);
+    tarmac.position.set(-20.5, 0.03, 12);
+    park.add(tarmac);
+
+    // Smooth Asphalt Driveway Merge Apron connecting Park to Expressway
+    const apron = new THREE.Mesh(new THREE.PlaneGeometry(5.5, 42), new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 0.85 }));
+    apron.rotation.x = -Math.PI / 2;
+    apron.position.set(-10.5, 0.02, 22);
+    park.add(apron);
+
+    // 2. Yellow Painted Parking Bays & Departure Lane Striping
+    const lineMat = new THREE.MeshBasicMaterial({ color: 0xfacc15 });
+    const greenGlowMat = new THREE.MeshBasicMaterial({ color: 0x22c55e });
+
+    // Parking bay dividers
+    [-14, -4, 6, 16].forEach((bz) => {
+      const bayLine = new THREE.Mesh(new THREE.PlaneGeometry(5.5, 0.2), lineMat);
+      bayLine.rotation.x = -Math.PI / 2;
+      bayLine.position.set(-22.0, 0.07, bz);
+      park.add(bayLine);
+    });
+
+    // Player Starting Bay Frame (Bay 02 at x = -15.5, z = 0)
+    [-17.2, -13.8].forEach((bx) => {
+      const sideStripe = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 7.5), greenGlowMat);
+      sideStripe.rotation.x = -Math.PI / 2;
+      sideStripe.position.set(bx, 0.07, 0);
+      park.add(sideStripe);
+    });
+
+    // Directional Exit Arrows / Chevrons guiding player forward and LEFT out the Exit Gate onto Expressway
+    const chevronWaypoints: [number, number, number][] = [
+      [-15.5, 7, 0],
+      [-15.2, 13, 0.15],
+      [-14.2, 19, 0.45],
+      [-12.6, 24, 0.75],
+      [-10.4, 28, 0.95],
+      [-7.8, 32, 0.65],
+    ];
+    chevronWaypoints.forEach(([cx, cz, rotY], idx) => {
+      const chev = new THREE.Mesh(
+        new THREE.ConeGeometry(0.75, 1.8, 3),
+        new THREE.MeshBasicMaterial({ color: idx % 2 === 0 ? 0xfacc15 : 0x4ade80 })
+      );
+      chev.rotation.x = Math.PI / 2;
+      chev.rotation.z = -rotY;
+      chev.position.set(cx, 0.09, cz);
+      park.add(chev);
+    });
+
+    // 3. Grand Motor Park Exit Archway Gate (at driveway exit x = -11.5, z = 14..36)
+    const pillarMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.4, metalness: 0.3 });
+    const trimMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.3 });
+    [14, 36].forEach((gz) => {
+      const pCol = new THREE.Mesh(new THREE.BoxGeometry(0.8, 6.2, 0.8), pillarMat);
+      pCol.position.set(-11.2, 3.1, gz);
+      park.add(pCol);
+      const pBase = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.2, 1.1), trimMat);
+      pBase.position.set(-11.2, 0.6, gz);
+      park.add(pBase);
+    });
+
+    // Overhead Archway Signboard facing the player inside the park
+    const gateSignTex = createSignboardTexture('IKEJA CENTRAL DANFO PARK', 'EXIT TO EXPRESSWAY ➔ DRIVE SAFE', '#15803d');
+    const gateBeam = new THREE.Mesh(
+      new THREE.BoxGeometry(0.6, 2.0, 23.5),
+      new THREE.MeshStandardMaterial({ map: gateSignTex, roughness: 0.3 })
+    );
+    gateBeam.position.set(-11.2, 5.8, 25);
+    park.add(gateBeam);
+
+    // Second Overhead Signboard directly in front of player's starting bay
+    const frontExitSignTex = createSignboardTexture('⬅ EXPRESSWAY EXIT GATE', 'STEER LEFT TO MERGE ONTO HIGHWAY', '#ca8a04');
+    const frontExitBoard = new THREE.Mesh(
+      new THREE.BoxGeometry(8.5, 1.8, 0.3),
+      new THREE.MeshStandardMaterial({ map: frontExitSignTex, roughness: 0.3 })
+    );
+    frontExitBoard.position.set(-15.5, 4.8, 36);
+    park.add(frontExitBoard);
+    [-19.2, -11.8].forEach((px) => {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 4.8), pillarMat);
+      post.position.set(px, 2.4, 36);
+      park.add(post);
+    });
+
+    // 4. Parked Fellow Danfo Buses & Keke Napep in Adjacent Terminal Bays
+    const parkedDanfo1 = this.createProceduralDanfo(0xfacc15, 'GOD DEY');
+    parkedDanfo1.position.set(-21.5, 0.06, -9);
+    parkedDanfo1.rotation.y = 0.25;
+    park.add(parkedDanfo1);
+
+    const parkedDanfo2 = this.createProceduralDanfo(0xf59e0b, 'NO KING AS GOD');
+    parkedDanfo2.position.set(-21.5, 0.06, 1);
+    parkedDanfo2.rotation.y = 0.22;
+    park.add(parkedDanfo2);
+
+    const parkedDanfo3 = this.createProceduralDanfo(0xeab308, 'OSHODI EXPRESS');
+    parkedDanfo3.position.set(-21.5, 0.06, 11);
+    parkedDanfo3.rotation.y = 0.2;
+    park.add(parkedDanfo3);
+
+    const parkedBehind = this.createProceduralDanfo(0xfacc15, 'LAGOS HUSTLER');
+    parkedBehind.position.set(-15.5, 0.06, -11);
+    park.add(parkedBehind);
+
+    const parkedKeke = this.createProceduralKeke('BLESSING');
+    parkedKeke.position.set(-21.5, 0.06, 21);
+    parkedKeke.rotation.y = 0.4;
+    park.add(parkedKeke);
+
+    // 5. Motor Park Dispatch Shed, Union Ticket Booth & Waiting Shelter
+    const shedRoof = new THREE.Mesh(
+      new THREE.BoxGeometry(5.5, 0.35, 38),
+      new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.5 })
+    );
+    shedRoof.position.set(-26.8, 4.2, 2);
+    park.add(shedRoof);
+
+    const terminalBuilding = new THREE.Mesh(
+      new THREE.BoxGeometry(4.5, 4.0, 36),
+      new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.8 })
+    );
+    terminalBuilding.position.set(-28.5, 2.0, 2);
+    park.add(terminalBuilding);
+
+    const unionSignTex = createSignboardTexture('NURTW MOTOR PARK TERMINAL', 'TICKETS • DISPATCH • WAYBILL OFFICE', '#b45309');
+    const unionSign = new THREE.Mesh(
+      new THREE.BoxGeometry(0.25, 1.6, 18),
+      new THREE.MeshStandardMaterial({ map: unionSignTex })
+    );
+    unionSign.position.set(-24.2, 4.4, 2);
+    park.add(unionSign);
+
+    // Perimeter low concrete wall at back & far end of park (leaving z=14..38 exit wide open)
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.7 });
+    const backWall = new THREE.Mesh(new THREE.BoxGeometry(20, 1.1, 0.6), wallMat);
+    backWall.position.set(-20.5, 0.55, -24);
+    park.add(backWall);
+
+    const frontWall = new THREE.Mesh(new THREE.BoxGeometry(18, 1.1, 0.6), wallMat);
+    frontWall.position.set(-20.5, 0.55, 46);
+    park.add(frontWall);
+
+    const curbWall = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.9, 36), wallMat);
+    curbWall.position.set(-11.2, 0.45, -5);
+    park.add(curbWall);
+
+    this.scene.add(park);
   }
 
   /** IKEJA — Administrative capital vibe. Tall glass buildings, Computer Village market */
@@ -1124,15 +1315,45 @@ export class ThreeDrivingEngine {
     dashRightBlinker.position.set(-0.32, 1.56, 2.24);
     danfoGroup.add(dashRightBlinker);
 
-    // 19. 3D Steering Wheel with Hands
+    // 19. Redesigned 3-Spoke Bus Steering Wheel with Woodgrain Top Rim & Exterior Side Mirrors
     const steeringWheel = new THREE.Group();
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.035, 16, 32), darkMat);
-    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.06, 16), chromeMat);
+    const rimLeatherMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.45, metalness: 0.2 });
+    const woodArcMat = new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.22, metalness: 0.3 });
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.032, 16, 36), rimLeatherMat);
+    const woodArc = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.034, 16, 24, Math.PI * 0.65), woodArcMat);
+    woodArc.rotation.z = Math.PI * 0.175;
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.068, 0.068, 0.055, 20), darkMat);
     hub.rotation.x = Math.PI / 2;
-    steeringWheel.add(rim, hub);
-    steeringWheel.position.set(-0.55, 1.5, 2.15);
+    const spokeL = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.035, 0.02), chromeMat);
+    spokeL.position.set(-0.12, -0.02, 0);
+    spokeL.rotation.z = 0.22;
+    const spokeR = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.035, 0.02), chromeMat);
+    spokeR.position.set(0.12, -0.02, 0);
+    spokeR.rotation.z = -0.22;
+    const spokeB = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.17, 0.02), chromeMat);
+    spokeB.position.set(0, -0.12, 0);
+    steeringWheel.add(rim, woodArc, spokeL, spokeR, spokeB, hub);
+    steeringWheel.position.set(0.55, 1.5, 2.15);
     steeringWheel.rotation.x = -Math.PI * 0.28;
     danfoGroup.add(steeringWheel);
+
+    // 3D Exterior Dual Side Mirrors (Mounted on Front Left & Right Cab Pillars)
+    [-1.24, 1.24].forEach((mx) => {
+      const mirrorGroup = new THREE.Group();
+      const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.26, 8), steelMat);
+      arm.rotation.z = Math.PI / 2;
+      arm.position.set(mx > 0 ? -0.1 : 0.1, 0, 0);
+      const housing = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.28, 0.08), darkMat);
+      const glass = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.1, 0.24),
+        new THREE.MeshStandardMaterial({ color: 0x93c5fd, metalness: 0.95, roughness: 0.05 })
+      );
+      glass.position.z = -0.042;
+      glass.rotation.y = Math.PI;
+      mirrorGroup.add(arm, housing, glass);
+      mirrorGroup.position.set(mx, 1.88, 2.38);
+      busBody.add(mirrorGroup);
+    });
 
     // Central rearview mirror with dangling holy rosary
     const rosary = new THREE.Group();
@@ -1955,78 +2176,70 @@ export class ThreeDrivingEngine {
   }
 
   /**
-   * SETUP DIVERSE LAGOS HIGHWAY TRAFFIC FLEET (26 VEHICLES)
-   * Keke Napeps, BRT Long Buses, Luxury SUVs, Executive Luxury Cars,
-   * Dispatch Courier Bikes, RRS Police Patrol Cars, and Rival Danfo Buses.
+   * SETUP DIVERSE LAGOS HIGHWAY TRAFFIC FLEET (24 WELL-SPACED VEHICLES)
+   * Every vehicle has accurate physical half-width (halfW) and half-length (halfL)
+   * so NPCs never collide or phase through each other or the player!
    */
+  private getVehicleDimensions(type: string): { halfW: number; halfL: number } {
+    switch (type) {
+      case 'BRT':
+        return { halfW: 1.35, halfL: 5.85 };
+      case 'DANFO':
+        return { halfW: 1.15, halfL: 2.55 };
+      case 'SUV':
+        return { halfW: 1.12, halfL: 2.5 };
+      case 'LUXURY_CAR':
+      case 'POLICE':
+        return { halfW: 1.0, halfL: 2.4 };
+      case 'KEKE':
+        return { halfW: 0.72, halfL: 1.25 };
+      case 'DISPATCH_BIKE':
+        return { halfW: 0.42, halfL: 1.05 };
+      default:
+        return { halfW: 1.05, halfL: 2.45 };
+    }
+  }
+
   private setupTrafficAndHazards() {
     this.trafficMeshes = [];
 
+    // Well-spaced across the 4 lanes (-5.8, -2.0, 2.0, 5.8) starting at z >= 65 (past the Motor Park exit)
     const trafficFleetConfig = [
-      // 1. KEKE NAPEP TRICYCLES (Nimble, outer & middle lanes)
-      { type: 'KEKE', lane: -5.8, z: 25, speed: 9.5, name: 'Maruwa Boy', slogan: 'GOD DEY' },
-      { type: 'KEKE', lane: 5.8, z: 65, speed: 10.0, name: 'Oshodi Keke', slogan: 'NO TELESCOPE' },
-      { type: 'KEKE', lane: -2.0, z: 120, speed: 9.2, name: 'Ikeja Shuttle', slogan: 'E GO BE' },
-      { type: 'KEKE', lane: 5.8, z: 175, speed: 10.5, name: 'Mile 12 Runner', slogan: 'WORK & PRAY' },
-      { type: 'KEKE', lane: 2.0, z: 230, speed: 9.8, name: 'Yaba Rider', slogan: 'BLESSING' },
-      { type: 'KEKE', lane: -5.8, z: 290, speed: 9.4, name: 'Obalende Trike', slogan: 'NO CONDITION PERMANENT' },
-      { type: 'KEKE', lane: 5.8, z: 350, speed: 10.2, name: 'Bariga Express', slogan: 'SLOW & STEADY' },
-      { type: 'KEKE', lane: -2.0, z: 410, speed: 9.6, name: 'Surulere Rider', slogan: 'ALUJANNA' },
-      { type: 'KEKE', lane: 2.0, z: 470, speed: 10.1, name: 'Alaba Shuttle', slogan: 'FAVOUR' },
+      // Lane -5.8 (Right Outer Commuter Lane: ~10.5 - 11.5 m/s)
+      { type: 'KEKE', lane: -5.8, z: 65, speed: 10.5, name: 'Maruwa Boy', slogan: 'GOD DEY' },
+      { type: 'DANFO', lane: -5.8, z: 135, speed: 11.2, name: 'Jagaban Express', slogan: 'No King as God' },
+      { type: 'BRT', lane: -5.8, z: 215, speed: 11.0, name: 'BRT Ketu Express' },
+      { type: 'KEKE', lane: -5.8, z: 295, speed: 10.8, name: 'Obalende Trike', slogan: 'NO CONDITION PERMANENT' },
+      { type: 'SUV', lane: -5.8, z: 375, speed: 11.5, color: 0xd4af37, name: 'Champagne Prado TX' },
+      { type: 'POLICE', lane: -5.8, z: 455, speed: 11.4, name: 'Alausa Task Force' },
 
-      // 2. MASSIVE BLUE BRT LONG BUSES (Cruising steadily)
-      { type: 'BRT', lane: -5.8, z: 45, speed: 11.0, name: 'BRT Ketu Express' },
-      { type: 'BRT', lane: 5.8, z: 110, speed: 11.5, name: 'BRT TBS Line 1' },
-      { type: 'BRT', lane: -2.0, z: 185, speed: 10.8, name: 'BRT Ikorodu Direct' },
-      { type: 'BRT', lane: 2.0, z: 260, speed: 11.2, name: 'BRT CMS Terminal' },
-      { type: 'BRT', lane: -5.8, z: 340, speed: 11.4, name: 'BRT Berger Shuttle' },
-      { type: 'BRT', lane: 5.8, z: 420, speed: 11.1, name: 'BRT Costain Line' },
-      { type: 'BRT', lane: 2.0, z: 500, speed: 11.6, name: 'BRT Ojota Flyer' },
+      // Lane -2.0 (Right Fast Inner Lane: ~14.5 - 15.8 m/s)
+      { type: 'LUXURY_CAR', lane: -2.0, z: 80, speed: 14.8, color: 0x1e3a8a, name: 'Royal Blue Benz C300' },
+      { type: 'DISPATCH_BIKE', lane: -2.0, z: 150, speed: 15.2, boxColor: 0x16a34a, brand: 'GOKADA' },
+      { type: 'SUV', lane: -2.0, z: 225, speed: 15.0, color: 0x334155, name: 'Gunmetal Land Cruiser' },
+      { type: 'DANFO', lane: -2.0, z: 305, speed: 14.5, name: 'Lekki Hustler', slogan: 'Eko Oni Baje' },
+      { type: 'POLICE', lane: -2.0, z: 385, speed: 15.4, name: 'RRS Rapid Response' },
+      { type: 'LUXURY_CAR', lane: -2.0, z: 465, speed: 15.5, color: 0x0f172a, name: 'Midnight Executive Benz' },
 
-      // 3. LUXURY SUVS (Chunky high-riding Prado, G-Wagon, Land Cruiser, Range Rover)
-      { type: 'SUV', lane: 2.0, z: 35, speed: 16.5, color: 0x09090b, name: 'Black Prado V8' },
-      { type: 'SUV', lane: 5.8, z: 95, speed: 17.0, color: 0xf8fafc, name: 'Pearl White G-Wagon' },
-      { type: 'SUV', lane: -2.0, z: 155, speed: 15.8, color: 0x334155, name: 'Gunmetal Land Cruiser' },
-      { type: 'SUV', lane: 2.0, z: 220, speed: 16.2, color: 0x09090b, name: 'Lekki VIP SUV' },
-      { type: 'SUV', lane: 5.8, z: 310, speed: 17.5, color: 0x1e293b, name: 'Obsidian Range Rover' },
-      { type: 'SUV', lane: -5.8, z: 375, speed: 16.8, color: 0xd4af37, name: 'Champagne Prado TX' },
-      { type: 'SUV', lane: -2.0, z: 440, speed: 17.2, color: 0x111827, name: 'Matte Black G63 AMG' },
-      { type: 'SUV', lane: 2.0, z: 515, speed: 16.9, color: 0x1e3a8a, name: 'Sapphire Lexus LX570' },
+      // Lane 2.0 (Left Fast Inner Lane: ~15.0 - 16.5 m/s)
+      { type: 'SUV', lane: 2.0, z: 70, speed: 15.5, color: 0x09090b, name: 'Black Prado V8' },
+      { type: 'DANFO', lane: 2.0, z: 145, speed: 15.0, name: 'Alhaji Agbaje', slogan: 'Face Your Front' },
+      { type: 'LUXURY_CAR', lane: 2.0, z: 220, speed: 16.0, color: 0xd4af37, name: 'Champagne Gold Lexus ES' },
+      { type: 'BRT', lane: 2.0, z: 300, speed: 14.8, name: 'BRT CMS Terminal' },
+      { type: 'DISPATCH_BIKE', lane: 2.0, z: 380, speed: 15.8, boxColor: 0xea580c, brand: 'CHOWDECK' },
+      { type: 'LUXURY_CAR', lane: 2.0, z: 460, speed: 16.2, color: 0x064e3b, name: 'Emerald Benz E-Class' },
 
-      // 4. EXECUTIVE LUXURY CARS (Mercedes-Benz, Lexus, AMG Sedans & Coupes)
-      { type: 'LUXURY_CAR', lane: -2.0, z: 50, speed: 18.0, color: 0x1e3a8a, name: 'Royal Blue Benz C300' },
-      { type: 'LUXURY_CAR', lane: 2.0, z: 80, speed: 18.5, color: 0xd4af37, name: 'Champagne Gold Lexus ES' },
-      { type: 'LUXURY_CAR', lane: -5.8, z: 140, speed: 17.5, color: 0x991b1b, name: 'Ruby Sport Coupe' },
-      { type: 'LUXURY_CAR', lane: 5.8, z: 205, speed: 19.0, color: 0xcbd5e1, name: 'Silver AMG Sedan' },
-      { type: 'LUXURY_CAR', lane: -2.0, z: 275, speed: 18.2, color: 0x0f172a, name: 'Midnight Executive Benz' },
-      { type: 'LUXURY_CAR', lane: 2.0, z: 330, speed: 18.4, color: 0x064e3b, name: 'Emerald Benz E-Class' },
-      { type: 'LUXURY_CAR', lane: 5.8, z: 395, speed: 18.8, color: 0x93c5fd, name: 'Diamond Silver BMW' },
-      { type: 'LUXURY_CAR', lane: -5.8, z: 465, speed: 18.1, color: 0x581c87, name: 'Deep Purple Coupe' },
-
-      // 5. DISPATCH BIKES (Okada courier riders weaving with branded cargo boxes)
-      { type: 'DISPATCH_BIKE', lane: 2.0, z: 40, speed: 15.5, boxColor: 0xea580c, brand: 'CHOWDECK' },
-      { type: 'DISPATCH_BIKE', lane: -2.0, z: 105, speed: 16.0, boxColor: 0x16a34a, brand: 'GOKADA' },
-      { type: 'DISPATCH_BIKE', lane: 5.8, z: 165, speed: 15.8, boxColor: 0xdc2626, brand: 'MAX.NG' },
-      { type: 'DISPATCH_BIKE', lane: -5.8, z: 245, speed: 16.5, boxColor: 0xea580c, brand: 'CHOWDECK' },
-      { type: 'DISPATCH_BIKE', lane: 2.0, z: 320, speed: 16.2, boxColor: 0xfacc15, brand: 'DHL' },
-      { type: 'DISPATCH_BIKE', lane: -2.0, z: 385, speed: 15.9, boxColor: 0xf97316, brand: 'JUMIA' },
-      { type: 'DISPATCH_BIKE', lane: 5.8, z: 450, speed: 16.4, boxColor: 0x16a34a, brand: 'GOKADA' },
-
-      // 6. LAGOS STATE POLICE RRS PATROL CARS
-      { type: 'POLICE', lane: -2.0, z: 70, speed: 14.5, name: 'RRS Rapid Response' },
-      { type: 'POLICE', lane: 5.8, z: 250, speed: 15.0, name: 'Highway Patrol 04' },
-      { type: 'POLICE', lane: -5.8, z: 430, speed: 14.8, name: 'Alausa Task Force' },
-
-      // 7. RIVAL DANFO BUSES (Aggressive Lagos transporter vans with twin green stripes)
-      { type: 'DANFO', lane: 2.0, z: 60, speed: 14.2, name: 'Alhaji Agbaje', slogan: 'Face Your Front' },
-      { type: 'DANFO', lane: -5.8, z: 135, speed: 13.8, name: 'Jagaban Express', slogan: 'No King as God' },
-      { type: 'DANFO', lane: 5.8, z: 215, speed: 14.5, name: 'Rasaki Turbo', slogan: 'Destiny Child' },
-      { type: 'DANFO', lane: -2.0, z: 280, speed: 14.0, name: 'Lekki Hustler', slogan: 'Eko Oni Baje' },
-      { type: 'DANFO', lane: 2.0, z: 360, speed: 14.6, name: 'Oshodi Bullet', slogan: 'God First' },
-      { type: 'DANFO', lane: -5.8, z: 485, speed: 14.4, name: 'Bariga Express', slogan: 'Clear Road' },
+      // Lane 5.8 (Left Outer Commuter Lane: ~11.5 - 12.8 m/s)
+      { type: 'KEKE', lane: 5.8, z: 90, speed: 11.5, name: 'Oshodi Keke', slogan: 'NO TELESCOPE' },
+      { type: 'BRT', lane: 5.8, z: 170, speed: 11.8, name: 'BRT TBS Line 1' },
+      { type: 'DANFO', lane: 5.8, z: 255, speed: 12.2, name: 'Rasaki Turbo', slogan: 'Destiny Child' },
+      { type: 'SUV', lane: 5.8, z: 335, speed: 12.5, color: 0xf8fafc, name: 'Pearl White G-Wagon' },
+      { type: 'DISPATCH_BIKE', lane: 5.8, z: 410, speed: 12.4, boxColor: 0xdc2626, brand: 'MAX.NG' },
+      { type: 'POLICE', lane: 5.8, z: 490, speed: 12.6, name: 'Highway Patrol 04' },
     ];
 
     trafficFleetConfig.forEach((veh) => {
+      const dims = this.getVehicleDimensions(veh.type);
       const trafficGroup = new THREE.Group();
       trafficGroup.userData = {
         type: veh.type,
@@ -2036,7 +2249,9 @@ export class ThreeDrivingEngine {
         baseRotY: 0,
         currentSpeed: veh.speed,
         baseSpeed: veh.speed,
-        laneChangeCooldown: Math.random() * 2.5 + 1.0,
+        halfW: dims.halfW,
+        halfL: dims.halfL,
+        laneChangeCooldown: Math.random() * 2.5 + 1.5,
       };
 
       trafficGroup.position.set(veh.lane, 0, veh.z);
@@ -2213,8 +2428,10 @@ export class ThreeDrivingEngine {
     }
 
     // DIRECT, RESPONSIVE LAGOS ARCADE STEERING & SYNCHRONIZED HIGHWAY POSITION
+    // At the start of the shift (z < 48m), allow driving inside and out of the Danfo Bus Park (x down to -26.5m)!
     const turnDir = gear === 'R' ? -1 : 1;
-    const targetX = Math.max(-8.8, Math.min(8.8, laneOffsetMeters));
+    const minRoadX = roadDistanceTraveled < 48 ? -26.5 : -8.8;
+    let targetX = Math.max(minRoadX, Math.min(8.8, laneOffsetMeters));
 
     // Direct synchronization of physics chassis & visual 3D bus
     this.chassisBody.position.x = targetX;
@@ -2231,8 +2448,10 @@ export class ThreeDrivingEngine {
     this.busRoot.position.y = this.chassisBody.position.y;
 
     // Dynamic Heading Yaw & Chassis Suspension Banking Roll
-    const targetHeadingYaw = steerNorm * turnDir * 0.36; // ~21 deg heading into turn
-    const targetBodyRoll = -steerNorm * 0.055; // Authentic Danfo suspension lean
+    // Note: Camera looks toward +Z, so +X is screen-LEFT and -X is screen-RIGHT.
+    // Steering LEFT (steerNorm < 0) turns bus toward +X (positive yaw around Y), Steering RIGHT (steerNorm > 0) turns toward -X (negative yaw).
+    const targetHeadingYaw = -steerNorm * turnDir * 0.34;
+    const targetBodyRoll = steerNorm * 0.05;
     this.busRoot.rotation.order = 'YXZ';
     this.busRoot.rotation.y = targetHeadingYaw;
     this.busRoot.rotation.z = targetBodyRoll;
@@ -2242,12 +2461,12 @@ export class ThreeDrivingEngine {
     this.chassisBody.quaternion.set(uprightQuat.x, uprightQuat.y, uprightQuat.z, uprightQuat.w);
     this.chassisBody.angularVelocity.set(0, 0, 0);
 
-    // Update wheel transforms and front steering wheel angles
+    // Update wheel transforms and front steering wheel angles (fixed so Left turns Left, Right turns Right!)
     for (let i = 0; i < this.vehicle.wheelInfos.length; i++) {
       this.vehicle.updateWheelTransform(i);
     }
-    this.leftFrontWheel.rotation.y = steerNorm * 0.52;
-    this.rightFrontWheel.rotation.y = steerNorm * 0.52;
+    this.leftFrontWheel.rotation.y = -steerNorm * 0.52;
+    this.rightFrontWheel.rotation.y = -steerNorm * 0.52;
 
     const currentPhysSpeedMps = speedMps;
     this.wheelRotationRad += (gear === 'R' ? -1 : 1) * currentPhysSpeedMps * dt * 2.8;
@@ -2257,24 +2476,26 @@ export class ThreeDrivingEngine {
       w.rotation.x = this.wheelRotationRad;
     });
 
-    // 3. Cockpit 3D Steering Wheel with Hands Rotating Together
-    this.steeringWheelMesh.rotation.z = -THREE.MathUtils.degToRad(steeringWheelAngleDeg);
+    // 3. Cockpit 3D Steering Wheel: Fixed rotation direction & hidden in FIRST_PERSON so the Dr. Driving 2D Bus Dash is unobstructed
+    const show3DCockpitWheel = params.cameraMode !== 'FIRST_PERSON';
+    this.steeringWheelMesh.visible = show3DCockpitWheel;
+    this.speedNeedle.visible = show3DCockpitWheel;
+    this.tachNeedle.visible = show3DCockpitWheel;
+    this.fuelNeedle.visible = show3DCockpitWheel;
+    this.accelNeedle.visible = show3DCockpitWheel;
+    this.steeringWheelMesh.rotation.z = THREE.MathUtils.degToRad(steeringWheelAngleDeg);
 
     // 4. Working Dashboard Needles (All 4 Working Gauges)
-    // Speedometer: 0 km/h -> -135 deg, 140 km/h -> +135 deg
     const dashSpeedRatio = Math.min(1.0, speedKmH / 140);
     this.speedNeedle.rotation.z = -Math.PI * 0.75 + dashSpeedRatio * (Math.PI * 1.5);
 
-    // Tachometer: idling ~800 RPM, revving ~5500 RPM
     const rpm = isEngineRunning ? 800 + (speedKmH / 85) * 3500 + (throttle > 0 ? 1200 : 0) : 0;
     const rpmRatio = Math.min(1.0, rpm / 5500);
     this.tachNeedle.rotation.z = -Math.PI * 0.75 + rpmRatio * (Math.PI * 1.5);
 
-    // Graphic Fuel Gauge: E (-135 deg) to F (+115 deg)
     const fuelRatio = Math.min(1.0, Math.max(0, fuelPercent / 100));
     this.fuelNeedle.rotation.z = -Math.PI * 0.75 + fuelRatio * (Math.PI * 1.4);
 
-    // Acceleration / Torque Meter: 0% (-135 deg) to 100% (+115 deg)
     const accelRatio = isEngineRunning ? (throttle > 0 ? Math.min(1.0, 0.25 + throttle * 0.75) : 0.04) : 0;
     this.accelNeedle.rotation.z = -Math.PI * 0.75 + accelRatio * (Math.PI * 1.4);
 
@@ -2378,7 +2599,7 @@ export class ThreeDrivingEngine {
     }
 
     // 8. Dangling Rosary Physics Swing
-    const targetRosary = steerNorm * 0.45 + (isBraking ? 0.35 : 0);
+    const targetRosary = -steerNorm * 0.45 + (isBraking ? 0.35 : 0);
     const rosaryDiff = targetRosary - this.rosarySwingAngle;
     this.rosaryVel += rosaryDiff * 25 * dt;
     this.rosaryVel *= Math.pow(0.2, dt);
@@ -2410,12 +2631,9 @@ export class ThreeDrivingEngine {
       }
       this.wasSteppedDown = true;
 
-      // Base yaw facing the vehicle (+Math.PI / 2) + camera look yaw
-      // Dragging LEFT adds to cameraLookYaw, rotating counter-clockwise (LEFT)
       const yaw = Math.PI / 2 + (params.cameraLookYaw || 0);
       const pitch = Math.max(-0.65, Math.min(0.65, params.cameraLookPitch || 0));
 
-      // Analog joystick input (-1 to 1)
       const joyX = params.walkMoveX || 0;
       const joyZ = params.walkMoveZ || 0;
 
@@ -2431,7 +2649,7 @@ export class ThreeDrivingEngine {
 
         this.driverWalkPos.x += moveX;
         this.driverWalkPos.z += moveZ;
-        this.driverWalkPos.x = Math.max(-15, Math.min(15, this.driverWalkPos.x));
+        this.driverWalkPos.x = Math.max(-25, Math.min(15, this.driverWalkPos.x));
       }
 
       const isWalking = Math.abs(joyX) > 0.08 || Math.abs(joyZ) > 0.08;
@@ -2446,45 +2664,39 @@ export class ThreeDrivingEngine {
       this.camera.updateProjectionMatrix();
     } else if (params.cameraMode === 'TOP_DOWN' || (params.cameraMode as any) === 'BIRD') {
       this.wasSteppedDown = false;
-      // SATELLITE BIRD'S EYE VIEW: High above directly centered over the Danfo bus
       const targetX = this.busRoot.position.x;
       const targetZ = this.busRoot.position.z;
       const camPos = new THREE.Vector3(targetX, this.busRoot.position.y + 24, targetZ - 1.5);
       this.camera.position.lerp(camPos, 0.2);
       const lookTarget = new THREE.Vector3(targetX, this.busRoot.position.y + 0.8, targetZ + 1.2);
-      this.camera.up.set(0, 0, 1); // +Z is up in top-down screen orientation
+      this.camera.up.set(0, 0, 1);
       this.camera.lookAt(lookTarget);
       this.camera.fov = 48;
       this.camera.updateProjectionMatrix();
     } else if (params.cameraMode === 'THIRD_PERSON') {
       this.wasSteppedDown = false;
-      this.camera.up.set(0, 1, 0); // Strict world upright orientation (+Y up)
-      // DYNAMIC CHASE CAM: Full cinematic view of the Danfo bus with dynamic speed FOV, spring swing lag, and acceleration/braking pitch
+      this.camera.up.set(0, 1, 0);
       const isReversing = gear === 'R';
       const physSpeedKmH = Math.round(this.chassisBody.velocity.length() * 3.6);
       const speedRatio = Math.min(1.0, physSpeedKmH / 95);
       
-      // Dynamic Speed FOV: expands as bus goes faster for a rush of speed!
       const targetFov = THREE.MathUtils.lerp(65, 78, speedRatio);
       this.dynamicFov = THREE.MathUtils.lerp(this.dynamicFov, targetFov, dt * 5.0);
       this.camera.fov = this.dynamicFov;
 
-      // Acceleration squat / Brake dive
       const accelOffsetZ = throttle > 0.1 ? (throttle * 0.9) : 0;
       const brakeOffsetZ = isBraking ? 1.1 : 0;
       const baseDistZ = isReversing ? 11.5 : (-10.5 - accelOffsetZ + brakeOffsetZ);
       const baseHeightY = isReversing ? 3.9 : (3.85 - accelOffsetZ * 0.25 + (isBraking ? 0.35 : 0));
 
-      // Dynamic Swing / Spring Lag: when bus steers, camera swings to frame the turn
-      const swingX = steerNorm * 2.0 * (1.1 + speedRatio * 1.5);
+      // Dynamic Swing / Spring Lag aligned with corrected steering
+      const swingX = -steerNorm * 2.0 * (1.1 + speedRatio * 1.5);
       const targetCamX = this.busRoot.position.x - swingX;
 
-      // High-speed Lagos road vibration & engine rattle
       const speedShake = physSpeedKmH > 28 ? (physSpeedKmH / 110) * 0.035 : 0;
       const shakeX = (Math.random() - 0.5) * speedShake;
       const shakeY = (Math.random() - 0.5) * speedShake;
 
-      // Player mouse/touch orbit peek (if dragged in 3rd person)
       const userYaw = params.cameraLookYaw || 0;
       const userPitch = params.cameraLookPitch || 0;
       const orbitOrbitDist = Math.abs(baseDistZ);
@@ -2497,28 +2709,24 @@ export class ThreeDrivingEngine {
         this.busRoot.position.z + baseDistZ + shakeX * 0.4
       );
 
-      // Smooth spring lerp for camera position
       this.currentChaseCamPos.lerp(camTargetPos, Math.min(1.0, dt * 8.5));
       this.camera.position.copy(this.currentChaseCamPos);
 
-      // Dynamic look target: looks down the road ahead, banking into turns
       const targetLookZ = this.busRoot.position.z + (isReversing ? -12.0 : (4.5 + speedRatio * 5.0));
-      const targetLookX = this.busRoot.position.x + steerNorm * 1.6;
+      const targetLookX = this.busRoot.position.x - steerNorm * 1.6;
       const targetLookY = this.busRoot.position.y + 1.45 - (isBraking ? 0.2 : 0);
 
       const lookPos = new THREE.Vector3(targetLookX, targetLookY, targetLookZ);
       this.currentChaseLookTarget.lerp(lookPos, Math.min(1.0, dt * 10.0));
       this.camera.lookAt(this.currentChaseLookTarget);
 
-      // Bank into turns safely using rotateZ without ever overriding rotation.z or flipping upside down!
       if (Math.abs(steerNorm) > 0.01) {
-        this.camera.rotateZ(-steerNorm * (0.015 + speedRatio * 0.025));
+        this.camera.rotateZ(steerNorm * (0.015 + speedRatio * 0.025));
       }
       this.camera.updateProjectionMatrix();
     } else if (params.cameraMode === 'ORBIT') {
       this.wasSteppedDown = false;
       this.camera.up.set(0, 1, 0);
-      // 360 ORBIT VIEW: Free cinematic rotation around the full Danfo bus
       const orbitDist = 9.5;
       const orbitHeight = 3.6;
       const yaw = -(params.cameraLookYaw || 0) + Math.PI;
@@ -2533,15 +2741,15 @@ export class ThreeDrivingEngine {
     } else {
       this.wasSteppedDown = false;
       this.camera.up.set(0, 1, 0);
-      // FIRST PERSON / DRIVER COCKPIT VIEW:
-      // STRICT LOGIC: Frame of the bus ONLY! No 360 rotation bug!
-      // The driver's view is strictly clamped to windscreen, mirrors & dashboard.
+      // FIRST PERSON / DR. DRIVING BUS COCKPIT VIEW:
+      // Elevated commanding bus driver eye height looking cleanly out the front windscreen
+      // while the Dr. Driving 2D Bus Dashboard and live side mirrors frame the cockpit!
       const physSpeedKmH = Math.round(this.chassisBody.velocity.length() * 3.6);
-      const headBob = physSpeedKmH > 10 ? Math.sin(Date.now() * 0.02) * 0.008 : 0;
+      const headBob = physSpeedKmH > 10 ? Math.sin(Date.now() * 0.02) * 0.006 : 0;
       
-      const cx = -0.35; // driver side
-      const cy = 2.25;  // Commanding high Lagos bus driver eye height
-      const cz = 1.95;  // inside driver cab overlooking traffic
+      const cx = 0.0;   // Centered commanding windscreen view for Dr. Driving bus cockpit
+      const cy = 2.38;  // High Lagos Danfo bus driver vantage point
+      const cz = 2.15;  // Positioned right behind the front windshield glass
 
       const localCamPos = new THREE.Vector3(cx, cy + headBob, cz);
       localCamPos.applyQuaternion(this.busRoot.quaternion);
@@ -2550,18 +2758,16 @@ export class ThreeDrivingEngine {
 
       const isReversing = gear === 'R';
       const baseYaw = isReversing ? 0 : Math.PI; 
-      const pitchG = isBraking ? 0.02 : (physSpeedKmH > 20 ? -0.01 : 0);
+      const pitchG = isBraking ? 0.02 : (physSpeedKmH > 20 ? -0.008 : 0);
 
-      // STRICT CLAMP TO BUS FRAME:
-      // Clamped strictly to windscreen, dashboard, and side mirrors (±42° yaw, -20° down to +15° up pitch)
-      const clampedLookYaw = Math.max(-0.75, Math.min(0.75, params.cameraLookYaw || 0));
-      const clampedLookPitch = Math.max(-0.35, Math.min(0.25, params.cameraLookPitch || 0));
+      const clampedLookYaw = Math.max(-0.65, Math.min(0.65, params.cameraLookYaw || 0));
+      const clampedLookPitch = Math.max(-0.30, Math.min(0.22, params.cameraLookPitch || 0));
 
       this.camera.rotation.order = 'YXZ';
       this.camera.rotation.y = baseYaw + this.busRoot.rotation.y + clampedLookYaw;
       this.camera.rotation.x = pitchG + clampedLookPitch;
-      this.camera.rotation.z = 0; // Strictly upright, no accidental roll
-      this.camera.fov = 70;
+      this.camera.rotation.z = 0;
+      this.camera.fov = 68;
       this.camera.updateProjectionMatrix();
     }
 
@@ -2576,6 +2782,10 @@ export class ThreeDrivingEngine {
       while (seg.position.z > busZ + 360) {
         seg.position.z -= 480;
       }
+      // Keep right-side props hidden around z = 0 so the starting Danfo Bus Park apron stays clear!
+      if (seg.userData && seg.userData.rightSideProps) {
+        seg.userData.rightSideProps.visible = seg.position.z > 60 || seg.position.z < -60;
+      }
     });
 
     // 13. Junction Bus Stops Positioning & Commuter Boarding Animation (Both Sides & Waybill Beacon)
@@ -2586,7 +2796,6 @@ export class ThreeDrivingEngine {
       const isAtThisStop = Math.abs(relZ) < 18;
       const isCleared = jMesh.junction.cleared;
 
-      // Waybill Delivery Beacon Visibility & Rotation
       const isDeliveryTarget = params.activeDelivery && (
         params.activeDelivery.destinationJunctionUid === jMesh.junction.uid ||
         params.activeDelivery.destinationName.toLowerCase().includes(jMesh.junction.name.toLowerCase())
@@ -2647,75 +2856,248 @@ export class ThreeDrivingEngine {
       bMesh.group.position.z = bMesh.ad.distanceMarkerMeters;
     });
 
-    // 15. HIGH-PERFORMANCE TRAFFIC AI
+    // ========================================================
+    // 15. SOLID ANTI-PHASING TRAFFIC AI & COLLISION PHYSICS
+    // ========================================================
     const lanes = [-5.8, -2.0, 2.0, 5.8];
+    const playerHalfW = 1.25;
+    const playerHalfL = 2.95;
+
+    // Helper: check if a target lane (laneX, targetZ) is clear of all other NPC vehicles and the player
+    const isLaneSpotClear = (laneX: number, targetZ: number, selfIdx: number, clearanceZ: number = 15): boolean => {
+      if (Math.abs(laneX - this.busRoot.position.x) < 2.3 && Math.abs(targetZ - busZ) < clearanceZ) {
+        return false;
+      }
+      for (let k = 0; k < this.trafficMeshes.length; k++) {
+        if (k === selfIdx) continue;
+        const other = this.trafficMeshes[k];
+        if (
+          Math.abs(other.position.x - laneX) < 2.2 &&
+          Math.abs(other.position.z - targetZ) < clearanceZ
+        ) {
+          return false;
+        }
+      }
+      return true;
+    };
 
     for (let i = 0; i < this.trafficMeshes.length; i++) {
       const t = this.trafficMeshes[i];
       const u = t.userData;
       if (!u) continue;
 
+      const halfW = u.halfW || 1.15;
+      const halfL = u.halfL || 2.4;
+
       u.laneChangeCooldown = Math.max(0, (u.laneChangeCooldown || 0) - dt);
-      let desiredSpeed = u.baseSpeed || 9.5;
+      let desiredSpeed = u.baseSpeed || 10.5;
 
-      const distToPlayerZ = t.position.z - busZ;
-      const inPlayerLane = Math.abs(t.position.x - this.busRoot.position.x) < 2.0;
+      // 1. Check Player Ahead in Same/Adjacent Lane (so NPCs never rear-end the player!)
+      const distToPlayerAhead = busZ - t.position.z;
+      const latDistToPlayer = Math.abs(t.position.x - this.busRoot.position.x);
+      const minSafePlayerGap = halfL + playerHalfL + 3.2;
 
-      // 1. Avoid Player Vehicle:
-      if (inPlayerLane) {
-        if (distToPlayerZ < 0 && distToPlayerZ > -30) {
-          if (u.laneChangeCooldown <= 0) {
-            const currentIdx = lanes.indexOf(u.targetLaneX);
-            const nextIdx = currentIdx > 1 ? currentIdx - 1 : currentIdx + 1;
-            u.targetLaneX = lanes[Math.max(0, Math.min(lanes.length - 1, nextIdx))];
-            u.laneChangeCooldown = 2.5;
-          }
-          if (distToPlayerZ > -8 && speedMps < u.currentSpeed) {
-            desiredSpeed = Math.max(0, speedMps * 0.9);
+      if (latDistToPlayer < (halfW + playerHalfW + 0.5) && distToPlayerAhead > 0 && distToPlayerAhead < 28) {
+        // Player is directly ahead of this NPC!
+        if (u.laneChangeCooldown <= 0 && distToPlayerAhead > minSafePlayerGap + 2) {
+          // Try switching to an adjacent clear lane
+          const currLaneIdx = lanes.reduce((best, l, idx) => Math.abs(l - u.targetLaneX) < Math.abs(lanes[best] - u.targetLaneX) ? idx : best, 0);
+          const candidateIndices = [currLaneIdx - 1, currLaneIdx + 1].filter(idx => idx >= 0 && idx < lanes.length);
+          for (const cIdx of candidateIndices) {
+            if (isLaneSpotClear(lanes[cIdx], t.position.z + 4, i, 16)) {
+              u.targetLaneX = lanes[cIdx];
+              u.laneChangeCooldown = 3.0;
+              break;
+            }
           }
         }
+        // Match or brake behind player so NPC never rams the player from behind
+        const safeFollowSpeed = distToPlayerAhead < minSafePlayerGap + 3.0 ? Math.max(0, speedMps - 4.0) : Math.max(0, speedMps * 0.92);
+        desiredSpeed = Math.min(desiredSpeed, safeFollowSpeed);
       }
 
-      // 2. Avoid Traffic Ahead in Same Lane
+      // 2. Check Other NPC Vehicles Ahead in Same or Target Lane
+      let closestLeader: THREE.Group | null = null;
+      let closestLeaderDz = Infinity;
+
       for (let j = 0; j < this.trafficMeshes.length; j++) {
         if (i === j) continue;
         const other = this.trafficMeshes[j];
+        const otherU = other.userData;
         const dz = other.position.z - t.position.z;
-        if (dz > 0 && dz < 18 && Math.abs(t.position.x - other.position.x) < 2.0) {
-          desiredSpeed = Math.min(desiredSpeed, (other.userData?.currentSpeed || 8.0) * 0.9);
-          if (u.laneChangeCooldown <= 0) {
-            const laneChoice = lanes[Math.floor(Math.random() * lanes.length)];
-            u.targetLaneX = laneChoice;
-            u.laneChangeCooldown = 2.5;
+        const latGap = Math.abs(t.position.x - other.position.x);
+        const targetLatGap = Math.abs((u.targetLaneX ?? t.position.x) - (otherU?.targetLaneX ?? other.position.x));
+        const combinedHalfW = halfW + (otherU?.halfW || 1.15) + 0.55;
+
+        if (dz > 0 && dz < 32 && (latGap < combinedHalfW || targetLatGap < combinedHalfW)) {
+          if (dz < closestLeaderDz) {
+            closestLeaderDz = dz;
+            closestLeader = other;
           }
-          break;
         }
       }
 
-      // Smooth Speed Lerp
-      u.currentSpeed = THREE.MathUtils.lerp(u.currentSpeed || desiredSpeed, desiredSpeed, dt * 2.5);
+      if (closestLeader) {
+        const leaderU = closestLeader.userData;
+        const minSafeGap = halfL + (leaderU?.halfL || 2.4) + 3.5;
 
-      // Smooth Lane Steer
-      const laneDiff = (u.targetLaneX !== undefined ? u.targetLaneX : t.position.x) - t.position.x;
-      t.position.x += laneDiff * Math.min(1.0, dt * 2.8);
-      t.rotation.y = (u.baseRotY || 0) + Math.max(-0.2, Math.min(0.2, laneDiff * 0.15));
+        if (u.laneChangeCooldown <= 0 && closestLeaderDz > minSafeGap + 2.0) {
+          const currLaneIdx = lanes.reduce((best, l, idx) => Math.abs(l - u.targetLaneX) < Math.abs(lanes[best] - u.targetLaneX) ? idx : best, 0);
+          const candidateIndices = [currLaneIdx - 1, currLaneIdx + 1].filter(idx => idx >= 0 && idx < lanes.length);
+          for (const cIdx of candidateIndices) {
+            if (isLaneSpotClear(lanes[cIdx], t.position.z + 3, i, 16)) {
+              u.targetLaneX = lanes[cIdx];
+              u.laneChangeCooldown = 3.2;
+              break;
+            }
+          }
+        }
+
+        const leaderSpeed = leaderU?.currentSpeed ?? 8.5;
+        if (closestLeaderDz < minSafeGap + 2.0) {
+          desiredSpeed = 0;
+        } else if (closestLeaderDz < minSafeGap + 8.0) {
+          desiredSpeed = Math.min(desiredSpeed, leaderSpeed * 0.75);
+        } else {
+          desiredSpeed = Math.min(desiredSpeed, leaderSpeed * 0.95);
+        }
+      }
+
+      // Smooth Speed Lerp (faster braking response when obstacle ahead)
+      const accelRate = desiredSpeed < (u.currentSpeed || 0) ? 8.5 : 2.8;
+      u.currentSpeed = THREE.MathUtils.lerp(u.currentSpeed || desiredSpeed, desiredSpeed, Math.min(1.0, dt * accelRate));
+
+      // Smooth Lane Steer (only steer into targetLaneX if side is clear of immediate overlap)
+      const targetLaneX = u.targetLaneX !== undefined ? u.targetLaneX : t.position.x;
+      const laneDiff = targetLaneX - t.position.x;
+      if (Math.abs(laneDiff) > 0.05) {
+        t.position.x += laneDiff * Math.min(1.0, dt * 3.0);
+      }
+      t.rotation.y = (u.baseRotY || 0) + Math.max(-0.16, Math.min(0.16, -laneDiff * 0.12));
 
       // Advance traffic along expressway (+Z direction)
       t.position.z += u.currentSpeed * dt;
 
-      // Recycle Ahead / Behind Player
-      if (t.position.z < busZ - 60) {
-        t.position.z = busZ + 200 + (i % 6) * 35;
-        const newLane = lanes[i % lanes.length];
-        t.position.x = newLane;
-        u.targetLaneX = newLane;
-        u.currentSpeed = u.baseSpeed || (8.5 + (i % 3) * 1.5);
-        u.laneChangeCooldown = 2.0;
-      } else if (t.position.z > busZ + 450) {
-        t.position.z = busZ - 40;
-        const newLane = lanes[i % lanes.length];
-        t.position.x = newLane;
-        u.targetLaneX = newLane;
+      // Hard clamp behind closest leader so NPCs NEVER phase through each other
+      if (closestLeader) {
+        const minAllowedGap = halfL + (closestLeader.userData?.halfL || 2.4) + 1.8;
+        if (closestLeader.position.z - t.position.z < minAllowedGap) {
+          t.position.z = closestLeader.position.z - minAllowedGap;
+          u.currentSpeed = Math.min(u.currentSpeed, closestLeader.userData?.currentSpeed || 0);
+        }
+      }
+
+      // Recycle Ahead / Behind Player onto a guaranteed clear spot!
+      if (t.position.z < busZ - 75) {
+        let spawnZ = Math.max(55, busZ + 210 + (i % 6) * 28);
+        let chosenLane = lanes[i % lanes.length];
+        for (let attempt = 0; attempt < 8; attempt++) {
+          const testLane = lanes[(i + attempt) % lanes.length];
+          const testZ = spawnZ + Math.floor(attempt / 2) * 22;
+          if (isLaneSpotClear(testLane, testZ, i, 18)) {
+            chosenLane = testLane;
+            spawnZ = testZ;
+            break;
+          }
+        }
+        t.position.z = spawnZ;
+        t.position.x = chosenLane;
+        u.targetLaneX = chosenLane;
+        u.currentSpeed = u.baseSpeed || 10.5;
+        u.laneChangeCooldown = 2.5;
+      } else if (t.position.z > busZ + 480) {
+        let spawnZ = Math.max(55, busZ + 180 + (i % 6) * 26);
+        let chosenLane = lanes[i % lanes.length];
+        if (isLaneSpotClear(chosenLane, spawnZ, i, 18)) {
+          t.position.z = spawnZ;
+          t.position.x = chosenLane;
+          u.targetLaneX = chosenLane;
+        }
+      }
+    }
+
+    // 15b. Pairwise Solid NPC-vs-NPC Anti-Phasing Separation Pass
+    for (let i = 0; i < this.trafficMeshes.length; i++) {
+      const a = this.trafficMeshes[i];
+      const ua = a.userData;
+      const aHalfW = ua?.halfW || 1.15;
+      const aHalfL = ua?.halfL || 2.4;
+
+      for (let j = i + 1; j < this.trafficMeshes.length; j++) {
+        const b = this.trafficMeshes[j];
+        const ub = b.userData;
+        const bHalfW = ub?.halfW || 1.15;
+        const bHalfL = ub?.halfL || 2.4;
+
+        const minX = aHalfW + bHalfW + 0.35;
+        const minZ = aHalfL + bHalfL + 1.2;
+        const dx = a.position.x - b.position.x;
+        const dz = a.position.z - b.position.z;
+
+        if (Math.abs(dx) < minX && Math.abs(dz) < minZ) {
+          // Separate along longitudinal Z axis so trailing vehicle backs off cleanly
+          if (dz >= 0) {
+            b.position.z = a.position.z - minZ;
+            if (ub) ub.currentSpeed = Math.min(ub.currentSpeed || 8, (ua?.currentSpeed || 8) * 0.85);
+          } else {
+            a.position.z = b.position.z - minZ;
+            if (ua) ua.currentSpeed = Math.min(ua.currentSpeed || 8, (ub?.currentSpeed || 8) * 0.85);
+          }
+        }
+      }
+    }
+
+    // 15c. Solid Player-vs-NPC Anti-Phasing Collision Resolution
+    for (let i = 0; i < this.trafficMeshes.length; i++) {
+      const npc = this.trafficMeshes[i];
+      const un = npc.userData;
+      const npcHalfW = un?.halfW || 1.15;
+      const npcHalfL = un?.halfL || 2.4;
+
+      const minX = playerHalfW + npcHalfW + 0.15;
+      const minZ = playerHalfL + npcHalfL + 0.25;
+
+      const dx = this.busRoot.position.x - npc.position.x;
+      const dz = this.busRoot.position.z - npc.position.z;
+      const overlapX = minX - Math.abs(dx);
+      const overlapZ = minZ - Math.abs(dz);
+
+      if (overlapX > 0 && overlapZ > 0) {
+        // Determine primary impact axis (lateral sideswipe vs longitudinal rear-end)
+        if (overlapX < overlapZ * 0.85) {
+          // Lateral sideswipe: push player and NPC apart horizontally so they never phase!
+          const pushSign = dx >= 0 ? 1 : -1;
+          const playerPushX = pushSign * (overlapX * 0.7 + 0.08);
+          const npcPushX = -pushSign * (overlapX * 0.3 + 0.05);
+          this.busRoot.position.x = Math.max(minRoadX, Math.min(8.8, this.busRoot.position.x + playerPushX));
+          this.chassisBody.position.x = this.busRoot.position.x;
+          npc.position.x = Math.max(-7.8, Math.min(7.8, npc.position.x + npcPushX));
+          this.chassisBody.velocity.z *= 0.82;
+        } else {
+          // Longitudinal impact (front/rear bumper)
+          if (dz < 0) {
+            // Player hit rear of NPC ahead: clamp player behind NPC and transfer momentum
+            this.busRoot.position.z = npc.position.z - minZ;
+            this.chassisBody.position.z = this.busRoot.position.z;
+            const npcSpd = un?.currentSpeed || 8.0;
+            this.chassisBody.velocity.z = Math.min(this.chassisBody.velocity.z, npcSpd * 0.75);
+            if (un) un.currentSpeed = Math.max(un.currentSpeed || 8, speedMps * 0.9 + 2.0);
+          } else {
+            // NPC behind player: push NPC back behind player
+            npc.position.z = this.busRoot.position.z - minZ;
+            if (un) un.currentSpeed = Math.max(0, speedMps * 0.7);
+          }
+        }
+
+        // Trigger suspension thud and collision alert cooldown
+        const now = performance.now();
+        if (now - this.lastCollisionAlertTime > 1400) {
+          this.lastCollisionAlertTime = now;
+          this.bumpImpulse = 0.75;
+          this.bumpTimer = 0;
+          soundEngine.playPotholeThud();
+          this.pendingCollisionMessage = '💥 GBOSA! Bumper contact with traffic! Keep your lane clear!';
+        }
       }
     }
 
@@ -2738,6 +3120,91 @@ export class ThreeDrivingEngine {
       this.exhaustParticles.visible = false;
     }
 
+    // ========================================================
+    // 17. LIVE REAR-VIEW SIDE MIRRORS & MAIN VIEWPORT RENDER
+    // ========================================================
+    const fullW = this.container.clientWidth || window.innerWidth;
+    const fullH = this.container.clientHeight || window.innerHeight;
+
+    if (
+      !isSteppedDown &&
+      (this.leftMirrorCanvas || this.rightMirrorCanvas) &&
+      fullW > 240 &&
+      fullH > 180
+    ) {
+      const mW = 220;
+      const mH = 130;
+      const dpr = this.renderer.getPixelRatio();
+      const srcW = Math.round(mW * dpr);
+      const srcH = Math.round(mH * dpr);
+      const srcY = Math.max(0, Math.round(fullH * dpr) - srcH);
+
+      // Position Left & Right Side Mirror Cameras on exterior mirror brackets looking backward (-Z)
+      const leftPos = new THREE.Vector3(1.28, 2.15, 2.05).applyQuaternion(this.busRoot.quaternion).add(this.busRoot.position);
+      const leftTarget = new THREE.Vector3(1.65, 1.85, -35.0).applyQuaternion(this.busRoot.quaternion).add(this.busRoot.position);
+      this.leftMirrorCamera.position.copy(leftPos);
+      this.leftMirrorCamera.up.set(0, 1, 0);
+      this.leftMirrorCamera.lookAt(leftTarget);
+
+      const rightPos = new THREE.Vector3(-1.28, 2.15, 2.05).applyQuaternion(this.busRoot.quaternion).add(this.busRoot.position);
+      const rightTarget = new THREE.Vector3(-1.65, 1.85, -35.0).applyQuaternion(this.busRoot.quaternion).add(this.busRoot.position);
+      this.rightMirrorCamera.position.copy(rightPos);
+      this.rightMirrorCamera.up.set(0, 1, 0);
+      this.rightMirrorCamera.lookAt(rightTarget);
+
+      this.renderer.setScissorTest(true);
+
+      if (this.leftMirrorCanvas) {
+        this.renderer.setViewport(0, 0, mW, mH);
+        this.renderer.setScissor(0, 0, mW, mH);
+        this.renderer.render(this.scene, this.leftMirrorCamera);
+        const ctxL = this.leftMirrorCanvas.getContext('2d');
+        if (ctxL) {
+          ctxL.save();
+          ctxL.scale(-1, 1); // Mirror horizontal reflection
+          ctxL.drawImage(
+            this.renderer.domElement,
+            0,
+            srcY,
+            srcW,
+            srcH,
+            -this.leftMirrorCanvas.width,
+            0,
+            this.leftMirrorCanvas.width,
+            this.leftMirrorCanvas.height
+          );
+          ctxL.restore();
+        }
+      }
+
+      if (this.rightMirrorCanvas) {
+        this.renderer.setViewport(0, 0, mW, mH);
+        this.renderer.setScissor(0, 0, mW, mH);
+        this.renderer.render(this.scene, this.rightMirrorCamera);
+        const ctxR = this.rightMirrorCanvas.getContext('2d');
+        if (ctxR) {
+          ctxR.save();
+          ctxR.scale(-1, 1); // Mirror horizontal reflection
+          ctxR.drawImage(
+            this.renderer.domElement,
+            0,
+            srcY,
+            srcW,
+            srcH,
+            -this.rightMirrorCanvas.width,
+            0,
+            this.rightMirrorCanvas.width,
+            this.rightMirrorCanvas.height
+          );
+          ctxR.restore();
+        }
+      }
+
+      this.renderer.setScissorTest(false);
+    }
+
+    // Restore full viewport & render main camera scene
+    this.renderer.setViewport(0, 0, fullW, fullH);
     this.renderer.render(this.scene, this.camera);
   }
 

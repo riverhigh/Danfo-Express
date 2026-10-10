@@ -99,7 +99,7 @@ export const MiniMap: React.FC<MiniMapProps> = ({
       {/* Player Arrow (Center) */}
       <div 
         className="absolute top-1/2 left-1/2 -translate-y-1/2 -translate-x-1/2 z-10 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]"
-        style={{ transform: `translate(calc(-50% + ${laneOffset * 2}px), -50%)` }}
+        style={{ transform: `translate(calc(-50% + ${-laneOffset * 2}px), -50%)` }}
       >
         <svg width="24" height="28" viewBox="0 0 24 28" fill="white" stroke="black" strokeWidth="2">
           <path d="M12 0 L24 28 L12 22 L0 28 Z" />
