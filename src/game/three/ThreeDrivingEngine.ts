@@ -241,7 +241,7 @@ export class ThreeDrivingEngine {
   };
 
   private normalizeVehicleModel(model: THREE.Group, path: string) {
-    // 1. Clean out ONLY ground shadow pedestals / turntables
+    // 1. Clean out ground shadow pedestals / turntables
     model.traverse((child: any) => {
       if (child.isMesh && child.name) {
         const n = child.name.toLowerCase();
@@ -256,40 +256,65 @@ export class ThreeDrivingEngine {
       }
     });
 
-    // Reset rotation before measuring
+    const p = path.toLowerCase();
     model.rotation.set(0, 0, 0);
+    model.scale.set(1, 1, 1);
+    model.position.set(0, 0, 0);
     model.updateMatrixWorld(true);
 
-    let box = new THREE.Box3().setFromObject(model);
-    let size = new THREE.Vector3();
-    box.getSize(size);
-
-    // 2. Auto-orient so vehicle length is along Z axis:
-    // If authored standing upright (length along Y): rotate around X by 90 deg
-    if (size.y > size.x && size.y > size.z) {
-      model.rotation.x = Math.PI / 2;
-    } else if (size.x > size.z) {
-      // Authored sideways (length along X): rotate around Y by -90 deg
-      model.rotation.y = -Math.PI / 2;
+    if (p.includes('1991_honda_civic_eg6')) {
+      // Authored lying on side/upright with +Z=up, -Y=front
+      model.rotation.set(-Math.PI / 2, 0, 0);
+      model.updateMatrixWorld(true);
+      const b = new THREE.Box3().setFromObject(model);
+      const sz = new THREE.Vector3();
+      b.getSize(sz);
+      const scale = 4.4 / Math.max(0.1, sz.z);
+      model.scale.set(scale, scale, scale);
+    } else if (p.includes('2005_toyota_townace')) {
+      model.rotation.set(0, Math.PI, 0);
+      model.updateMatrixWorld(true);
+      const b = new THREE.Box3().setFromObject(model);
+      const sz = new THREE.Vector3();
+      b.getSize(sz);
+      const scale = 4.8 / Math.max(0.1, sz.z);
+      model.scale.set(scale, scale, scale);
+    } else if (p.includes('honda_today_g-type_police')) {
+      model.rotation.set(0, Math.PI, 0);
+      model.updateMatrixWorld(true);
+      const b = new THREE.Box3().setFromObject(model);
+      const sz = new THREE.Vector3();
+      b.getSize(sz);
+      const scale = 3.8 / Math.max(0.1, sz.z);
+      model.scale.set(scale, scale, scale);
+    } else if (p.includes('kia_km420')) {
+      model.rotation.set(0, Math.PI, 0);
+      model.updateMatrixWorld(true);
+      const b = new THREE.Box3().setFromObject(model);
+      const sz = new THREE.Vector3();
+      b.getSize(sz);
+      const scale = 4.5 / Math.max(0.1, sz.z);
+      model.scale.set(scale, scale, scale);
     } else {
-      model.rotation.y = Math.PI;
+      model.rotation.set(0, Math.PI, 0);
+      model.updateMatrixWorld(true);
+      let b = new THREE.Box3().setFromObject(model);
+      let sz = new THREE.Vector3();
+      b.getSize(sz);
+      if (sz.y > sz.x && sz.y > sz.z) {
+        model.rotation.set(-Math.PI / 2, 0, 0);
+      } else if (sz.x > sz.z) {
+        model.rotation.set(0, -Math.PI / 2, 0);
+      }
+      model.updateMatrixWorld(true);
+      b = new THREE.Box3().setFromObject(model);
+      b.getSize(sz);
+      const targetLen = p.includes('keke') ? 2.8 : (p.includes('danfo') || p.includes('townace') ? 4.8 : 4.4);
+      const scale = targetLen / Math.max(0.1, sz.z);
+      model.scale.set(scale, scale, scale);
     }
 
-    model.updateMatrixWorld(true);
-    box.setFromObject(model);
-    box.getSize(size);
-
-    const isKeke = path.toLowerCase().includes('keke') || path.toLowerCase().includes('tricycle');
-    const isBus = path.toLowerCase().includes('danfo') || path.toLowerCase().includes('townace');
-
-    // 3. Target real-world physical length in meters (Never shrink too small!):
-    // Keke = 2.8m, Danfo/Townace = 4.8m, Sedans/Cars/Police/Jeeps = 4.4m
-    const targetLength = isBus ? 4.8 : (isKeke ? 2.8 : 4.4);
-    const measuredLength = Math.max(0.1, size.z);
-    const scale = targetLength / measuredLength;
-    model.scale.set(scale, scale, scale);
-
-    // 4. Ground alignment: place bottom of tyres exactly at Y = 0
+    // Ground alignment: place bottom of tyres at exactly Y = 0
     model.updateMatrixWorld(true);
     const finalBox = new THREE.Box3().setFromObject(model);
     model.position.y = -finalBox.min.y;
@@ -752,148 +777,411 @@ export class ThreeDrivingEngine {
    * 3D Driver Hands gripping the wheel, working dashboard cluster, dual side mirrors,
    * and the animated Passenger Sliding Door on the right!
    */
-    private createDanfoBus(busId: string = 'RUSTIC_VAN') {
+  private createDanfoBus(busId: string = 'RUSTIC_VAN') {
     const busRoot = new THREE.Group();
     const busBody = new THREE.Group();
     busRoot.add(busBody);
 
-    // Steering wheel placeholder
-    const steeringWheel = new THREE.Group();
-    steeringWheel.rotation.order = 'ZYX';
-    steeringWheel.position.set(-0.6, 1.5, 2.3);
-    busBody.add(steeringWheel);
-    
-    const fallbackGroup = new THREE.Group();
-    busBody.add(fallbackGroup);
+    const danfoGroup = new THREE.Group();
+    busBody.add(danfoGroup);
 
-    // Procedural 3D Danfo Bus (Ensures the bus is ALWAYS visible immediately!)
-    const yellowMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.35, metalness: 0.2 });
-    const blackStripeMat = new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 0.5 });
-    const glassMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.1, transparent: true, opacity: 0.65 });
-    const tireMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.8 });
+    // --- High-Quality Lagos Danfo Materials ---
+    const yellowMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.35, metalness: 0.25 });
+    const blackStripeMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.5 });
+    const glassMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.08, transparent: true, opacity: 0.65, side: THREE.DoubleSide });
+    const tireMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.85 });
+    const rimMat = new THREE.MeshStandardMaterial({ color: 0xd1d5db, roughness: 0.2, metalness: 0.9 });
+    const rustFloorMat = new THREE.MeshStandardMaterial({ color: 0x452211, roughness: 0.9 });
+    const woodBenchMat = new THREE.MeshStandardMaterial({ color: 0x6d4c41, roughness: 0.8 });
+    const chromeMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.1, metalness: 0.95 });
+    const darkMat = new THREE.MeshStandardMaterial({ color: 0x09090b, roughness: 0.6 });
+    const steelMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.5, metalness: 0.8 });
 
-    // Lower bus body
-    const lowerBody = new THREE.Mesh(new THREE.BoxGeometry(2.1, 1.2, 4.8), yellowMat);
-    lowerBody.position.y = 1.0;
-    fallbackGroup.add(lowerBody);
+    // 1. Chassis & Floor
+    const floor = new THREE.Mesh(new THREE.BoxGeometry(2.25, 0.14, 5.2), rustFloorMat);
+    floor.position.set(0, 0.68, 0);
+    danfoGroup.add(floor);
 
-    // Dual black stripes
-    const stripe1 = new THREE.Mesh(new THREE.BoxGeometry(2.14, 0.14, 4.82), blackStripeMat);
-    stripe1.position.y = 0.95;
-    fallbackGroup.add(stripe1);
-    const stripe2 = new THREE.Mesh(new THREE.BoxGeometry(2.14, 0.14, 4.82), blackStripeMat);
-    stripe2.position.y = 1.25;
-    fallbackGroup.add(stripe2);
+    // 2. Lower Body Panels
+    const lowerBody = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.85, 5.2), yellowMat);
+    lowerBody.position.set(0, 1.15, 0);
+    danfoGroup.add(lowerBody);
 
-    // Cabin / Roof
-    const roof = new THREE.Mesh(new THREE.BoxGeometry(2.05, 0.95, 4.6), yellowMat);
-    roof.position.y = 2.05;
-    fallbackGroup.add(roof);
+    // 3. Dual Iconic Black Danfo Stripes
+    const stripe1 = new THREE.Mesh(new THREE.BoxGeometry(2.32, 0.12, 5.22), blackStripeMat);
+    stripe1.position.set(0, 1.05, 0);
+    danfoGroup.add(stripe1);
 
-    // Front Windshield Glass
-    const frontGlass = new THREE.Mesh(new THREE.PlaneGeometry(1.85, 0.75), glassMat);
-    frontGlass.position.set(0, 1.95, 2.32);
-    fallbackGroup.add(frontGlass);
+    const stripe2 = new THREE.Mesh(new THREE.BoxGeometry(2.32, 0.12, 5.22), blackStripeMat);
+    stripe2.position.set(0, 1.35, 0);
+    danfoGroup.add(stripe2);
 
-    // Side windows
-    const sideGlassL = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 0.65), glassMat);
-    sideGlassL.position.set(1.04, 1.95, 0);
+    // 4. Front Slanted Nose & Front Bonnet
+    const frontNose = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.8, 0.65), yellowMat);
+    frontNose.position.set(0, 1.15, 2.85);
+    frontNose.rotation.x = -0.12;
+    danfoGroup.add(frontNose);
+
+    // 5. Front Black Grille with Chrome Trim
+    const grille = new THREE.Mesh(new THREE.BoxGeometry(1.65, 0.38, 0.1), darkMat);
+    grille.position.set(0, 1.15, 3.18);
+    danfoGroup.add(grille);
+
+    // 6. Front Headlights with Warm Glowing Beam
+    const lHeadlight = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.16, 0.16, 0.08, 20),
+      new THREE.MeshStandardMaterial({ color: 0xfffbeb, emissive: 0xfef08a, emissiveIntensity: 1.8 })
+    );
+    lHeadlight.rotation.x = Math.PI / 2;
+    lHeadlight.position.set(-0.78, 1.15, 3.18);
+    danfoGroup.add(lHeadlight);
+
+    const rHeadlight = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.16, 0.16, 0.08, 20),
+      new THREE.MeshStandardMaterial({ color: 0xfffbeb, emissive: 0xfef08a, emissiveIntensity: 1.8 })
+    );
+    rHeadlight.rotation.x = Math.PI / 2;
+    rHeadlight.position.set(0.78, 1.15, 3.18);
+    danfoGroup.add(rHeadlight);
+
+    // 7. Turn Signal Blinkers
+    const lBlinker = new THREE.Mesh(
+      new THREE.BoxGeometry(0.18, 0.1, 0.08),
+      new THREE.MeshBasicMaterial({ color: 0x291804 })
+    );
+    lBlinker.position.set(-1.08, 1.15, 3.15);
+    danfoGroup.add(lBlinker);
+
+    const rBlinker = new THREE.Mesh(
+      new THREE.BoxGeometry(0.18, 0.1, 0.08),
+      new THREE.MeshBasicMaterial({ color: 0x291804 })
+    );
+    rBlinker.position.set(1.08, 1.15, 3.15);
+    danfoGroup.add(rBlinker);
+
+    // 8. License Plates (Front & Rear)
+    const plateGeo = new THREE.BoxGeometry(0.75, 0.2, 0.04);
+    const plateMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.3 });
+    const frontPlate = new THREE.Mesh(plateGeo, plateMat);
+    frontPlate.position.set(0, 0.8, 3.2);
+    danfoGroup.add(frontPlate);
+
+    const rearPlate = new THREE.Mesh(plateGeo, plateMat);
+    rearPlate.position.set(0, 0.8, -2.68);
+    danfoGroup.add(rearPlate);
+
+    // 9. Cabin Pillars & Roof
+    const pillarGeo = new THREE.BoxGeometry(0.1, 0.95, 0.12);
+    [-2.5, -1.0, 0.8, 2.5].forEach((pz) => {
+      [-1.12, 1.12].forEach((px) => {
+        const pillar = new THREE.Mesh(pillarGeo, yellowMat);
+        pillar.position.set(px, 1.95, pz);
+        danfoGroup.add(pillar);
+      });
+    });
+
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.2, 5.1), yellowMat);
+    roof.position.set(0, 2.45, 0);
+    danfoGroup.add(roof);
+
+    // Roof Luggage Rack with tied travel sacks
+    const roofRack = new THREE.Group();
+    const rackBase = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.18, 3.4), steelMat);
+    rackBase.position.set(0, 2.58, -0.4);
+    roofRack.add(rackBase);
+
+    const sackColors = [0x16a34a, 0xd97706, 0x2563eb, 0x475569];
+    [-0.5, 0.5].forEach((sx, idx) => {
+      const sack = new THREE.Mesh(
+        new THREE.BoxGeometry(0.65, 0.35, 1.1),
+        new THREE.MeshStandardMaterial({ color: sackColors[idx], roughness: 0.8 })
+      );
+      sack.position.set(sx, 2.82, -0.4 + idx * 0.4);
+      roofRack.add(sack);
+    });
+    danfoGroup.add(roofRack);
+
+    // Roof Mega-Speakers upgrade
+    const roofSpeakers = new THREE.Group();
+    [-0.6, 0.6].forEach((spx) => {
+      const spk = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.12, 0.35, 16), chromeMat);
+      spk.rotation.x = Math.PI / 2;
+      spk.position.set(spx, 2.8, 1.3);
+      roofSpeakers.add(spk);
+    });
+    roofSpeakers.visible = false;
+    danfoGroup.add(roofSpeakers);
+
+    // 10. Route Destination Sign Lightbox (Above front windscreen)
+    const signBox = new THREE.Mesh(
+      new THREE.BoxGeometry(1.85, 0.28, 0.14),
+      new THREE.MeshStandardMaterial({ color: 0x111827, emissive: 0x0f172a, emissiveIntensity: 0.5 })
+    );
+    signBox.position.set(0, 2.42, 2.62);
+    danfoGroup.add(signBox);
+
+    // 11. Front Windshield & Wipers
+    const frontWindshield = new THREE.Mesh(new THREE.PlaneGeometry(2.1, 0.95), glassMat);
+    frontWindshield.position.set(0, 1.95, 2.62);
+    frontWindshield.rotation.x = -0.22;
+    danfoGroup.add(frontWindshield);
+
+    const wipersGroup = new THREE.Group();
+    [-0.45, 0.45].forEach((wx) => {
+      const wiper = new THREE.Mesh(
+        new THREE.BoxGeometry(0.04, 0.48, 0.02),
+        darkMat
+      );
+      wiper.position.set(wx, 1.7, 2.66);
+      wiper.rotation.x = -0.22;
+      wipersGroup.add(wiper);
+    });
+    danfoGroup.add(wipersGroup);
+
+    // 12. Side Windows & Rear Window
+    const sideGlassL = new THREE.Mesh(new THREE.PlaneGeometry(4.8, 0.85), glassMat);
+    sideGlassL.position.set(1.14, 1.95, 0);
     sideGlassL.rotation.y = Math.PI / 2;
-    fallbackGroup.add(sideGlassL);
-    const sideGlassR = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 0.65), glassMat);
-    sideGlassR.position.set(-1.04, 1.95, 0);
+    danfoGroup.add(sideGlassL);
+
+    const sideGlassR = new THREE.Mesh(new THREE.PlaneGeometry(4.8, 0.85), glassMat);
+    sideGlassR.position.set(-1.14, 1.95, 0);
     sideGlassR.rotation.y = -Math.PI / 2;
-    fallbackGroup.add(sideGlassR);
+    danfoGroup.add(sideGlassR);
 
-    // Rear window
-    const rearGlass = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 0.65), glassMat);
-    rearGlass.position.set(0, 1.95, -2.32);
+    const rearGlass = new THREE.Mesh(new THREE.PlaneGeometry(1.85, 0.75), glassMat);
+    rearGlass.position.set(0, 1.95, -2.62);
     rearGlass.rotation.y = Math.PI;
-    fallbackGroup.add(rearGlass);
+    danfoGroup.add(rearGlass);
 
-    // Front headlights
-    [-0.7, 0.7].forEach(hx => {
-      const hl = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.08, 16), new THREE.MeshStandardMaterial({ color: 0xfffbeb, emissive: 0xfef08a, emissiveIntensity: 1.5 }));
-      hl.rotation.x = Math.PI / 2;
-      hl.position.set(hx, 1.0, 2.42);
-      fallbackGroup.add(hl);
+    // 13. Rear Tailgate, Bumper & Brake Lights
+    const rearBumper = new THREE.Mesh(new THREE.BoxGeometry(2.35, 0.22, 0.25), darkMat);
+    rearBumper.position.set(0, 0.75, -2.68);
+    danfoGroup.add(rearBumper);
+
+    const lBrake = new THREE.Mesh(
+      new THREE.BoxGeometry(0.2, 0.12, 0.08),
+      new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0x991b1b, emissiveIntensity: 0.8 })
+    );
+    lBrake.position.set(-0.95, 1.15, -2.66);
+    danfoGroup.add(lBrake);
+
+    const rBrake = new THREE.Mesh(
+      new THREE.BoxGeometry(0.2, 0.12, 0.08),
+      new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0x991b1b, emissiveIntensity: 0.8 })
+    );
+    rBrake.position.set(0.95, 1.15, -2.66);
+    danfoGroup.add(rBrake);
+
+    // Mudflaps behind rear wheels
+    [-0.95, 0.95].forEach((mx) => {
+      const flap = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 0.02), darkMat);
+      flap.position.set(mx, 0.32, -2.05);
+      danfoGroup.add(flap);
     });
 
-    // 4 Wheels
-    const wheelGeo = new THREE.CylinderGeometry(0.38, 0.38, 0.25, 24);
-    wheelGeo.rotateZ(Math.PI / 2);
-    [[-1.05, 1.4], [1.05, 1.4], [-1.05, -1.4], [1.05, -1.4]].forEach(([wx, wz]) => {
-      const w = new THREE.Mesh(wheelGeo, tireMat);
-      w.position.set(wx, 0.38, wz);
-      fallbackGroup.add(w);
-    });
+    // Rear boot door (animated trunk)
+    const bootDoor = new THREE.Group();
+    bootDoor.position.set(0, 2.3, -2.62);
+    const bootDoorPanel = new THREE.Mesh(new THREE.BoxGeometry(2.1, 1.5, 0.08), yellowMat);
+    bootDoorPanel.position.set(0, -0.75, 0);
+    bootDoor.add(bootDoorPanel);
+    danfoGroup.add(bootDoor);
 
-    // Load correct 3D GLB Model for whichever vehicle is selected
-    const loader = new GLTFLoader();
-    const glbMap: Record<string, { path: string; scale: number; y: number; rotY: number }> = {
-      'RUSTIC_VAN':    { path: '/models/2005_toyota_townace_gl.glb', scale: 1.5, y: 0.2, rotY: Math.PI },
-      'TOYOTA_TOWNACE': { path: '/models/2005_toyota_townace_gl.glb', scale: 1.5, y: 0.2, rotY: Math.PI },
-      'HONDA_CIVIC':   { path: '/models/1991_honda_civic_eg6.glb', scale: 1.2, y: 0, rotY: Math.PI },
-      'KEKE_NAPEP':    { path: '/models/honda_today_g-type_police.glb', scale: 1.3, y: 0, rotY: Math.PI },
-      'POLICE_CAR':    { path: '/models/honda_today_g-type_police.glb', scale: 1.3, y: 0, rotY: Math.PI },
-      'ARMY_JEEP':     { path: '/models/kia_km420.glb', scale: 1.4, y: 0, rotY: Math.PI },
-      'KIA_CARNIVAL':  { path: '/models/2010_kia_forte_koup.glb', scale: 1.3, y: 0, rotY: Math.PI },
-      'CIVIC_TYPE_R':  { path: '/models/2000_honda_civic_type_r_ek9.glb', scale: 1.2, y: 0, rotY: Math.PI },
-      'KIA_FORTE':     { path: '/models/2010_kia_forte_koup.glb', scale: 1.3, y: 0, rotY: Math.PI },
-      'HONDA_ACTY':    { path: '/models/2005_toyota_townace_gl.glb', scale: 1.5, y: 0.2, rotY: Math.PI },
+    const bootLuggage = new THREE.Group();
+    bootLuggage.position.set(0, 0.85, -2.1);
+    danfoGroup.add(bootLuggage);
+
+    // 14. Passenger Sliding Door (animated)
+    const slidingDoor = new THREE.Group();
+    slidingDoor.position.set(1.15, 0, 0);
+    const doorPanel = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.6, 1.3), yellowMat);
+    doorPanel.position.set(0, 1.45, 0.4);
+    const doorStripe = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.12, 1.31), blackStripeMat);
+    doorStripe.position.set(0, 1.35, 0.4);
+    slidingDoor.add(doorPanel, doorStripe);
+    danfoGroup.add(slidingDoor);
+
+    // 15. Conductor at door
+    const conductor = new THREE.Group();
+    conductor.position.set(1.18, 0.85, 0.4);
+    const condBody = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.8, 12), new THREE.MeshStandardMaterial({ color: 0x2563eb }));
+    const condHead = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 12), new THREE.MeshStandardMaterial({ color: 0x3e2723 }));
+    condHead.position.y = 0.55;
+    const condCap = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.06, 12), new THREE.MeshStandardMaterial({ color: 0xf59e0b }));
+    condCap.position.y = 0.68;
+    const condLegs = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.6, 0.2), new THREE.MeshStandardMaterial({ color: 0x1f2937 }));
+    condLegs.position.y = -0.55;
+    const condArm = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.45, 0.1), new THREE.MeshStandardMaterial({ color: 0x3e2723 }));
+    condArm.position.set(0.2, 0.2, 0);
+    conductor.add(condBody, condHead, condCap, condLegs, condArm);
+    conductor.visible = false;
+    danfoGroup.add(conductor);
+
+    // 16. Heavy Steel Front Bull Bar upgrade
+    const bullBar = new THREE.Group();
+    const bullTube = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.2, 12), chromeMat);
+    bullTube.rotation.z = Math.PI / 2;
+    bullTube.position.set(0, 0.85, 3.32);
+    const bullUpL = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.55, 12), chromeMat);
+    bullUpL.position.set(-0.6, 1.0, 3.3);
+    const bullUpR = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.55, 12), chromeMat);
+    bullUpR.position.set(0.6, 1.0, 3.3);
+    bullBar.add(bullTube, bullUpL, bullUpR);
+    bullBar.visible = false;
+    danfoGroup.add(bullBar);
+
+    // 17. Custom Underglow light
+    const underglow = new THREE.PointLight(0xf59e0b, 0, 8);
+    underglow.position.set(0, 0.25, 0);
+    danfoGroup.add(underglow);
+
+    // 18. Cockpit Dashboard & Working Needles
+    const dashboard = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.45, 0.55), darkMat);
+    dashboard.position.set(0, 1.45, 2.45);
+    danfoGroup.add(dashboard);
+
+    const makeNeedle = (nx: number, ny: number) => {
+      const group = new THREE.Group();
+      group.position.set(nx, ny, 2.25);
+      const needle = new THREE.Mesh(
+        new THREE.BoxGeometry(0.012, 0.08, 0.01),
+        new THREE.MeshBasicMaterial({ color: 0xef4444 })
+      );
+      needle.position.y = 0.035;
+      group.add(needle);
+      danfoGroup.add(group);
+      return group as any;
     };
 
-    const targetKey = busId || this.currentBusId || 'RUSTIC_VAN';
-    const glbCfg = glbMap[targetKey] || glbMap['RUSTIC_VAN'];
+    const speedNeedle = makeNeedle(-0.6, 1.5);
+    const tachNeedle = makeNeedle(-0.4, 1.5);
+    const fuelNeedle = makeNeedle(-0.25, 1.5);
+    const accelNeedle = makeNeedle(-0.75, 1.5);
 
-    loader.load(
-      glbCfg.path,
-      (gltf) => {
-        const model = gltf.scene;
-        this.normalizeVehicleModel(model, glbCfg.path);
-        fallbackGroup.visible = false;
-        busBody.add(model);
-        (this as any)._playerModel = model;
-        console.log('Player GLB loaded & auto-aligned successfully:', glbCfg.path);
-      },
-      undefined,
-      (error) => {
-        console.error('Error loading Player vehicle GLB:', error);
-      }
+    const dashLeftBlinker = new THREE.Mesh(
+      new THREE.CircleGeometry(0.02, 12),
+      new THREE.MeshBasicMaterial({ color: 0x14532d })
     );
+    dashLeftBlinker.position.set(-0.68, 1.56, 2.24);
+    danfoGroup.add(dashLeftBlinker);
 
-    // Wheels dummy
-    const lfWheel = new THREE.Mesh();
-    const rfWheel = new THREE.Mesh();
-    const rearWheels = [new THREE.Mesh(), new THREE.Mesh()];
-    busBody.add(lfWheel, rfWheel, ...rearWheels);
+    const dashRightBlinker = new THREE.Mesh(
+      new THREE.CircleGeometry(0.02, 12),
+      new THREE.MeshBasicMaterial({ color: 0x14532d })
+    );
+    dashRightBlinker.position.set(-0.32, 1.56, 2.24);
+    danfoGroup.add(dashRightBlinker);
+
+    // 19. 3D Steering Wheel with Hands
+    const steeringWheel = new THREE.Group();
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.035, 16, 32), darkMat);
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.06, 16), chromeMat);
+    hub.rotation.x = Math.PI / 2;
+    steeringWheel.add(rim, hub);
+    steeringWheel.position.set(-0.55, 1.5, 2.15);
+    steeringWheel.rotation.x = -Math.PI * 0.28;
+    danfoGroup.add(steeringWheel);
+
+    // Central rearview mirror with dangling holy rosary
+    const rosary = new THREE.Group();
+    rosary.position.set(0, 2.25, 2.45);
+    const rosaryString = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.22, 8), darkMat);
+    rosaryString.position.y = -0.11;
+    const rosaryCross = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.08, 0.015), chromeMat);
+    rosaryCross.position.y = -0.24;
+    rosary.add(rosaryString, rosaryCross);
+    danfoGroup.add(rosary);
+
+    // Driver Seat & Wooden Passenger Benches
+    const driverSeat = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.15, 0.65), darkMat);
+    driverSeat.position.set(-0.55, 0.95, 1.7);
+    danfoGroup.add(driverSeat);
+
+    [1.7, 0.5, -0.7, -1.9].forEach((pz) => {
+      const bench = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.06, 0.45), woodBenchMat);
+      bench.position.set(0, 1.05, pz);
+      danfoGroup.add(bench);
+
+      const benchBack = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.45, 0.05), woodBenchMat);
+      benchBack.position.set(0, 1.35, pz - 0.22);
+      danfoGroup.add(benchBack);
+    });
+
+    // 20. 4 Working Wheels (Rims + Rubber Tires)
+    const createDanfoWheel = (wx: number, wz: number) => {
+      const wGroup = new THREE.Group();
+      wGroup.position.set(wx, 0.38, wz);
+      const tire = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 0.26, 24), tireMat);
+      tire.rotation.z = Math.PI / 2;
+      const rimM = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.27, 16), rimMat);
+      rimM.rotation.z = Math.PI / 2;
+      wGroup.add(tire, rimM);
+      danfoGroup.add(wGroup);
+      return wGroup;
+    };
+
+    const lfWheel = createDanfoWheel(1.12, 1.6);
+    const rfWheel = createDanfoWheel(-1.12, 1.6);
+    const rearWheels = [
+      createDanfoWheel(1.12, -1.6),
+      createDanfoWheel(-1.12, -1.6),
+    ];
+
+    // Check if player selected an alternate purchased car in Dealership
+    const targetKey = busId || this.currentBusId || 'RUSTIC_VAN';
+    const isDanfoBus = targetKey === 'RUSTIC_VAN' || targetKey === 'TURBO_SPRINTER' || targetKey === 'HIGH_RISER_COASTER' || targetKey === 'DANFO';
+
+    if (!isDanfoBus) {
+      const glbMap: Record<string, { path: string; scale: number; y: number; rotY: number }> = {
+        'HONDA_CIVIC':   { path: '/models/1991_honda_civic_eg6.glb', scale: 1.2, y: 0, rotY: Math.PI },
+        'KEKE_NAPEP':    { path: '/models/honda_today_g-type_police.glb', scale: 1.3, y: 0, rotY: Math.PI },
+        'POLICE_CAR':    { path: '/models/honda_today_g-type_police.glb', scale: 1.3, y: 0, rotY: Math.PI },
+        'ARMY_JEEP':     { path: '/models/kia_km420.glb', scale: 1.4, y: 0, rotY: Math.PI },
+        'KIA_CARNIVAL':  { path: '/models/2010_kia_forte_koup.glb', scale: 1.3, y: 0, rotY: Math.PI },
+        'CIVIC_TYPE_R':  { path: '/models/2000_honda_civic_type_r_ek9.glb', scale: 1.2, y: 0, rotY: Math.PI },
+        'KIA_FORTE':     { path: '/models/2010_kia_forte_koup.glb', scale: 1.3, y: 0, rotY: Math.PI },
+      };
+
+      const cfg = glbMap[targetKey];
+      if (cfg) {
+        const loader = new GLTFLoader();
+        loader.load(cfg.path, (gltf) => {
+          const model = gltf.scene;
+          this.normalizeVehicleModel(model, cfg.path);
+          danfoGroup.visible = false;
+          busBody.add(model);
+          (this as any)._playerModel = model;
+        });
+      }
+    }
 
     return {
       busRoot,
       busBody,
       steeringWheel,
-      speedNeedle: new THREE.Mesh(),
-      tachNeedle: new THREE.Mesh(),
-      fuelNeedle: new THREE.Mesh(),
-      accelNeedle: new THREE.Mesh(),
-      dashLeftBlinker: new THREE.Mesh(),
-      dashRightBlinker: new THREE.Mesh(),
-      slidingDoor: new THREE.Group(),
-      bootDoor: new THREE.Group(),
-      bootLuggage: new THREE.Group(),
-      conductor: new THREE.Group(),
+      speedNeedle,
+      tachNeedle,
+      fuelNeedle,
+      accelNeedle,
+      dashLeftBlinker,
+      dashRightBlinker,
+      slidingDoor,
+      bootDoor,
+      bootLuggage,
+      conductor,
       lfWheel,
       rfWheel,
       rearWheels,
-      lBlinker: new THREE.Mesh(),
-      rBlinker: new THREE.Mesh(),
-      lBrake: new THREE.Mesh(),
-      rBrake: new THREE.Mesh(),
-      wipers: new THREE.Group(),
-      rosary: new THREE.Group(),
-      bullBar: new THREE.Group(),
-      speakers: new THREE.Group(),
-      underglow: new THREE.PointLight(0x000000),
+      lBlinker,
+      rBlinker,
+      lBrake,
+      rBrake,
+      wipers: wipersGroup,
+      rosary,
+      bullBar,
+      speakers: roofSpeakers,
+      underglow,
     } as any;
   }
 
@@ -1009,17 +1297,73 @@ export class ThreeDrivingEngine {
     });
   }
 
+  private createFallbackTrafficCar(colorHex: number): THREE.Group {
+    const car = new THREE.Group();
+    const bodyMat = new THREE.MeshStandardMaterial({ color: colorHex, metalness: 0.5, roughness: 0.3 });
+    const glassMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.1, transparent: true, opacity: 0.7 });
+    const tireMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.85 });
+    const lightMat = new THREE.MeshStandardMaterial({ color: 0xfffbeb, emissive: 0xfef08a, emissiveIntensity: 1.2 });
+    const brakeMat = new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0xb91c1c, emissiveIntensity: 1.0 });
+
+    // Lower body (sedan proportions: 1.9m wide, 0.7m tall, 4.4m long)
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.7, 4.4), bodyMat);
+    body.position.y = 0.65;
+    car.add(body);
+
+    // Cabin / Roof (1.6m wide, 0.65m tall, 2.3m long)
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.65, 2.3), bodyMat);
+    cabin.position.set(0, 1.25, -0.2);
+    car.add(cabin);
+
+    // Windshields
+    const ws = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.55), glassMat);
+    ws.position.set(0, 1.2, 0.96);
+    ws.rotation.x = -0.3;
+    car.add(ws);
+
+    const rw = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.5), glassMat);
+    rw.position.set(0, 1.2, -1.36);
+    rw.rotation.x = 0.3;
+    rw.rotation.y = Math.PI;
+    car.add(rw);
+
+    // Headlights & Taillights
+    [-0.7, 0.7].forEach(lx => {
+      const hl = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.05, 12), lightMat);
+      hl.rotation.x = Math.PI / 2;
+      hl.position.set(lx, 0.65, 2.21);
+      car.add(hl);
+
+      const tl = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.05, 12), brakeMat);
+      tl.rotation.x = Math.PI / 2;
+      tl.position.set(lx, 0.65, -2.21);
+      car.add(tl);
+    });
+
+    // 4 Wheels
+    const wGeo = new THREE.CylinderGeometry(0.34, 0.34, 0.22, 16);
+    wGeo.rotateZ(Math.PI / 2);
+    [[-0.95, 1.3], [0.95, 1.3], [-0.95, -1.3], [0.95, -1.3]].forEach(([wx, wz]) => {
+      const w = new THREE.Mesh(wGeo, tireMat);
+      w.position.set(wx, 0.34, wz);
+      car.add(w);
+    });
+
+    return car;
+  }
+
   private setupTrafficAndHazards() {
     const npcGlbPaths = [
-      { path: '/models/1991_honda_civic_eg6.glb', scale: 1.2, rotY: Math.PI },
-      { path: '/models/2005_toyota_townace_gl.glb', scale: 1.5, rotY: Math.PI },
-      { path: '/models/honda_today_g-type_police.glb', scale: 1.3, rotY: Math.PI },
-      { path: '/models/2010_kia_forte_koup.glb', scale: 1.3, rotY: Math.PI },
-      { path: '/models/kia_km420.glb', scale: 1.4, rotY: Math.PI },
-      { path: '/models/2000_honda_civic_type_r_ek9.glb', scale: 1.2, rotY: Math.PI },
+      { path: '/models/1991_honda_civic_eg6.glb', scale: 1.2, rotY: 0 },
+      { path: '/models/2005_toyota_townace_gl.glb', scale: 1.5, rotY: 0 },
+      { path: '/models/honda_today_g-type_police.glb', scale: 1.3, rotY: 0 },
+      { path: '/models/2010_kia_forte_koup.glb', scale: 1.3, rotY: 0 },
+      { path: '/models/kia_km420.glb', scale: 1.4, rotY: 0 },
+      { path: '/models/2000_honda_civic_type_r_ek9.glb', scale: 1.2, rotY: 0 },
     ];
     const loader = new GLTFLoader();
     const lanes = [-5.5, 0, 5.5];
+    const trafficColors = [0x2563eb, 0xdc2626, 0x475569, 0x16a34a, 0x0f172a, 0xe2e8f0];
 
     // 6 optimized traffic cars (2 per lane) for locked 60 FPS
     const trafficCount = 6;
@@ -1031,7 +1375,7 @@ export class ThreeDrivingEngine {
 
       traffic.userData = {
         targetLaneX: initialLane,
-        baseRotY: cfg.rotY || 0,
+        baseRotY: 0,
         currentSpeed: 7.5 + (i % 3) * 1.2,
         laneChangeCooldown: Math.random() * 3 + 1,
         hasGlb: false
@@ -1041,8 +1385,13 @@ export class ThreeDrivingEngine {
       this.scene.add(traffic);
       this.trafficMeshes.push(traffic);
 
+      // Instant fallback full-sized traffic vehicle so no car is ever invisible or tiny
+      const fallbackCar = this.createFallbackTrafficCar(trafficColors[i % trafficColors.length]);
+      traffic.add(fallbackCar);
+
       const applyModel = (prototype: THREE.Group) => {
         const clone = prototype.clone(true);
+        fallbackCar.visible = false;
         traffic.add(clone);
         traffic.userData.hasGlb = true;
       };
@@ -1352,26 +1701,26 @@ export class ThreeDrivingEngine {
       this.camera.updateProjectionMatrix();
     } else if (params.cameraMode === 'THIRD_PERSON') {
       this.wasSteppedDown = false;
-      // CHASE CAM: Classic 3rd person follow camera behind Danfo bus
-      const offsetZ = gear === 'R' ? 10.0 : -8.5;
-      const camPos = new THREE.Vector3(laneOffsetMeters, 3.8, offsetZ);
+      // CHASE CAM: Full view of the entire Danfo bus, wheels to roof, bumper to bumper
+      const offsetZ = gear === 'R' ? 11.5 : -10.5;
+      const camPos = new THREE.Vector3(laneOffsetMeters, 4.0, offsetZ);
       this.camera.position.lerp(camPos, 0.15);
-      const lookTarget = new THREE.Vector3(laneOffsetMeters, 1.3, gear === 'R' ? -20 : 25);
+      const lookTarget = new THREE.Vector3(laneOffsetMeters, 1.5, gear === 'R' ? -12.0 : 4.5);
       this.camera.lookAt(lookTarget);
-      this.camera.fov = 65;
+      this.camera.fov = 64;
       this.camera.updateProjectionMatrix();
     } else if (params.cameraMode === 'ORBIT') {
       this.wasSteppedDown = false;
-      // 360 ORBIT VIEW: Free rotate around Danfo bus
-      const orbitDist = 7.5;
-      const orbitHeight = 3.2;
+      // 360 ORBIT VIEW: Free cinematic rotation around the full Danfo bus
+      const orbitDist = 9.5;
+      const orbitHeight = 3.6;
       const yaw = -(params.cameraLookYaw || 0) + Math.PI;
       const pitch = Math.max(-0.6, Math.min(0.6, params.cameraLookPitch || 0));
       const cx = laneOffsetMeters + Math.sin(yaw) * orbitDist;
       const cy = orbitHeight + Math.sin(pitch) * 4;
       const cz = -Math.cos(yaw) * orbitDist;
       this.camera.position.set(cx, Math.max(1.2, cy), cz);
-      this.camera.lookAt(new THREE.Vector3(laneOffsetMeters, 1.2, 0));
+      this.camera.lookAt(new THREE.Vector3(laneOffsetMeters, 1.4, 0));
       this.camera.fov = 65;
       this.camera.updateProjectionMatrix();
     } else {

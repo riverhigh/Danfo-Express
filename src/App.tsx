@@ -92,11 +92,75 @@ export default function App() {
   }, []);
 
   // Core Game State
+  const createInitialPassengers = (): Passenger[] => [
+    {
+      id: 'p-init-1',
+      name: 'Babatunde',
+      archetype: 'CORPORATE',
+      destination: 'Ikeja Along',
+      destinationUid: 'bustop-ikeja-along',
+      fare: 500,
+      paid: true,
+      patience: 100,
+      maxPatience: 100,
+      hasBigBill: false,
+      changeNeeded: 0,
+      seatedAt: 1,
+      satisfaction: 'HAPPY',
+    },
+    {
+      id: 'p-init-2',
+      name: 'Nkechi',
+      archetype: 'MARKET_WOMAN',
+      destination: 'Third Mainland Bridge / Obalende',
+      destinationUid: 'bustop-maryland',
+      fare: 600,
+      paid: true,
+      patience: 100,
+      maxPatience: 100,
+      hasBigBill: true,
+      changeNeeded: 200,
+      seatedAt: 2,
+      satisfaction: 'HAPPY',
+    },
+    {
+      id: 'p-init-3',
+      name: 'Emeka',
+      archetype: 'STUDENT',
+      destination: 'Oshodi Interchange',
+      destinationUid: 'bustop-anthony',
+      fare: 700,
+      paid: true,
+      patience: 100,
+      maxPatience: 100,
+      hasBigBill: false,
+      changeNeeded: 0,
+      seatedAt: 3,
+      satisfaction: 'HAPPY',
+    },
+    {
+      id: 'p-init-4',
+      name: 'Blessing',
+      archetype: 'CORPORATE',
+      destination: 'CMS Marina Terminal',
+      destinationUid: 'bustop-cms',
+      fare: 1200,
+      paid: true,
+      patience: 100,
+      maxPatience: 100,
+      hasBigBill: false,
+      changeNeeded: 0,
+      seatedAt: 4,
+      satisfaction: 'HAPPY',
+    },
+  ];
+
   const [gameState, setGameState] = useState<GameState>(() => {
     const shift = SHIFT_CONFIGS.MORNING_RUSH;
     const bus = JSON.parse(JSON.stringify(BUS_PRESETS.RUSTIC_VAN));
     bus.slogan = saveData.selectedSlogan || 'No King as God';
-      bus.id = saveData.selectedBusId || 'RUSTIC_VAN';
+    bus.id = saveData.selectedBusId || 'RUSTIC_VAN';
+    bus.passengers = createInitialPassengers();
     const junctions = JSON.parse(JSON.stringify(DEFAULT_JUNCTIONS));
 
     setGameTime(d => new Date(d.getTime() + 15 * 60000)); // 15 mins per tick
@@ -156,6 +220,7 @@ export default function App() {
     const bus: typeof baseBus = JSON.parse(JSON.stringify(baseBus));
     bus.slogan = selectedSlogan;
     bus.upgrades = { ...gameState.bus.upgrades };
+    bus.passengers = createInitialPassengers();
     const junctions = JSON.parse(JSON.stringify(DEFAULT_JUNCTIONS));
 
     setGameState((prev) => ({
@@ -197,6 +262,7 @@ export default function App() {
     const bus: typeof baseBus = JSON.parse(JSON.stringify(baseBus));
     bus.slogan = selectedSlogan;
     bus.upgrades = { ...gameState.bus.upgrades };
+    bus.passengers = createInitialPassengers();
     const junctions = JSON.parse(JSON.stringify(DEFAULT_JUNCTIONS));
 
     setGameState((prev) => ({

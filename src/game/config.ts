@@ -271,6 +271,7 @@ export const BUS_PRESETS: Record<string, Bus> = {
 export const DEFAULT_JUNCTIONS = [
   {
     id: 'j-1',
+    uid: 'bustop-ikeja-along',
     name: 'Ikeja Along Bus Stop',
     landmark: 'Under Pedestrian Bridge & Rail Line',
     distanceMarkerMeters: 280,
@@ -282,6 +283,7 @@ export const DEFAULT_JUNCTIONS = [
   },
   {
     id: 'j-2',
+    uid: 'bustop-maryland',
     name: 'Maryland Junction',
     landmark: 'Maryland Mall & Bank Clustered Bay',
     distanceMarkerMeters: 750,
@@ -293,6 +295,7 @@ export const DEFAULT_JUNCTIONS = [
   },
   {
     id: 'j-3',
+    uid: 'bustop-anthony',
     name: 'Anthony Interchange',
     landmark: 'Expressway Flyover Ramp & BRT Lane',
     distanceMarkerMeters: 1250,
@@ -304,6 +307,7 @@ export const DEFAULT_JUNCTIONS = [
   },
   {
     id: 'j-4',
+    uid: 'bustop-oshodi',
     name: 'Oshodi Underbridge Terminal',
     landmark: 'Massive Interchange, Hustlers & Market Women',
     distanceMarkerMeters: 1800,
@@ -315,6 +319,7 @@ export const DEFAULT_JUNCTIONS = [
   },
   {
     id: 'j-5',
+    uid: 'bustop-ojuelegba',
     name: 'Ojuelegba Flyover',
     landmark: 'Iconic Afrobeat Overpass & Street Bukka',
     distanceMarkerMeters: 2350,
@@ -326,6 +331,7 @@ export const DEFAULT_JUNCTIONS = [
   },
   {
     id: 'j-6',
+    uid: 'bustop-cms',
     name: 'CMS Marina Terminal',
     landmark: 'Waterfront Lagoon Jetty & Financial Towers',
     distanceMarkerMeters: 3000,

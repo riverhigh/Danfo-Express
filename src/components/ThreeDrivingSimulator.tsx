@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { ThreeDrivingEngine } from '../game/three/ThreeDrivingEngine';
-import { GameState, CameraViewMode, GearPosition, DoorState, JunctionStop, GasStationBay, RoadsideShop } from '../types/game';
+import { GameState, CameraViewMode, GearPosition, DoorState, JunctionStop, GasStationBay, RoadsideShop, Passenger, PassengerArchetype } from '../types/game';
 import { soundEngine } from '../audio/soundEngine';
 import { MiniMap } from './MiniMap';
 import { LAGOS_NPCS, LagosNpc } from '../game/npcData';
 import { NpcInteractionModal } from './NpcInteractionModal';
+import { PASSENGER_NAMES } from '../game/config';
 import { 
   Fuel, 
   Power, 
@@ -676,55 +677,116 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           soundEngine.playHorn(false);
         }
 
-        // 5. Junction Bus Stop Detection & Passenger Boarding
-      const juncs = gameState.junctions;
-      const currJunc = juncs[sim.activeJunctionIndex];
+        // 5. Junction Bus Stop Detection & Passenger Alighting / Boarding
+        const juncs = gameState.junctions;
+        const currJunc = juncs[sim.activeJunctionIndex];
 
-      if (currJunc) {
-        const distToJunc = currJunc.distanceMarkerMeters - sim.distanceTraveled;
-        const isAtStop = Math.abs(distToJunc) <= 14 && sim.speed < 5;
+        if (currJunc) {
+          const distToJunc = currJunc.distanceMarkerMeters - sim.distanceTraveled;
+          const isAtStop = Math.abs(distToJunc) <= 16 && sim.speed < 5;
 
-        if (isAtStop && sim.doorState === 'OPEN' && !currJunc.cleared) {
-          boardingTimer += dt;
-          sim.isBoarding = true;
+          if (isAtStop && sim.doorState === 'OPEN' && !currJunc.cleared) {
+            boardingTimer += dt;
+            sim.isBoarding = true;
 
-          if (boardingTimer >= 0.8) {
-            boardingTimer = 0;
-            soundEngine.playPassengerBoarding();
-            const fareEarned = currJunc.averageFare;
+            if (boardingTimer >= 0.75) {
+              boardingTimer = 0;
 
-            setTimeout(() => {
-              setGameState((prev) => {
-                const updatedJuncs = [...prev.junctions];
-                const activeJ = updatedJuncs[prev.activeJunctionIndex];
-                if (!activeJ || activeJ.cleared) return prev;
+              setTimeout(() => {
+                setGameState((prev) => {
+                  const updatedJuncs = [...prev.junctions];
+                  const activeJ = updatedJuncs[prev.activeJunctionIndex];
+                  if (!activeJ || activeJ.cleared) return prev;
 
-                const remaining = Math.max(0, activeJ.waitingPassengersCount - 1);
-                activeJ.waitingPassengersCount = remaining;
-                const isCleared = remaining === 0;
-                activeJ.cleared = isCleared;
+                  let currentPassengers = [...(prev.bus.passengers || [])];
+                  let cashCollected = 0;
+                  let alightedCount = 0;
 
-                return {
-                  ...prev,
-                  conductor: {
-                    ...prev.conductor,
-                    collectedCash: prev.conductor.collectedCash + fareEarned,
-                  },
-                  walletNaira: prev.walletNaira + fareEarned,
-                  junctions: updatedJuncs,
-                  activeJunctionIndex: isCleared 
-                    ? Math.min(updatedJuncs.length - 1, prev.activeJunctionIndex + 1)
-                    : prev.activeJunctionIndex,
-                };
-              });
+                  // 1. NPC ALIGHTING: Each NPC going to this specific bus stop (matched by UID) goes down!
+                  const remainingPassengers: Passenger[] = [];
+                  for (const p of currentPassengers) {
+                    const isDropOffHere = 
+                      (p.destinationUid && p.destinationUid === activeJ.uid) ||
+                      (p.destination && p.destination === activeJ.destinationTag) ||
+                      (p.destination && activeJ.name.toLowerCase().includes(p.destination.toLowerCase()));
 
-              addFeedMessage(`💰 COMMUTER BOARDED: +₦${fareEarned} collected!`);
-            }, 0);
+                    if (isDropOffHere) {
+                      alightedCount++;
+                      cashCollected += p.fare;
+                      addFeedMessage(`🚶 ALIGHTED: ${p.name} dropped off at ${activeJ.name}! (+₦${p.fare.toLocaleString()})`);
+                    } else {
+                      remainingPassengers.push(p);
+                    }
+                  }
+
+                  if (alightedCount > 0) {
+                    soundEngine.playCoin();
+                  }
+
+                  // 2. NPC BOARDING: More passengers waiting at this stop enter the bus if capacity allows!
+                  const busCapacity = prev.bus.capacity || 14;
+                  let remainingWaiting = activeJ.waitingPassengersCount;
+
+                  if (remainingPassengers.length < busCapacity && remainingWaiting > 0) {
+                    const downstreamStops = updatedJuncs.slice(prev.activeJunctionIndex + 1);
+                    const targetStop = downstreamStops.length > 0
+                      ? downstreamStops[Math.floor(Math.random() * downstreamStops.length)]
+                      : updatedJuncs[updatedJuncs.length - 1];
+
+                    const archetypes: PassengerArchetype[] = ['CORPORATE', 'MARKET_WOMAN', 'STUDENT', 'AGBERO_TOUT', 'PREACHER'];
+                    const randomName = PASSENGER_NAMES[Math.floor(Math.random() * PASSENGER_NAMES.length)];
+                    const fareToCharge = targetStop.averageFare || activeJ.averageFare;
+
+                    const newPassenger: Passenger = {
+                      id: `p-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                      name: randomName,
+                      archetype: archetypes[Math.floor(Math.random() * archetypes.length)],
+                      destination: targetStop.destinationTag,
+                      destinationUid: targetStop.uid,
+                      fare: fareToCharge,
+                      paid: true,
+                      patience: 100,
+                      maxPatience: 100,
+                      hasBigBill: Math.random() < 0.2,
+                      changeNeeded: 0,
+                      seatedAt: remainingPassengers.length,
+                      satisfaction: 'HAPPY',
+                    };
+
+                    remainingPassengers.push(newPassenger);
+                    remainingWaiting = Math.max(0, remainingWaiting - 1);
+                    soundEngine.playPassengerBoarding();
+                    addFeedMessage(`🎟️ BOARDED: ${newPassenger.name} entered bus -> Destination: ${targetStop.name} (₦${fareToCharge})`);
+                  }
+
+                  activeJ.waitingPassengersCount = remainingWaiting;
+                  const isCleared = remainingWaiting === 0 && alightedCount === 0;
+                  activeJ.cleared = isCleared;
+
+                  return {
+                    ...prev,
+                    bus: {
+                      ...prev.bus,
+                      passengers: remainingPassengers,
+                    },
+                    conductor: {
+                      ...prev.conductor,
+                      collectedCash: prev.conductor.collectedCash + cashCollected,
+                    },
+                    walletNaira: prev.walletNaira + cashCollected,
+                    streetCred: prev.streetCred + alightedCount * 5,
+                    junctions: updatedJuncs,
+                    activeJunctionIndex: isCleared 
+                      ? Math.min(updatedJuncs.length - 1, prev.activeJunctionIndex + 1)
+                      : prev.activeJunctionIndex,
+                  };
+                });
+              }, 0);
+            }
+          } else {
+            sim.isBoarding = false;
           }
-        } else {
-          sim.isBoarding = false;
         }
-      }
 
       // Terminal reached
       if (sim.targetDistance && sim.targetDistance > 100 && sim.distanceTraveled >= sim.targetDistance && !sim.finished) {
@@ -959,18 +1021,35 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           </div>
         </div>
       )}
-      {isAtCurrentJunction && !activeGasStation && !activeShop && !isSteppedDown && (
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-40 bg-stone-950/95 border-2 border-amber-400 rounded-2xl px-3 py-2 shadow-2xl flex items-center gap-3 pointer-events-auto">
-          <MapPin className="w-5 h-5 text-amber-400 animate-pulse shrink-0" />
-          <div>
-            <div className="text-[9px] font-mono font-black text-amber-400">📍 {currentJunction?.name}</div>
-            <div className="text-[10px] text-white">{currentJunction?.waitingPassengersCount} waiting</div>
+      {isAtCurrentJunction && !activeGasStation && !activeShop && !isSteppedDown && (() => {
+        const dropOffsCount = (gameState.bus.passengers || []).filter(
+          p => (p.destinationUid && p.destinationUid === currentJunction?.uid) ||
+               (p.destination && p.destination === currentJunction?.destinationTag) ||
+               (p.destination && currentJunction?.name.toLowerCase().includes(p.destination.toLowerCase()))
+        ).length;
+
+        return (
+          <div className="absolute top-20 left-1/2 -translate-x-1/2 z-40 bg-stone-950/95 border-2 border-amber-400 rounded-2xl px-4 py-2.5 shadow-2xl flex items-center gap-3.5 pointer-events-auto">
+            <MapPin className="w-5 h-5 text-amber-400 animate-pulse shrink-0" />
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-mono font-black text-amber-400">🚏 {currentJunction?.name}</span>
+                <span className="text-[8px] font-mono bg-amber-400/20 text-amber-300 border border-amber-400/40 px-1 rounded uppercase">{currentJunction?.uid}</span>
+              </div>
+              <div className="text-[10px] text-stone-300 flex items-center gap-2 mt-0.5">
+                <span className={dropOffsCount > 0 ? "text-emerald-400 font-bold" : "text-stone-400"}>🎯 {dropOffsCount} alighting</span>
+                <span>•</span>
+                <span className="text-amber-300 font-bold">🚪 {currentJunction?.waitingPassengersCount} waiting</span>
+                <span>•</span>
+                <span className="text-sky-300">👥 {gameState.bus.passengers?.length || 0}/{gameState.bus.capacity} seats</span>
+              </div>
+            </div>
+            <button onClick={toggleDoor} className={`px-3 py-1.5 font-black text-[10px] font-['Bungee'] rounded-xl transition-transform active:scale-95 shadow-md ${doorState === 'CLOSED' ? 'bg-amber-400 text-stone-950 hover:bg-amber-300' : 'bg-rose-500 text-white'}`}>
+              {doorState === 'CLOSED' ? 'OPEN DOOR' : 'CLOSE DOOR'}
+            </button>
           </div>
-          <button onClick={toggleDoor} className={`px-2.5 py-1 font-black text-[9px] font-['Bungee'] rounded-xl ${doorState === 'CLOSED' ? 'bg-amber-400 text-stone-950' : 'bg-stone-800 text-stone-200'}`}>
-            {doorState === 'CLOSED' ? 'OPEN' : 'CLOSE'}
-          </button>
-        </div>
-      )}
+        );
+      })()}
 
       {/* On-Foot Interaction Prompt (Only at Bus Stops or Filling Stations) */}
       {isSteppedDown && !activeNpc && (() => {

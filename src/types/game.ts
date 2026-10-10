@@ -26,6 +26,7 @@ export interface Passenger {
   name: string;
   archetype: PassengerArchetype;
   destination: LagosDestination;
+  destinationUid?: string;
   fare: number;
   paid: boolean;
   patience: number; // 0 to 100
@@ -78,6 +79,7 @@ export type BusModelId = 'RUSTIC_VAN' | 'TURBO_SPRINTER' | 'HIGH_RISER_COASTER' 
 
 export interface JunctionStop {
   id: string;
+  uid: string;
   name: string;
   landmark: string;
   distanceMarkerMeters: number;
