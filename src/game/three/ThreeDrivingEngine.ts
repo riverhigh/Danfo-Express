@@ -111,13 +111,15 @@ export class ThreeDrivingEngine {
           });
         });
         
-        const modelsToLoad = [
-        '/models/1991_honda_civic_eg6.glb',
-        '/models/2010_kia_forte_koup.glb',
-        '/models/honda_today_g-type_police.glb',
-        '/models/kia_km420.glb',
-        '/models/2005_toyota_townace_gl.glb'
-      ];
+    const modelsToLoad = [
+      '/models/Danfo.glb',
+      '/models/1991_honda_civic_eg6.glb',
+      '/models/2010_kia_forte_koup.glb',
+      '/models/honda_today_g-type_police.glb',
+      '/models/kia_km420.glb',
+      '/models/2005_toyota_townace_gl.glb',
+      '/models/2000_honda_civic_type_r_ek9.glb'
+    ];
       
       modelsToLoad.forEach(path => {
         loader.load(path, (gltf) => {
@@ -271,8 +273,18 @@ export class ThreeDrivingEngine {
       b.getSize(sz);
       const scale = 4.4 / Math.max(0.1, sz.z);
       model.scale.set(scale, scale, scale);
+    } else if (p.includes('danfo')) {
+      // Lagos Danfo Bus: Authored facing front (+Z)
+      model.rotation.set(0, 0, 0);
+      model.updateMatrixWorld(true);
+      const b = new THREE.Box3().setFromObject(model);
+      const sz = new THREE.Vector3();
+      b.getSize(sz);
+      const scale = 5.0 / Math.max(0.1, sz.z);
+      model.scale.set(scale, scale, scale);
     } else if (p.includes('2005_toyota_townace')) {
-      model.rotation.set(0, Math.PI, 0);
+      // TownAce van: Authored with front at +Z
+      model.rotation.set(0, 0, 0);
       model.updateMatrixWorld(true);
       const b = new THREE.Box3().setFromObject(model);
       const sz = new THREE.Vector3();
@@ -280,7 +292,8 @@ export class ThreeDrivingEngine {
       const scale = 4.8 / Math.max(0.1, sz.z);
       model.scale.set(scale, scale, scale);
     } else if (p.includes('honda_today_g-type_police')) {
-      model.rotation.set(0, Math.PI, 0);
+      // Honda Today Police: Authored with front at +Z
+      model.rotation.set(0, 0, 0);
       model.updateMatrixWorld(true);
       const b = new THREE.Box3().setFromObject(model);
       const sz = new THREE.Vector3();
@@ -288,23 +301,38 @@ export class ThreeDrivingEngine {
       const scale = 3.8 / Math.max(0.1, sz.z);
       model.scale.set(scale, scale, scale);
     } else if (p.includes('kia_km420')) {
-      model.rotation.set(0, Math.PI, 0);
+      // Army Jeep KM420: Authored with front at +Z
+      model.rotation.set(0, 0, 0);
+      model.updateMatrixWorld(true);
+      const b = new THREE.Box3().setFromObject(model);
+      const sz = new THREE.Vector3();
+      b.getSize(sz);
+      const scale = 4.6 / Math.max(0.1, sz.z);
+      model.scale.set(scale, scale, scale);
+    } else if (p.includes('2010_kia_forte_koup')) {
+      model.rotation.set(0, 0, 0);
       model.updateMatrixWorld(true);
       const b = new THREE.Box3().setFromObject(model);
       const sz = new THREE.Vector3();
       b.getSize(sz);
       const scale = 4.5 / Math.max(0.1, sz.z);
       model.scale.set(scale, scale, scale);
+    } else if (p.includes('2000_honda_civic_type_r_ek9')) {
+      model.rotation.set(0, 0, 0);
+      model.updateMatrixWorld(true);
+      const b = new THREE.Box3().setFromObject(model);
+      const sz = new THREE.Vector3();
+      b.getSize(sz);
+      const scale = 4.3 / Math.max(0.1, sz.z);
+      model.scale.set(scale, scale, scale);
     } else {
-      model.rotation.set(0, Math.PI, 0);
+      model.rotation.set(0, 0, 0);
       model.updateMatrixWorld(true);
       let b = new THREE.Box3().setFromObject(model);
       let sz = new THREE.Vector3();
       b.getSize(sz);
       if (sz.y > sz.x && sz.y > sz.z) {
         model.rotation.set(-Math.PI / 2, 0, 0);
-      } else if (sz.x > sz.z) {
-        model.rotation.set(0, -Math.PI / 2, 0);
       }
       model.updateMatrixWorld(true);
       b = new THREE.Box3().setFromObject(model);
@@ -1128,33 +1156,32 @@ export class ThreeDrivingEngine {
       createDanfoWheel(-1.12, -1.6),
     ];
 
-    // Check if player selected an alternate purchased car in Dealership
+    // Player Bus Model Loading:
+    // When Danfo bus is chosen (default), load /models/Danfo.glb!
     const targetKey = busId || this.currentBusId || 'RUSTIC_VAN';
-    const isDanfoBus = targetKey === 'RUSTIC_VAN' || targetKey === 'TURBO_SPRINTER' || targetKey === 'HIGH_RISER_COASTER' || targetKey === 'DANFO';
+    const isDanfoBus = targetKey === 'RUSTIC_VAN' || targetKey === 'TURBO_SPRINTER' || targetKey === 'HIGH_RISER_COASTER' || targetKey === 'DANFO' || targetKey === 'SHARP_DANFO';
 
-    if (!isDanfoBus) {
-      const glbMap: Record<string, { path: string; scale: number; y: number; rotY: number }> = {
-        'HONDA_CIVIC':   { path: '/models/1991_honda_civic_eg6.glb', scale: 1.2, y: 0, rotY: Math.PI },
-        'KEKE_NAPEP':    { path: '/models/honda_today_g-type_police.glb', scale: 1.3, y: 0, rotY: Math.PI },
-        'POLICE_CAR':    { path: '/models/honda_today_g-type_police.glb', scale: 1.3, y: 0, rotY: Math.PI },
-        'ARMY_JEEP':     { path: '/models/kia_km420.glb', scale: 1.4, y: 0, rotY: Math.PI },
-        'KIA_CARNIVAL':  { path: '/models/2010_kia_forte_koup.glb', scale: 1.3, y: 0, rotY: Math.PI },
-        'CIVIC_TYPE_R':  { path: '/models/2000_honda_civic_type_r_ek9.glb', scale: 1.2, y: 0, rotY: Math.PI },
-        'KIA_FORTE':     { path: '/models/2010_kia_forte_koup.glb', scale: 1.3, y: 0, rotY: Math.PI },
-      };
+    const playerGlbPath = isDanfoBus ? '/models/Danfo.glb' : ({
+      'HONDA_CIVIC':   '/models/1991_honda_civic_eg6.glb',
+      'KEKE_NAPEP':    '/models/honda_today_g-type_police.glb',
+      'POLICE_CAR':    '/models/honda_today_g-type_police.glb',
+      'ARMY_JEEP':     '/models/kia_km420.glb',
+      'KIA_CARNIVAL':  '/models/2010_kia_forte_koup.glb',
+      'CIVIC_TYPE_R':  '/models/2000_honda_civic_type_r_ek9.glb',
+      'KIA_FORTE':     '/models/2010_kia_forte_koup.glb',
+    }[targetKey] || '/models/Danfo.glb');
 
-      const cfg = glbMap[targetKey];
-      if (cfg) {
-        const loader = new GLTFLoader();
-        loader.load(cfg.path, (gltf) => {
-          const model = gltf.scene;
-          this.normalizeVehicleModel(model, cfg.path);
-          danfoGroup.visible = false;
-          busBody.add(model);
-          (this as any)._playerModel = model;
-        });
-      }
-    }
+    const loader = new GLTFLoader();
+    loader.load(playerGlbPath, (gltf) => {
+      const model = gltf.scene;
+      this.normalizeVehicleModel(model, playerGlbPath);
+      model.rotation.set(0, 0, 0); // STRICT FRONT-FACING: Front faces +Z, back faces -Z!
+      danfoGroup.visible = false;
+      busBody.add(model);
+      (this as any)._playerModel = model;
+    }, undefined, (err) => {
+      console.warn('Player GLB load error, using procedural Danfo:', err);
+    });
 
     return {
       busRoot,
@@ -1353,40 +1380,91 @@ export class ThreeDrivingEngine {
   }
 
   private setupTrafficAndHazards() {
-    const npcGlbPaths = [
-      { path: '/models/1991_honda_civic_eg6.glb', scale: 1.2, rotY: 0 },
-      { path: '/models/2005_toyota_townace_gl.glb', scale: 1.5, rotY: 0 },
-      { path: '/models/honda_today_g-type_police.glb', scale: 1.3, rotY: 0 },
-      { path: '/models/2010_kia_forte_koup.glb', scale: 1.3, rotY: 0 },
-      { path: '/models/kia_km420.glb', scale: 1.4, rotY: 0 },
-      { path: '/models/2000_honda_civic_type_r_ek9.glb', scale: 1.2, rotY: 0 },
-    ];
     const loader = new GLTFLoader();
     const lanes = [-5.5, 0, 5.5];
-    const trafficColors = [0x2563eb, 0xdc2626, 0x475569, 0x16a34a, 0x0f172a, 0xe2e8f0];
+    const danfoGlbPath = '/models/Danfo.glb';
 
-    // 6 optimized traffic cars (2 per lane) for locked 60 FPS
-    const trafficCount = 6;
+    // 1. EXACTLY 9 NPC RIVAL BUS DRIVERS (ALL USING Danfo.glb!)
+    const rivalDanfoDrivers = [
+      { name: 'Alhaji Agbaje', slogan: 'No King as God', speed: 12.5, lane: -5.5, z: 45 },
+      { name: 'Oshodi Overloader', slogan: 'Face Your Front', speed: 13.8, lane: 0, z: 90 },
+      { name: 'MC Oluomo Youth', slogan: 'Allahu Akbar', speed: 14.5, lane: 5.5, z: 135 },
+      { name: 'Baba Ibeji Shuttle', slogan: 'Lagos Boy', speed: 12.2, lane: -5.5, z: 180 },
+      { name: 'Rasaki Turbo 2.0', slogan: 'Destiny Child', speed: 15.2, lane: 0, z: 225 },
+      { name: 'Segun Speed Machine', slogan: 'Work and Pray', speed: 13.0, lane: 5.5, z: 270 },
+      { name: 'Jagaban Road King', slogan: 'Ise Oluwa', speed: 14.0, lane: -5.5, z: 315 },
+      { name: 'Airport Swift', slogan: 'God Time Best', speed: 13.4, lane: 0, z: 360 },
+      { name: 'Lekki Hustler', slogan: 'Eko Oni Baje', speed: 14.8, lane: 5.5, z: 405 },
+    ];
 
-    for (let i = 0; i < trafficCount; i++) {
-      const traffic = new THREE.Group();
-      const cfg = npcGlbPaths[i % npcGlbPaths.length];
-      const initialLane = lanes[i % lanes.length];
-
-      traffic.userData = {
-        targetLaneX: initialLane,
+    rivalDanfoDrivers.forEach((driver, idx) => {
+      const rivalBus = new THREE.Group();
+      rivalBus.userData = {
+        isRivalDanfo: true,
+        driverName: driver.name,
+        slogan: driver.slogan,
+        targetLaneX: driver.lane,
         baseRotY: 0,
-        currentSpeed: 7.5 + (i % 3) * 1.2,
+        currentSpeed: driver.speed,
+        baseSpeed: driver.speed,
+        laneChangeCooldown: Math.random() * 2 + 1,
+        hasGlb: false
+      };
+
+      rivalBus.position.set(driver.lane, 0, driver.z);
+      this.scene.add(rivalBus);
+      this.trafficMeshes.push(rivalBus);
+
+      // Instant fallback yellow Danfo vehicle so it is never blank while loading
+      const fallbackDanfo = this.createFallbackTrafficCar(0xf59e0b);
+      rivalBus.add(fallbackDanfo);
+
+      const applyModel = (prototype: THREE.Group) => {
+        const clone = prototype.clone(true);
+        fallbackDanfo.visible = false;
+        rivalBus.add(clone);
+        rivalBus.userData.hasGlb = true;
+      };
+
+      if (ThreeDrivingEngine.modelCache.has(danfoGlbPath)) {
+        applyModel(ThreeDrivingEngine.modelCache.get(danfoGlbPath)!);
+      } else {
+        loader.load(danfoGlbPath, (gltf) => {
+          const m = gltf.scene;
+          this.normalizeVehicleModel(m, danfoGlbPath);
+          ThreeDrivingEngine.modelCache.set(danfoGlbPath, m);
+          applyModel(m);
+        }, undefined, (err) => console.warn('Rival Danfo GLB cache error:', err));
+      }
+    });
+
+    // 2. Civilian traffic vehicles (Civic, Forte, Police, TownAce, KM420)
+    const civilianCars = [
+      { path: '/models/1991_honda_civic_eg6.glb', lane: -5.5, z: 68, speed: 8.5, color: 0x2563eb },
+      { path: '/models/2010_kia_forte_koup.glb', lane: 0, z: 155, speed: 9.0, color: 0xdc2626 },
+      { path: '/models/honda_today_g-type_police.glb', lane: 5.5, z: 245, speed: 10.5, color: 0x475569 },
+      { path: '/models/2000_honda_civic_type_r_ek9.glb', lane: -5.5, z: 335, speed: 9.2, color: 0x16a34a },
+      { path: '/models/kia_km420.glb', lane: 0, z: 200, speed: 8.0, color: 0x0f172a },
+      { path: '/models/2005_toyota_townace_gl.glb', lane: 5.5, z: 110, speed: 8.8, color: 0xe2e8f0 },
+    ];
+
+    civilianCars.forEach((civ, idx) => {
+      const traffic = new THREE.Group();
+      traffic.userData = {
+        isRivalDanfo: false,
+        targetLaneX: civ.lane,
+        baseRotY: 0,
+        currentSpeed: civ.speed,
+        baseSpeed: civ.speed,
         laneChangeCooldown: Math.random() * 3 + 1,
         hasGlb: false
       };
 
-      traffic.position.set(initialLane, 0, 50 + i * 38);
+      traffic.position.set(civ.lane, 0, civ.z);
       this.scene.add(traffic);
       this.trafficMeshes.push(traffic);
 
-      // Instant fallback full-sized traffic vehicle so no car is ever invisible or tiny
-      const fallbackCar = this.createFallbackTrafficCar(trafficColors[i % trafficColors.length]);
+      const fallbackCar = this.createFallbackTrafficCar(civ.color);
       traffic.add(fallbackCar);
 
       const applyModel = (prototype: THREE.Group) => {
@@ -1396,17 +1474,17 @@ export class ThreeDrivingEngine {
         traffic.userData.hasGlb = true;
       };
 
-      if (ThreeDrivingEngine.modelCache.has(cfg.path)) {
-        applyModel(ThreeDrivingEngine.modelCache.get(cfg.path)!);
+      if (ThreeDrivingEngine.modelCache.has(civ.path)) {
+        applyModel(ThreeDrivingEngine.modelCache.get(civ.path)!);
       } else {
-        loader.load(cfg.path, (gltf) => {
+        loader.load(civ.path, (gltf) => {
           const m = gltf.scene;
-          this.normalizeVehicleModel(m, cfg.path);
-          ThreeDrivingEngine.modelCache.set(cfg.path, m);
+          this.normalizeVehicleModel(m, civ.path);
+          ThreeDrivingEngine.modelCache.set(civ.path, m);
           applyModel(m);
-        }, undefined, (err) => console.warn('Traffic GLB cache error:', err));
+        }, undefined, (err) => console.warn('Civilian GLB cache error:', err));
       }
-    }
+    });
   }
 
   private createExhaustSystem() {
@@ -1836,7 +1914,7 @@ export class ThreeDrivingEngine {
       if (!u) continue;
 
       u.laneChangeCooldown = Math.max(0, (u.laneChangeCooldown || 0) - dt);
-      let desiredSpeed = 8.5;
+      let desiredSpeed = u.baseSpeed || 8.5;
 
       // Distance to Player (Player at laneOffsetMeters, Z=0)
       const distToPlayerZ = t.position.z;
@@ -1846,14 +1924,14 @@ export class ThreeDrivingEngine {
       // STRICT REQUIREMENT: Cars in FRONT (distToPlayerZ >= 0) do NOT move out of the way for player!
       // ONLY cars approaching from behind (distToPlayerZ < 0) change lanes to overtake/avoid rear-ending player!
       if (inPlayerLane) {
-        if (distToPlayerZ < 0 && distToPlayerZ > -25) {
+        if (distToPlayerZ < 0 && distToPlayerZ > -30) {
           // Car is BEHIND player catching up: change lanes to overtake/avoid player!
           if (u.laneChangeCooldown <= 0) {
             const nextLane = u.targetLaneX === 0 
               ? (laneOffsetMeters > 0 ? -5.5 : 5.5)
               : 0;
             u.targetLaneX = nextLane;
-            u.laneChangeCooldown = 3.5;
+            u.laneChangeCooldown = 2.5;
           }
           if (distToPlayerZ > -8 && speedMps < u.currentSpeed) {
             desiredSpeed = Math.max(0, speedMps * 0.9);
@@ -1866,18 +1944,18 @@ export class ThreeDrivingEngine {
         if (i === j) continue;
         const other = this.trafficMeshes[j];
         const dz = other.position.z - t.position.z;
-        if (dz > 0 && dz < 16 && Math.abs(t.position.x - other.position.x) < 2.0) {
+        if (dz > 0 && dz < 18 && Math.abs(t.position.x - other.position.x) < 2.0) {
           desiredSpeed = Math.min(desiredSpeed, (other.userData?.currentSpeed || 8.0) * 0.9);
           if (u.laneChangeCooldown <= 0) {
             u.targetLaneX = u.targetLaneX === 0 ? 5.5 : 0;
-            u.laneChangeCooldown = 3.5;
+            u.laneChangeCooldown = 2.5;
           }
           break;
         }
       }
 
       // Smooth Speed Lerp
-      u.currentSpeed = THREE.MathUtils.lerp(u.currentSpeed || 8.0, desiredSpeed, dt * 2.5);
+      u.currentSpeed = THREE.MathUtils.lerp(u.currentSpeed || desiredSpeed, desiredSpeed, dt * 2.5);
 
       // Smooth Lane Steer
       const laneDiff = (u.targetLaneX !== undefined ? u.targetLaneX : t.position.x) - t.position.x;
@@ -1888,14 +1966,14 @@ export class ThreeDrivingEngine {
       t.position.z -= (effectiveSpeed - u.currentSpeed) * dt;
 
       // Recycle Ahead / Behind
-      if (t.position.z < -45) {
-        t.position.z = 160 + (i % 3) * 35;
+      if (t.position.z < -50) {
+        t.position.z = 220 + (i % 6) * 35;
         const newLane = lanes[i % lanes.length];
         t.position.x = newLane;
         u.targetLaneX = newLane;
-        u.currentSpeed = 7.5 + (i % 3) * 1.2;
+        u.currentSpeed = u.baseSpeed || (8.5 + (i % 3) * 1.5);
         u.laneChangeCooldown = 2.0;
-      } else if (t.position.z > 230) {
+      } else if (t.position.z > 420) {
         t.position.z = -35;
         const newLane = lanes[i % lanes.length];
         t.position.x = newLane;
