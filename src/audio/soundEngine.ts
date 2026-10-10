@@ -602,6 +602,32 @@ class DanfoSoundEngine {
   }
 
   /**
+   * Conductor / Agbero gate whistle when rolling out of the motor park gate
+   */
+  public playParkExitWhistle() {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    // Dual tone metal referee/marshall whistle
+    [2400, 2850].forEach((freq, idx) => {
+      const osc = this.ctx!.createOscillator();
+      const gain = this.ctx!.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, t);
+      osc.frequency.setValueAtTime(freq + 150, t + 0.1);
+      osc.frequency.setValueAtTime(freq - 80, t + 0.22);
+      gain.gain.setValueAtTime(0.18, t);
+      gain.gain.setValueAtTime(0.25, t + 0.08);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.38 + idx * 0.05);
+      osc.connect(gain);
+      gain.connect(this.ctx!.destination);
+      osc.start(t);
+      osc.stop(t + 0.42);
+    });
+  }
+
+  /**
    * Diesel starter motor crank and engine ignition roar
    */
   public playEngineIgnition(turnOn: boolean = true) {
