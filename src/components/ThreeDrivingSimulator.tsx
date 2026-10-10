@@ -124,6 +124,8 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
   const inputsRef = useRef({
     gas: false,
     brake: false,
+    steerLeft: false,
+    steerRight: false,
     gear: 'D' as GearPosition,
     isEngineRunning: true,
     turnSignal: 'OFF' as 'OFF' | 'LEFT' | 'RIGHT',
@@ -512,9 +514,14 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           soundEngine.playAirBrakeHiss();
         }
       }
-      if (e.key === 'd' || e.key === 'D') {
-        setGear('D');
-        inputsRef.current.gear = 'D';
+      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+        inputsRef.current.steerLeft = true;
+      }
+      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+        inputsRef.current.steerRight = true;
+      }
+      if (e.key === 'g' || e.key === 'G') {
+        setGear((prev) => (prev === 'D' ? 'R' : prev === 'R' ? 'N' : 'D'));
       }
       if (e.key === 'r' || e.key === 'R') {
         setGear('R');
@@ -542,6 +549,8 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         inputsRef.current.brake = false;
         if (inputsRef.current.gear === 'R') inputsRef.current.gas = false;
       }
+      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') inputsRef.current.steerLeft = false;
+      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') inputsRef.current.steerRight = false;
     };
 
     window.addEventListener('keydown', onKeyDown);
@@ -567,10 +576,17 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       const sim = simRef.current;
       const inp = inputsRef.current;
 
-      // 1. Steering wheel self-centering spring
-      if (!inp.isDraggingWheel && !inp.gyroEnabled) {
+      // 1. Steering wheel keyboard steer & self-centering spring
+      if (inp.steerLeft) {
+        sim.steeringAngle = Math.max(-120, sim.steeringAngle - 260 * dt);
+        setWheelVisualAngle(sim.steeringAngle);
+      } else if (inp.steerRight) {
+        sim.steeringAngle = Math.min(120, sim.steeringAngle + 260 * dt);
+        setWheelVisualAngle(sim.steeringAngle);
+      } else if (!inp.isDraggingWheel && !inp.gyroEnabled) {
         sim.steeringAngle = sim.steeringAngle * Math.pow(0.05, dt);
         if (Math.abs(sim.steeringAngle) < 0.6) sim.steeringAngle = 0;
+        setWheelVisualAngle(sim.steeringAngle);
       }
       const steerFactor = sim.steeringAngle / 120;
 
@@ -835,6 +851,11 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           },
           dt
         );
+
+        const phys = engineRef.current.getPhysicsChassis();
+        sim.speed = phys.speedKmH;
+        sim.laneOffset = phys.position.x;
+        sim.distanceTraveled = Math.max(0, phys.position.z);
       }
 
       // 6. Decoupled UI Telemetry at 10 Hz
