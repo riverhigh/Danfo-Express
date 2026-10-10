@@ -113,7 +113,7 @@ export class ThreeDrivingEngine {
         
         const modelsToLoad = [
         '/models/1991_honda_civic_eg6.glb',
-        '/models/3d_model__passenger_tricycle_keke_napep.glb',
+        '/models/2010_kia_forte_koup.glb',
         '/models/honda_today_g-type_police.glb',
         '/models/kia_km420.glb',
         '/models/2005_toyota_townace_gl.glb'
@@ -241,51 +241,56 @@ export class ThreeDrivingEngine {
   };
 
   private normalizeVehicleModel(model: THREE.Group, path: string) {
-    // 1. Clean out ground shadow circles / cylinders / pedestals / turntables
+    // 1. Clean out ONLY ground shadow pedestals / turntables
     model.traverse((child: any) => {
       if (child.isMesh && child.name) {
         const n = child.name.toLowerCase();
         if (
-          n.includes('circle') ||
-          n.includes('pcylinder') ||
-          n.includes('cylinder_24') ||
           n.includes('shadow') ||
           n.includes('pedestal') ||
-          n.includes('turntable')
+          n.includes('turntable') ||
+          n.includes('ground_plane')
         ) {
           child.visible = false;
         }
       }
     });
 
-    // 2. Measure raw dimensions
+    // Reset rotation before measuring
+    model.rotation.set(0, 0, 0);
+    model.updateMatrixWorld(true);
+
     let box = new THREE.Box3().setFromObject(model);
     let size = new THREE.Vector3();
+    box.getSize(size);
+
+    // 2. Auto-orient so vehicle length is along Z axis:
+    // If authored standing upright (length along Y): rotate around X by 90 deg
+    if (size.y > size.x && size.y > size.z) {
+      model.rotation.x = Math.PI / 2;
+    } else if (size.x > size.z) {
+      // Authored sideways (length along X): rotate around Y by -90 deg
+      model.rotation.y = -Math.PI / 2;
+    } else {
+      model.rotation.y = Math.PI;
+    }
+
+    model.updateMatrixWorld(true);
+    box.setFromObject(model);
     box.getSize(size);
 
     const isKeke = path.toLowerCase().includes('keke') || path.toLowerCase().includes('tricycle');
     const isBus = path.toLowerCase().includes('danfo') || path.toLowerCase().includes('townace');
 
-    // 3. Auto-orient length along Z axis (road direction):
-    // If authored sideways (length along X > Z), rotate -90 deg so length is along Z
-    if (size.x > size.z) {
-      model.rotation.y = -Math.PI / 2;
-      box.setFromObject(model);
-      box.getSize(size);
-    } else {
-      model.rotation.y = Math.PI;
-      box.setFromObject(model);
-      box.getSize(size);
-    }
+    // 3. Target real-world physical length in meters (Never shrink too small!):
+    // Keke = 2.8m, Danfo/Townace = 4.8m, Sedans/Cars/Police/Jeeps = 4.4m
+    const targetLength = isBus ? 4.8 : (isKeke ? 2.8 : 4.4);
+    const measuredLength = Math.max(0.1, size.z);
+    const scale = targetLength / measuredLength;
+    model.scale.set(scale, scale, scale);
 
-    // 4. Target real-world physical length in meters:
-    // Keke = 2.8m, Danfo/Townace = 5.2m, Sedans/Cars/Jeeps = 4.5m
-    const targetLength = isKeke ? 2.8 : (isBus ? 5.2 : 4.5);
-    const currentLength = Math.max(0.1, size.z);
-    const scale = targetLength / currentLength;
-    model.scale.setScalar(scale);
-
-    // 5. Ground alignment: place bottom of tyres exactly at Y = 0 (no sunken wheels, no half tyres!)
+    // 4. Ground alignment: place bottom of tyres exactly at Y = 0
+    model.updateMatrixWorld(true);
     const finalBox = new THREE.Box3().setFromObject(model);
     model.position.y = -finalBox.min.y;
   }
@@ -761,19 +766,81 @@ export class ThreeDrivingEngine {
     const fallbackGroup = new THREE.Group();
     busBody.add(fallbackGroup);
 
+    // Procedural 3D Danfo Bus (Ensures the bus is ALWAYS visible immediately!)
+    const yellowMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.35, metalness: 0.2 });
+    const blackStripeMat = new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 0.5 });
+    const glassMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.1, transparent: true, opacity: 0.65 });
+    const tireMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.8 });
+
+    // Lower bus body
+    const lowerBody = new THREE.Mesh(new THREE.BoxGeometry(2.1, 1.2, 4.8), yellowMat);
+    lowerBody.position.y = 1.0;
+    fallbackGroup.add(lowerBody);
+
+    // Dual black stripes
+    const stripe1 = new THREE.Mesh(new THREE.BoxGeometry(2.14, 0.14, 4.82), blackStripeMat);
+    stripe1.position.y = 0.95;
+    fallbackGroup.add(stripe1);
+    const stripe2 = new THREE.Mesh(new THREE.BoxGeometry(2.14, 0.14, 4.82), blackStripeMat);
+    stripe2.position.y = 1.25;
+    fallbackGroup.add(stripe2);
+
+    // Cabin / Roof
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(2.05, 0.95, 4.6), yellowMat);
+    roof.position.y = 2.05;
+    fallbackGroup.add(roof);
+
+    // Front Windshield Glass
+    const frontGlass = new THREE.Mesh(new THREE.PlaneGeometry(1.85, 0.75), glassMat);
+    frontGlass.position.set(0, 1.95, 2.32);
+    fallbackGroup.add(frontGlass);
+
+    // Side windows
+    const sideGlassL = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 0.65), glassMat);
+    sideGlassL.position.set(1.04, 1.95, 0);
+    sideGlassL.rotation.y = Math.PI / 2;
+    fallbackGroup.add(sideGlassL);
+    const sideGlassR = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 0.65), glassMat);
+    sideGlassR.position.set(-1.04, 1.95, 0);
+    sideGlassR.rotation.y = -Math.PI / 2;
+    fallbackGroup.add(sideGlassR);
+
+    // Rear window
+    const rearGlass = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 0.65), glassMat);
+    rearGlass.position.set(0, 1.95, -2.32);
+    rearGlass.rotation.y = Math.PI;
+    fallbackGroup.add(rearGlass);
+
+    // Front headlights
+    [-0.7, 0.7].forEach(hx => {
+      const hl = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.08, 16), new THREE.MeshStandardMaterial({ color: 0xfffbeb, emissive: 0xfef08a, emissiveIntensity: 1.5 }));
+      hl.rotation.x = Math.PI / 2;
+      hl.position.set(hx, 1.0, 2.42);
+      fallbackGroup.add(hl);
+    });
+
+    // 4 Wheels
+    const wheelGeo = new THREE.CylinderGeometry(0.38, 0.38, 0.25, 24);
+    wheelGeo.rotateZ(Math.PI / 2);
+    [[-1.05, 1.4], [1.05, 1.4], [-1.05, -1.4], [1.05, -1.4]].forEach(([wx, wz]) => {
+      const w = new THREE.Mesh(wheelGeo, tireMat);
+      w.position.set(wx, 0.38, wz);
+      fallbackGroup.add(w);
+    });
+
     // Load correct 3D GLB Model for whichever vehicle is selected
     const loader = new GLTFLoader();
     const glbMap: Record<string, { path: string; scale: number; y: number; rotY: number }> = {
-      'RUSTIC_VAN':    { path: '/models/danfo.glb', scale: 1.5, y: 0, rotY: 0 },
+      'RUSTIC_VAN':    { path: '/models/2005_toyota_townace_gl.glb', scale: 1.5, y: 0.2, rotY: Math.PI },
       'TOYOTA_TOWNACE': { path: '/models/2005_toyota_townace_gl.glb', scale: 1.5, y: 0.2, rotY: Math.PI },
       'HONDA_CIVIC':   { path: '/models/1991_honda_civic_eg6.glb', scale: 1.2, y: 0, rotY: Math.PI },
-      'KEKE_NAPEP':    { path: '/models/3d_model__passenger_tricycle_keke_napep.glb', scale: 1.0, y: 0, rotY: -Math.PI / 2 },
+      'KEKE_NAPEP':    { path: '/models/honda_today_g-type_police.glb', scale: 1.3, y: 0, rotY: Math.PI },
       'POLICE_CAR':    { path: '/models/honda_today_g-type_police.glb', scale: 1.3, y: 0, rotY: Math.PI },
       'ARMY_JEEP':     { path: '/models/kia_km420.glb', scale: 1.4, y: 0, rotY: Math.PI },
-      'KIA_CARNIVAL':  { path: '/models/kia_carnival.glb', scale: 1.4, y: 0, rotY: Math.PI },
+      'KIA_CARNIVAL':  { path: '/models/2010_kia_forte_koup.glb', scale: 1.3, y: 0, rotY: Math.PI },
       'CIVIC_TYPE_R':  { path: '/models/2000_honda_civic_type_r_ek9.glb', scale: 1.2, y: 0, rotY: Math.PI },
       'KIA_FORTE':     { path: '/models/2010_kia_forte_koup.glb', scale: 1.3, y: 0, rotY: Math.PI },
-      'HONDA_ACTY':    { path: '/models/ac_-_honda_acty_ha3_free.glb', scale: 1.0, y: 0, rotY: Math.PI },
+      'HONDA_ACTY':    { path: '/models/2005_toyota_townace_gl.glb', scale: 1.5, y: 0.2, rotY: Math.PI },
     };
 
     const targetKey = busId || this.currentBusId || 'RUSTIC_VAN';
@@ -900,10 +967,11 @@ export class ThreeDrivingEngine {
         const pGroup = new THREE.Group();
         (pGroup as any)._isNpc = true;
 
-        const pX = 9.2 + (p % 2) * 1.5;
+        const pX = 10.5 + (p % 2) * 1.5;
         const pZ = -2.5 + p * 2.2;
         pGroup.position.set(pX, 0, pZ);
         pGroup.rotation.y = -Math.PI / 2;
+        pGroup.userData = { origX: pX, origZ: pZ, boarded: false };
 
         const charPath = characterGlbs[p % characterGlbs.length];
 
@@ -1368,13 +1436,30 @@ export class ThreeDrivingEngine {
       jMesh.group.position.z = relZ;
 
       const isAtThisStop = Math.abs(relZ) < 14;
-      if (isAtThisStop && isBoardingPassengers && doorState === 'OPEN') {
+      const isCleared = jMesh.junction.cleared;
+
+      if (isCleared) {
+        // If bus stop is already cleared, commuters are inside bus!
+        jMesh.passengers.forEach((p) => {
+          p.visible = false;
+        });
+      } else if (isAtThisStop && isBoardingPassengers && doorState === 'OPEN') {
         jMesh.passengers.forEach((p, idx) => {
-          if (p.position.x > 1.8) {
+          if (p.position.x > 2.2) {
             p.position.x -= dt * (2.2 + idx * 0.4);
             p.position.z = THREE.MathUtils.lerp(p.position.z, 0, dt * 2);
           } else {
             p.visible = false;
+            if (p.userData) p.userData.boarded = true;
+          }
+        });
+      } else {
+        // When not boarding: unboarded passengers stay safely on the sidewalk curb, NEVER hanging in road!
+        jMesh.passengers.forEach((p) => {
+          if (p.userData && !p.userData.boarded) {
+            p.position.x = p.userData.origX || 10.5;
+            p.position.z = p.userData.origZ || 0;
+            p.visible = true;
           }
         });
       }
@@ -1408,22 +1493,22 @@ export class ThreeDrivingEngine {
       const distToPlayerZ = t.position.z;
       const inPlayerLane = Math.abs(t.position.x - laneOffsetMeters) < 2.2;
 
-      // 1. Avoid Player Vehicle (Overtake / Go Around)
-      if (inPlayerLane && Math.abs(distToPlayerZ) < 28) {
-        if (u.laneChangeCooldown <= 0) {
-          // Pick adjacent lane with open space
-          const currentLaneIdx = lanes.indexOf(u.targetLaneX);
-          const nextLane = u.targetLaneX === 0 
-            ? (laneOffsetMeters > 0 ? -5.5 : 5.5)
-            : 0;
-          u.targetLaneX = nextLane;
-          u.laneChangeCooldown = 3.0;
-        }
-
-        if (distToPlayerZ > 0 && distToPlayerZ < 10) {
-          desiredSpeed = Math.min(desiredSpeed, Math.max(0, speedMps * 0.8));
-        } else if (distToPlayerZ < 0 && distToPlayerZ > -8 && speedMps < 2) {
-          desiredSpeed = 0;
+      // 1. Avoid Player Vehicle:
+      // STRICT REQUIREMENT: Cars in FRONT (distToPlayerZ >= 0) do NOT move out of the way for player!
+      // ONLY cars approaching from behind (distToPlayerZ < 0) change lanes to overtake/avoid rear-ending player!
+      if (inPlayerLane) {
+        if (distToPlayerZ < 0 && distToPlayerZ > -25) {
+          // Car is BEHIND player catching up: change lanes to overtake/avoid player!
+          if (u.laneChangeCooldown <= 0) {
+            const nextLane = u.targetLaneX === 0 
+              ? (laneOffsetMeters > 0 ? -5.5 : 5.5)
+              : 0;
+            u.targetLaneX = nextLane;
+            u.laneChangeCooldown = 3.5;
+          }
+          if (distToPlayerZ > -8 && speedMps < u.currentSpeed) {
+            desiredSpeed = Math.max(0, speedMps * 0.9);
+          }
         }
       }
 

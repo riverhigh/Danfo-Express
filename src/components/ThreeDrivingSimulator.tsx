@@ -68,7 +68,12 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
   const [gyroEnabled, setGyroEnabled] = useState<boolean>(false);
   const [wheelVisualAngle, setWheelVisualAngle] = useState<number>(0);
   const [isBoarding, setIsBoarding] = useState<boolean>(false);
-  const [cameraMode, setCameraMode] = React.useState('FIRST_PERSON');
+  const [cameraMode, setCameraMode] = useState<CameraViewMode>('FIRST_PERSON');
+  const cameraModeRef = useRef<CameraViewMode>('FIRST_PERSON');
+
+  useEffect(() => {
+    cameraModeRef.current = cameraMode;
+  }, [cameraMode]);
 
   // NPC Interaction State
   const [activeNpc, setActiveNpc] = useState<LagosNpc | null>(null);
@@ -194,6 +199,8 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       else if (prev === 'THIRD_PERSON') next = 'TOP_DOWN';
       else if (prev === 'TOP_DOWN') next = 'ORBIT';
       else next = 'FIRST_PERSON';
+
+      cameraModeRef.current = next;
 
       // STRICT LOGIC: Always reset look yaw/pitch so angles never desync or carry over
       lookRef.current.yaw = 0;
@@ -736,7 +743,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
             laneOffsetMeters: sim.laneOffset,
             gear: inp.gear,
             isBraking: inp.brake,
-            cameraMode: cameraMode as any,
+            cameraMode: cameraModeRef.current,
             cameraLookYaw: lookRef.current.yaw,
             cameraLookPitch: lookRef.current.pitch,
             turnSignal: inp.turnSignal,
