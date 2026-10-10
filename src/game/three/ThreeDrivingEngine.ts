@@ -1977,8 +1977,8 @@ export class ThreeDrivingEngine {
     this.leftFrontWheel.rotation.y = clampedSteer;
     this.rightFrontWheel.rotation.y = clampedSteer;
 
-    const physSpeedMps = this.chassisBody.velocity.length();
-    this.wheelRotationRad += (gear === 'R' ? -1 : 1) * physSpeedMps * dt * 2.8;
+    const currentPhysSpeedMps = this.chassisBody.velocity.length();
+    this.wheelRotationRad += (gear === 'R' ? -1 : 1) * currentPhysSpeedMps * dt * 2.8;
     this.leftFrontWheel.rotation.x = this.wheelRotationRad;
     this.rightFrontWheel.rotation.x = this.wheelRotationRad;
     this.rearWheels.forEach((w) => {
@@ -2106,7 +2106,7 @@ export class ThreeDrivingEngine {
     }
 
     // 8. Dangling Rosary Physics Swing
-    const targetRosary = steerFactor * 0.45 + (isBraking ? 0.35 : 0);
+    const targetRosary = steerNorm * 0.45 + (isBraking ? 0.35 : 0);
     const rosaryDiff = targetRosary - this.rosarySwingAngle;
     this.rosaryVel += rosaryDiff * 25 * dt;
     this.rosaryVel *= Math.pow(0.2, dt);
