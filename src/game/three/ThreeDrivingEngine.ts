@@ -42,6 +42,7 @@ export interface SceneUpdateParams {
 }
 
 export class ThreeDrivingEngine {
+  private static modelCache: Map<string, THREE.Group> = new Map();
   private currentBusId: string = 'RUSTIC_VAN';
   private container: HTMLElement;
   private scene: THREE.Scene;
@@ -162,9 +163,8 @@ export class ThreeDrivingEngine {
     // 3. WebGL Renderer
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
     this.renderer.setSize(width, height);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
+    this.renderer.shadowMap.enabled = false;
     container.appendChild(this.renderer.domElement);
 
     // 4. Lighting
@@ -238,7 +238,7 @@ export class ThreeDrivingEngine {
 
     const sunLight = new THREE.DirectionalLight(0xf59e0b, 1.9);
     sunLight.position.set(35, 45, 25);
-    sunLight.castShadow = true;
+    sunLight.castShadow = false;
     sunLight.shadow.mapSize.width = 1024;
     sunLight.shadow.mapSize.height = 1024;
     sunLight.shadow.camera.near = 0.5;
@@ -834,44 +834,50 @@ export class ThreeDrivingEngine {
       const passengerColors = [0x1e3a8a, 0xdc2626, 0x16a34a, 0x9333ea, 0xd97706, 0x0284c7];
 
             const characterGlbs = [
-        { path: '/models/free_download_athletic_african_man_walking_223.glb' },
-        { path: '/models/free_download_attractive_african_woman_236.glb' },
-        { path: '/models/african_female_model.glb' }
+        '/models/free_download_athletic_african_man_walking_223.glb',
+        '/models/free_download_attractive_african_woman_236.glb',
+        '/models/african_female_model.glb'
       ];
       const charLoader = new GLTFLoader();
 
-      for (let p = 0; p < Math.min(6, junc.waitingPassengersCount); p++) {
+      // Spawn 2-3 commuters per stop for great performance
+      const commuterCount = Math.min(3, junc.waitingPassengersCount);
+
+      for (let p = 0; p < commuterCount; p++) {
         const pGroup = new THREE.Group();
         (pGroup as any)._isNpc = true;
 
-        const pX = 9.2 + Math.random() * 2.2;
-        const pZ = -3.5 + p * 1.4;
+        const pX = 9.2 + (p % 2) * 1.5;
+        const pZ = -2.5 + p * 2.2;
         pGroup.position.set(pX, 0, pZ);
         pGroup.rotation.y = -Math.PI / 2;
 
-        const charCfg = characterGlbs[p % characterGlbs.length];
-        charLoader.load(charCfg.path, (gltf) => {
-          const charScene = gltf.scene;
-          
-          // NORMALIZE CHARACTER HEIGHT TO 1.75 METERS!
-          // Some models were authored in centimeters (228 units tall = 228m tall giants!).
-          // Calculate bounding box and scale to realistic human height:
-          const bbox = new THREE.Box3().setFromObject(charScene);
-          const size = bbox.getSize(new THREE.Vector3());
-          const maxDim = Math.max(size.x, size.y, size.z);
-          if (maxDim > 0) {
-            const targetHeight = 1.75; // realistic 1.75m human height
-            const rawHeight = size.y > 0.5 ? size.y : maxDim;
-            const normScale = targetHeight / rawHeight;
-            charScene.scale.setScalar(normScale);
+        const charPath = characterGlbs[p % characterGlbs.length];
 
-            // Re-calculate box to plant feet firmly on the ground at Y=0
-            const finalBox = new THREE.Box3().setFromObject(charScene);
-            charScene.position.y = -finalBox.min.y;
-          }
+        const applyCharModel = (prototype: THREE.Group) => {
+          const clone = prototype.clone(true);
+          pGroup.add(clone);
+        };
 
-          pGroup.add(charScene);
-        }, undefined, (err) => console.warn('Passenger char load err:', err));
+        if (ThreeDrivingEngine.modelCache.has(charPath)) {
+          applyCharModel(ThreeDrivingEngine.modelCache.get(charPath)!);
+        } else {
+          charLoader.load(charPath, (gltf) => {
+            const charScene = gltf.scene;
+            const bbox = new THREE.Box3().setFromObject(charScene);
+            const size = bbox.getSize(new THREE.Vector3());
+            const maxDim = Math.max(size.x, size.y, size.z);
+            if (maxDim > 0) {
+              const targetHeight = 1.75;
+              const rawHeight = size.y > 0.5 ? size.y : maxDim;
+              charScene.scale.setScalar(targetHeight / rawHeight);
+              const finalBox = new THREE.Box3().setFromObject(charScene);
+              charScene.position.y = -finalBox.min.y;
+            }
+            ThreeDrivingEngine.modelCache.set(charPath, charScene);
+            applyCharModel(charScene);
+          }, undefined, (err) => console.warn('Char cache load error:', err));
+        }
 
         group.add(pGroup);
         passengers.push(pGroup);
@@ -886,18 +892,18 @@ export class ThreeDrivingEngine {
     const npcGlbPaths = [
       { path: '/models/1991_honda_civic_eg6.glb', scale: 1.2, rotY: Math.PI },
       { path: '/models/2005_toyota_townace_gl.glb', scale: 1.5, rotY: Math.PI },
-      // Keke tricycle is modeled oriented along the X-axis, so rotY = -Math.PI / 2 points it straight forward along the road (+Z)
       { path: '/models/3d_model__passenger_tricycle_keke_napep.glb', scale: 1.0, rotY: -Math.PI / 2 },
       { path: '/models/honda_today_g-type_police.glb', scale: 1.3, rotY: Math.PI },
       { path: '/models/kia_km420.glb', scale: 1.4, rotY: Math.PI },
-      { path: '/models/2000_honda_civic_type_r_ek9.glb', scale: 1.2, rotY: Math.PI },
       { path: '/models/2010_kia_forte_koup.glb', scale: 1.3, rotY: Math.PI },
-      { path: '/models/ac_-_honda_acty_ha3_free.glb', scale: 1.0, rotY: Math.PI },
     ];
     const loader = new GLTFLoader();
     const lanes = [-5.5, 0, 5.5];
 
-    for (let i = 0; i < 15; i++) {
+    // 6 optimized traffic cars (2 per lane) for locked 60 FPS
+    const trafficCount = 6;
+
+    for (let i = 0; i < trafficCount; i++) {
       const traffic = new THREE.Group();
       const cfg = npcGlbPaths[i % npcGlbPaths.length];
       const initialLane = lanes[i % lanes.length];
@@ -905,43 +911,53 @@ export class ThreeDrivingEngine {
       traffic.userData = {
         targetLaneX: initialLane,
         baseRotY: cfg.rotY || 0,
-        currentSpeed: 7.5 + (i % 4) * 1.0, // 27-38 km/h cruising speed
+        currentSpeed: 7.5 + (i % 3) * 1.2,
         laneChangeCooldown: Math.random() * 3 + 1,
         hasGlb: false
       };
 
-      traffic.position.set(initialLane, 0, 60 + i * 35);
+      traffic.position.set(initialLane, 0, 50 + i * 38);
       this.scene.add(traffic);
       this.trafficMeshes.push(traffic);
 
-      loader.load(cfg.path, (gltf) => {
-        const m = gltf.scene;
-        m.scale.setScalar(cfg.scale);
-        m.position.set(0, 0, 0);
-        if (cfg.rotY) {
-          m.rotation.y = cfg.rotY;
-        }
-
-        // Clean out ground shadow circles / cylinders / pedestals under keke, police car, etc.
-        m.traverse((child: any) => {
-          if (child.isMesh && child.name) {
-            const n = child.name.toLowerCase();
-            if (
-              n.includes('circle') ||
-              n.includes('pcylinder') ||
-              n.includes('cylinder_24') ||
-              n.includes('shadow') ||
-              n.includes('pedestal') ||
-              n.includes('turntable')
-            ) {
-              child.visible = false;
-            }
-          }
-        });
-
-        traffic.add(m);
+      const applyModel = (prototype: THREE.Group) => {
+        const clone = prototype.clone(true);
+        traffic.add(clone);
         traffic.userData.hasGlb = true;
-      }, undefined, (err) => console.warn('Traffic GLB fail:', err));
+      };
+
+      if (ThreeDrivingEngine.modelCache.has(cfg.path)) {
+        applyModel(ThreeDrivingEngine.modelCache.get(cfg.path)!);
+      } else {
+        loader.load(cfg.path, (gltf) => {
+          const m = gltf.scene;
+          m.scale.setScalar(cfg.scale);
+          m.position.set(0, 0, 0);
+          if (cfg.rotY) {
+            m.rotation.y = cfg.rotY;
+          }
+
+          // Clean out ground shadow circles / cylinders / pedestals
+          m.traverse((child: any) => {
+            if (child.isMesh && child.name) {
+              const n = child.name.toLowerCase();
+              if (
+                n.includes('circle') ||
+                n.includes('pcylinder') ||
+                n.includes('cylinder_24') ||
+                n.includes('shadow') ||
+                n.includes('pedestal') ||
+                n.includes('turntable')
+              ) {
+                child.visible = false;
+              }
+            }
+          });
+
+          ThreeDrivingEngine.modelCache.set(cfg.path, m);
+          applyModel(m);
+        }, undefined, (err) => console.warn('Traffic GLB cache error:', err));
+      }
     }
   }
 
@@ -1165,12 +1181,14 @@ export class ThreeDrivingEngine {
       this.camera.fov = 68;
       this.camera.updateProjectionMatrix();
     } else if (params.cameraMode === 'TOP_DOWN' || (params.cameraMode as any) === 'BIRD') {
-      // BIRD'S EYE VIEW: High above looking down at the Danfo bus driving along expressway!
-      const camPos = new THREE.Vector3(laneOffsetMeters, 16.5, -1.0);
-      this.camera.position.lerp(camPos, 0.15);
-      const lookTarget = new THREE.Vector3(laneOffsetMeters, 0.5, 14.0);
+      // SATELLITE BIRD'S EYE VIEW: High above directly centered over the Danfo bus!
+      // Captures the full bus, roof details, road lanes, and surrounding traffic like a satellite feed.
+      const targetX = laneOffsetMeters;
+      const camPos = new THREE.Vector3(targetX, 23.5, -1.8);
+      this.camera.position.lerp(camPos, 0.2);
+      const lookTarget = new THREE.Vector3(targetX, 0.8, 1.0);
       this.camera.lookAt(lookTarget);
-      this.camera.fov = 55;
+      this.camera.fov = 48;
       this.camera.updateProjectionMatrix();
     } else if (params.cameraMode === 'THIRD_PERSON') {
       // CHASE CAM: Classic 3rd person follow camera behind Danfo bus
@@ -1274,105 +1292,81 @@ export class ThreeDrivingEngine {
       bMesh.group.position.z = relZ;
     });
 
-    // 15. Traffic Flow (Adapts dynamically to Drive and Reverse)
-    // 15. INTELLIGENT TRAFFIC AI: Collision Avoidance & Overtaking ("Go Around")
-    const availableLanes = [-5.5, 0, 5.5];
+    // 15. HIGH-PERFORMANCE TRAFFIC AI: Zero Garbage-Collection, Smooth 60 FPS
+    const lanes = [-5.5, 0, 5.5];
 
-    this.trafficMeshes.forEach((t, i) => {
-      if (!t.userData) return;
+    for (let i = 0; i < this.trafficMeshes.length; i++) {
+      const t = this.trafficMeshes[i];
       const u = t.userData;
-      u.laneChangeCooldown = Math.max(0, (u.laneChangeCooldown || 0) - dt);
+      if (!u) continue;
 
-      // Target cruising speed
+      u.laneChangeCooldown = Math.max(0, (u.laneChangeCooldown || 0) - dt);
       let desiredSpeed = 8.5;
 
-      // ─── A. AVOID PLAYER VEHICLE (GO AROUND PLAYER) ───
-      // Player is at (laneOffsetMeters, 0)
-      const distToPlayerZ = t.position.z; // Relative Z to player
-      const inPlayerLane = Math.abs(t.position.x - laneOffsetMeters) < 2.3;
+      // Distance to Player (Player at laneOffsetMeters, Z=0)
+      const distToPlayerZ = t.position.z;
+      const inPlayerLane = Math.abs(t.position.x - laneOffsetMeters) < 2.2;
 
-      if (inPlayerLane && Math.abs(distToPlayerZ) < 30) {
-        // Player is blocking this lane! Go around the player!
+      // 1. Avoid Player Vehicle (Overtake / Go Around)
+      if (inPlayerLane && Math.abs(distToPlayerZ) < 28) {
         if (u.laneChangeCooldown <= 0) {
-          // Find open lane adjacent to current lane
-          const alternativeLanes = availableLanes.filter(l => Math.abs(l - laneOffsetMeters) > 2.0);
-          if (alternativeLanes.length > 0) {
-            // Pick the lane with fewest nearby cars
-            const bestLane = alternativeLanes.reduce((best, candidate) => {
-              const bestCrowd = this.trafficMeshes.filter(o => o !== t && Math.abs(o.position.x - best) < 1.5 && Math.abs(o.position.z - t.position.z) < 20).length;
-              const candCrowd = this.trafficMeshes.filter(o => o !== t && Math.abs(o.position.x - candidate) < 1.5 && Math.abs(o.position.z - t.position.z) < 20).length;
-              return candCrowd < bestCrowd ? candidate : best;
-            }, alternativeLanes[0]);
-
-            u.targetLaneX = bestLane;
-            u.laneChangeCooldown = 2.5;
-          }
+          // Pick adjacent lane with open space
+          const currentLaneIdx = lanes.indexOf(u.targetLaneX);
+          const nextLane = u.targetLaneX === 0 
+            ? (laneOffsetMeters > 0 ? -5.5 : 5.5)
+            : 0;
+          u.targetLaneX = nextLane;
+          u.laneChangeCooldown = 3.0;
         }
 
-        // If very close to player in same lane, brake to avoid passing through
         if (distToPlayerZ > 0 && distToPlayerZ < 10) {
           desiredSpeed = Math.min(desiredSpeed, Math.max(0, speedMps * 0.8));
         } else if (distToPlayerZ < 0 && distToPlayerZ > -8 && speedMps < 2) {
-          // Stopped in front of traffic
           desiredSpeed = 0;
         }
       }
 
-      // ─── B. AVOID OTHER TRAFFIC VEHICLES (NO PASSING THROUGH EACH OTHER) ───
-      this.trafficMeshes.forEach((other, j) => {
-        if (i === j) return;
-        const dz = other.position.z - t.position.z; // other ahead if dz > 0
-        const sameLane = Math.abs(t.position.x - other.position.x) < 2.0;
-
-        // Vehicle ahead in same lane within 18m
-        if (sameLane && dz > 0 && dz < 18) {
-          // Slow down to match car ahead
+      // 2. Avoid Traffic Ahead in Same Lane (O(N) check)
+      for (let j = 0; j < this.trafficMeshes.length; j++) {
+        if (i === j) continue;
+        const other = this.trafficMeshes[j];
+        const dz = other.position.z - t.position.z;
+        if (dz > 0 && dz < 16 && Math.abs(t.position.x - other.position.x) < 2.0) {
           desiredSpeed = Math.min(desiredSpeed, (other.userData?.currentSpeed || 8.0) * 0.9);
-
-          // Try to overtake / switch lanes to go around car ahead!
           if (u.laneChangeCooldown <= 0) {
-            const openLanes = availableLanes.filter(l => Math.abs(l - t.position.x) > 2.0);
-            const clearLane = openLanes.find(laneX => {
-              // Lane is clear if no other car is within 25m
-              return !this.trafficMeshes.some(o => Math.abs(o.position.x - laneX) < 1.8 && Math.abs(o.position.z - t.position.z) < 25);
-            });
-            if (clearLane !== undefined) {
-              u.targetLaneX = clearLane;
-              u.laneChangeCooldown = 3.0;
-            }
+            u.targetLaneX = u.targetLaneX === 0 ? 5.5 : 0;
+            u.laneChangeCooldown = 3.5;
           }
+          break;
         }
-      });
+      }
 
-      // Smooth acceleration / braking
+      // Smooth Speed Lerp
       u.currentSpeed = THREE.MathUtils.lerp(u.currentSpeed || 8.0, desiredSpeed, dt * 2.5);
 
-      // Smooth lane changing (move X towards targetLaneX)
+      // Smooth Lane Steer
       const laneDiff = (u.targetLaneX !== undefined ? u.targetLaneX : t.position.x) - t.position.x;
       t.position.x += laneDiff * Math.min(1.0, dt * 2.8);
+      t.rotation.y = (u.baseRotY || 0) + Math.max(-0.2, Math.min(0.2, laneDiff * 0.15));
 
-      // Subtle steering tilt while changing lanes
-      const baseRot = u.baseRotY || 0;
-      t.rotation.y = baseRot + Math.max(-0.2, Math.min(0.2, laneDiff * 0.15));
-
-      // Advance along road relative to player speed
+      // Advance Z relative to player
       t.position.z -= (effectiveSpeed - u.currentSpeed) * dt;
 
-      // Respawn ahead or behind when out of view
+      // Recycle Ahead / Behind
       if (t.position.z < -45) {
-        t.position.z = 180 + Math.random() * 60;
-        const newLane = availableLanes[Math.floor(Math.random() * availableLanes.length)];
+        t.position.z = 160 + (i % 3) * 35;
+        const newLane = lanes[i % lanes.length];
         t.position.x = newLane;
         u.targetLaneX = newLane;
-        u.currentSpeed = 7.5 + Math.random() * 3.5;
-        u.laneChangeCooldown = 1.5;
-      } else if (t.position.z > 250) {
-        t.position.z = -35 - Math.random() * 20;
-        const newLane = availableLanes[Math.floor(Math.random() * availableLanes.length)];
+        u.currentSpeed = 7.5 + (i % 3) * 1.2;
+        u.laneChangeCooldown = 2.0;
+      } else if (t.position.z > 230) {
+        t.position.z = -35;
+        const newLane = lanes[i % lanes.length];
         t.position.x = newLane;
         u.targetLaneX = newLane;
       }
-    });
+    }
 
     // 16. Exhaust Particles
     if (isEngineRunning && speedKmH > 4) {

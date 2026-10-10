@@ -63,10 +63,10 @@ export default function App() {
   const streetCred = saveData.streetCred;
   const selectedBusId = saveData.selectedBusId;
   const selectedSlogan = saveData.selectedSlogan;
-  const setWalletNaira = (val) => updateSave({ walletNaira: typeof val === 'function' ? val(walletNaira) : val });
-  const setStreetCred = (val) => updateSave({ streetCred: typeof val === 'function' ? val(streetCred) : val });
-  const setSelectedBusId = (val) => updateSave({ selectedBusId: val });
-  const setSelectedSlogan = (val) => updateSave({ selectedSlogan: val });
+  const setWalletNaira = (val: number | ((prev: number) => number)) => updateSave({ walletNaira: typeof val === 'function' ? val(walletNaira) : val });
+  const setStreetCred = (val: number | ((prev: number) => number)) => updateSave({ streetCred: typeof val === 'function' ? val(streetCred) : val });
+  const setSelectedBusId = (val: BusModelId) => updateSave({ selectedBusId: val });
+  const setSelectedSlogan = (val: string) => updateSave({ selectedSlogan: val });
   const [selectedShiftId, setSelectedShiftId] = useState<ShiftTimeOfDay>('MORNING_RUSH');
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [menuTab, setMenuTab] = useState<'CAREER_SHIFT' | 'GARAGE_WORKSHOP' | 'HOUSING'>('CAREER_SHIFT');
@@ -255,7 +255,7 @@ export default function App() {
       };
     });
 
-    setWalletNaira((w) => w + 8000);
+    setWalletNaira((w: number) => w + 8000);
   }, []);
 
   // Purchase Upgrade
@@ -264,7 +264,7 @@ export default function App() {
       addFeedMessage(`⚠️ Insufficient funds! Need ₦${cost.toLocaleString()} for this upgrade.`);
       return;
     }
-    setWalletNaira((w) => w - cost);
+    setWalletNaira((w: number) => w - cost);
     soundEngine.playUpgradeChime();
 
     setGameState((prev) => ({
@@ -303,7 +303,7 @@ export default function App() {
       return;
     }
 
-    setWalletNaira((w) => w - profile.dailyFee);
+    setWalletNaira((w: number) => w - profile.dailyFee);
     soundEngine.playDoorSlap();
 
     setGameState((prev) => ({
