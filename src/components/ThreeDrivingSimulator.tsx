@@ -915,15 +915,30 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
               </div>
             </>
           ) : (
-            <div className="w-28 h-28 rounded-full bg-stone-900/70 backdrop-blur border-2 border-amber-500/60 flex flex-col items-center justify-between p-2 shadow-xl">
-              <button className="w-8 h-8 bg-stone-800 rounded-full flex items-center justify-center text-white text-lg active:bg-amber-400"
-                onPointerDown={() => { inputsRef.current.gas = true; }} onPointerUp={() => { inputsRef.current.gas = false; }}>▲</button>
-              <div className="flex w-full justify-between px-1">
-                <button className="w-8 h-8 bg-stone-800 rounded-full flex items-center justify-center text-white text-lg active:bg-amber-400">◀</button>
-                <button className="w-8 h-8 bg-stone-800 rounded-full flex items-center justify-center text-white text-lg active:bg-amber-400">▶</button>
+            <div className="flex flex-col items-center">
+              <div
+                onPointerDown={handleWalkJoyPointerDown}
+                onPointerMove={handleWalkJoyPointerMove}
+                onPointerUp={handleWalkJoyPointerUp}
+                onPointerCancel={handleWalkJoyPointerUp}
+                className="relative w-28 h-28 rounded-full bg-stone-950/90 backdrop-blur-md border-2 border-amber-400/80 shadow-2xl touch-none select-none flex items-center justify-center cursor-grab active:cursor-grabbing"
+              >
+                <div className="absolute top-1 text-[8px] font-black text-amber-400/80 font-mono">▲ W</div>
+                <div className="absolute bottom-1 text-[8px] font-black text-amber-400/80 font-mono">▼ S</div>
+                <div className="absolute left-1.5 text-[8px] font-black text-amber-400/80 font-mono">◀ A</div>
+                <div className="absolute right-1.5 text-[8px] font-black text-amber-400/80 font-mono">D ▶</div>
+                <div
+                  className="w-12 h-12 rounded-full bg-gradient-to-b from-amber-300 to-amber-500 text-stone-950 font-black text-[9px] shadow-xl border-2 border-amber-200 flex items-center justify-center pointer-events-none transition-transform duration-75"
+                  style={{
+                    transform: `translate(${walkJoyVisual.x}px, ${walkJoyVisual.y}px)`,
+                  }}
+                >
+                  WALK
+                </div>
               </div>
-              <button className="w-8 h-8 bg-stone-800 rounded-full flex items-center justify-center text-white text-lg active:bg-amber-400"
-                onPointerDown={() => { inputsRef.current.brake = true; }} onPointerUp={() => { inputsRef.current.brake = false; }}>▼</button>
+              <div className="mt-1 text-[8px] font-mono font-bold text-amber-400 bg-stone-950/90 px-2 py-0.5 rounded-full border border-amber-500/40">
+                DRAG TO WALK
+              </div>
             </div>
           )}
         </div>

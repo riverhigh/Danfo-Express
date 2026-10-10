@@ -1073,6 +1073,7 @@ export class ThreeDrivingEngine {
 
     // 2. Bus Root Position & Steering Tilt
     this.busRoot.position.x = laneOffsetMeters;
+    this.busRoot.position.y = 0; // BASE HEIGHT: Reset every frame so bounce never accumulates!
     const steerFactor = -(steeringWheelAngleDeg / 120);
     this.busRoot.rotation.y = steerFactor * 0.08;
     this.busRoot.rotation.z = -steerFactor * 0.04;
@@ -1135,7 +1136,7 @@ export class ThreeDrivingEngine {
       const pitchWobble = Math.sin(this.bumpTimer * 1.2) * this.bumpImpulse * 0.07 * decay;
       const rollWobble = Math.cos(this.bumpTimer * 0.9) * this.bumpImpulse * 0.035 * decay;
 
-      this.busRoot.position.y += bounceY;
+      this.busRoot.position.y = bounceY;
       this.busRoot.rotation.x += pitchWobble;
       this.busRoot.rotation.z += rollWobble;
 
@@ -1303,6 +1304,7 @@ export class ThreeDrivingEngine {
       this.camera.fov = 65;
       this.camera.updateProjectionMatrix();
     } else {
+      this.wasSteppedDown = false;
       // FIRST PERSON / DR. DRIVING COCKPIT VIEW:
       // Camera is positioned on the hood/windshield looking directly forward at the road (+Z)
       // Clean, open road view with NO dark opaque interior roof/pillars blocking the view!
