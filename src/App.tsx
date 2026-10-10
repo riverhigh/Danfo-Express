@@ -207,7 +207,7 @@ export default function App() {
       shiftClockDisplay: shift.startTime,
       bus: bus,
       distanceTraveledMeters: 0,
-      targetDistanceMeters: 3000,
+      targetDistanceMeters: 15000,
       junctions: junctions,
       activeJunctionIndex: 0,
       activeCabinEvent: null,

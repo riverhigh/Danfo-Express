@@ -75,6 +75,16 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
   // Gas Station & Roadside Shop Drive-In States
   const [activeGasStation, setActiveGasStation] = useState<GasStationBay | null>(null);
   const [activeShop, setActiveShop] = useState<RoadsideShop | null>(null);
+  const [walkJoyVisual, setWalkJoyVisual] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const walkJoyRef = useRef<{ x: number; y: number; isDragging: boolean; startX: number; startY: number }>({
+    x: 0,
+    y: 0,
+    isDragging: false,
+    startX: 0,
+    startY: 0,
+  });
+  const activeGasStationRef = useRef<GasStationBay | null>(null);
+  const activeShopRef = useRef<RoadsideShop | null>(null);
 
   // HUD Telemetry
   const [hudSpeed, setHudSpeed] = useState<number>(0);
@@ -122,7 +132,9 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
   useEffect(() => {
     simRef.current.busUpgrades = gameState.bus.upgrades;
     simRef.current.busSlogan = gameState.bus.slogan;
-    simRef.current.targetDistance = gameState.targetDistanceMeters;
+    simRef.current.targetDistance = gameState.targetDistanceMeters || 15000;
+    simRef.current.distanceTraveled = gameState.distanceTraveledMeters || 0;
+    simRef.current.finished = false;
   }, [gameState.bus.upgrades, gameState.bus.slogan, gameState.targetDistanceMeters]);
 
   useEffect(() => {
@@ -200,6 +212,37 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       inputsRef.current.brake = false;
       addFeedMessage('🚌 BACK IN DRIVER SEAT: Engine running, in D gear, ready to accelerate!');
     }
+  };
+
+  // Walk Mode Virtual Analog Joystick Handlers
+  const handleWalkJoyPointerDown = (e: React.PointerEvent) => {
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    walkJoyRef.current.isDragging = true;
+    walkJoyRef.current.startX = e.clientX;
+    walkJoyRef.current.startY = e.clientY;
+  };
+
+  const handleWalkJoyPointerMove = (e: React.PointerEvent) => {
+    if (!walkJoyRef.current.isDragging) return;
+    const dx = e.clientX - walkJoyRef.current.startX;
+    const dy = e.clientY - walkJoyRef.current.startY;
+    const maxRadius = 36;
+    const dist = Math.hypot(dx, dy);
+    const clampedDist = Math.min(maxRadius, dist);
+    const angle = Math.atan2(dy, dx);
+    const clampedX = Math.cos(angle) * clampedDist;
+    const clampedY = Math.sin(angle) * clampedDist;
+
+    walkJoyRef.current.x = clampedX / maxRadius;
+    walkJoyRef.current.y = clampedY / maxRadius;
+    setWalkJoyVisual({ x: clampedX, y: clampedY });
+  };
+
+  const handleWalkJoyPointerUp = () => {
+    walkJoyRef.current.isDragging = false;
+    walkJoyRef.current.x = 0;
+    walkJoyRef.current.y = 0;
+    setWalkJoyVisual({ x: 0, y: 0 });
   };
 
   // Rear Boot (Luggage Trunk) Door Toggle
@@ -527,7 +570,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       const gasBays = gameState.gasStations || [];
       const nearGas = gasBays.find((g) => Math.abs(g.distanceMarkerMeters - sim.distanceTraveled) < 18 && sim.laneOffset > 2.8);
       if (nearGas && sim.speed < 5) {
-        if (!activeGasStation) setActiveGasStation(nearGas);
+        if (!activeGasStationRef.current) { activeGasStationRef.current = nearGas; setActiveGasStation(nearGas); }
       } else if (activeGasStation) {
         setActiveGasStation(null);
       }
@@ -536,7 +579,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       const shops = gameState.roadsideShops || [];
       const nearShop = shops.find((s) => Math.abs(s.distanceMarkerMeters - sim.distanceTraveled) < 18 && sim.laneOffset > 2.5);
       if (nearShop && sim.speed < 6) {
-        if (!activeShop) setActiveShop(nearShop);
+        if (!activeShopRef.current) { activeShopRef.current = nearShop; setActiveShop(nearShop); }
       } else if (activeShop) {
         setActiveShop(null);
       }
@@ -614,7 +657,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       }
 
       // Terminal reached
-      if (sim.distanceTraveled >= sim.targetDistance && !sim.finished) {
+      if (sim.targetDistance && sim.targetDistance > 100 && sim.distanceTraveled >= sim.targetDistance && !sim.finished) {
         sim.finished = true;
         setTimeout(() => {
           onFinishShift(true);
@@ -649,6 +692,8 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
             junctions: gameState.junctions,
             activeJunctionIndex: sim.activeJunctionIndex,
             isBoardingPassengers: sim.isBoarding,
+            walkMoveX: walkJoyRef.current.x,
+            walkMoveZ: walkJoyRef.current.y,
           },
           dt
         );
@@ -673,7 +718,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
 
     animId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(animId);
-  }, [gameState.junctions, gameState.activeJunctionIndex, gameState.conductor.hasConductor, gameState.gasStations, onFinishShift, setGameState, addFeedMessage, activeGasStation]);
+  }, [gameState.junctions, gameState.activeJunctionIndex, gameState.conductor.hasConductor, gameState.gasStations, onFinishShift, setGameState, addFeedMessage]);
 
   const currentJunction = gameState.junctions[activeJuncIndex];
   const distToJunc = currentJunction ? Math.round(currentJunction.distanceMarkerMeters - currentDist) : 0;

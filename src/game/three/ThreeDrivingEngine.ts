@@ -39,11 +39,15 @@ export interface SceneUpdateParams {
   isBoardingPassengers: boolean;
   gasStations?: GasStationBay[];
   roadsideShops?: RoadsideShop[];
+  walkMoveX?: number;
+  walkMoveZ?: number;
 }
 
 export class ThreeDrivingEngine {
   private static modelCache: Map<string, THREE.Group> = new Map();
   private currentBusId: string = 'RUSTIC_VAN';
+  private driverWalkPos: THREE.Vector3 = new THREE.Vector3(2.5, 0, 0.5);
+  private wasSteppedDown: boolean = false;
   private container: HTMLElement;
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
@@ -231,6 +235,56 @@ export class ThreeDrivingEngine {
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height);
   };
+
+  private normalizeVehicleModel(model: THREE.Group, path: string) {
+    // 1. Clean out ground shadow circles / cylinders / pedestals / turntables
+    model.traverse((child: any) => {
+      if (child.isMesh && child.name) {
+        const n = child.name.toLowerCase();
+        if (
+          n.includes('circle') ||
+          n.includes('pcylinder') ||
+          n.includes('cylinder_24') ||
+          n.includes('shadow') ||
+          n.includes('pedestal') ||
+          n.includes('turntable')
+        ) {
+          child.visible = false;
+        }
+      }
+    });
+
+    // 2. Measure raw dimensions
+    let box = new THREE.Box3().setFromObject(model);
+    let size = new THREE.Vector3();
+    box.getSize(size);
+
+    const isKeke = path.toLowerCase().includes('keke') || path.toLowerCase().includes('tricycle');
+    const isBus = path.toLowerCase().includes('danfo') || path.toLowerCase().includes('townace');
+
+    // 3. Auto-orient length along Z axis (road direction):
+    // If authored sideways (length along X > Z), rotate -90 deg so length is along Z
+    if (size.x > size.z) {
+      model.rotation.y = -Math.PI / 2;
+      box.setFromObject(model);
+      box.getSize(size);
+    } else {
+      model.rotation.y = Math.PI;
+      box.setFromObject(model);
+      box.getSize(size);
+    }
+
+    // 4. Target real-world physical length in meters:
+    // Keke = 2.8m, Danfo/Townace = 5.2m, Sedans/Cars/Jeeps = 4.5m
+    const targetLength = isKeke ? 2.8 : (isBus ? 5.2 : 4.5);
+    const currentLength = Math.max(0.1, size.z);
+    const scale = targetLength / currentLength;
+    model.scale.setScalar(scale);
+
+    // 5. Ground alignment: place bottom of tyres exactly at Y = 0 (no sunken wheels, no half tyres!)
+    const finalBox = new THREE.Box3().setFromObject(model);
+    model.position.y = -finalBox.min.y;
+  }
 
   private setupLighting() {
     const ambientLight = new THREE.AmbientLight(0xfef3c7, 0.9);
@@ -710,31 +764,11 @@ export class ThreeDrivingEngine {
       glbCfg.path,
       (gltf) => {
         const model = gltf.scene;
-        model.scale.setScalar(glbCfg.scale);
-        model.position.set(0, glbCfg.y, 0);
-        if (glbCfg.rotY) {
-          model.rotation.y = glbCfg.rotY;
-        }
+        this.normalizeVehicleModel(model, glbCfg.path);
         fallbackGroup.visible = false;
-        // Clean out ground shadow circles / cylinders under keke, police car, etc.
-        model.traverse((child: any) => {
-          if (child.isMesh && child.name) {
-            const n = child.name.toLowerCase();
-            if (
-              n.includes('circle') ||
-              n.includes('pcylinder') ||
-              n.includes('cylinder_24') ||
-              n.includes('shadow') ||
-              n.includes('pedestal') ||
-              n.includes('turntable')
-            ) {
-              child.visible = false;
-            }
-          }
-        });
         busBody.add(model);
         (this as any)._playerModel = model;
-        console.log('Player GLB loaded successfully:', glbCfg.path);
+        console.log('Player GLB loaded & auto-aligned successfully:', glbCfg.path);
       },
       undefined,
       (error) => {
@@ -931,29 +965,7 @@ export class ThreeDrivingEngine {
       } else {
         loader.load(cfg.path, (gltf) => {
           const m = gltf.scene;
-          m.scale.setScalar(cfg.scale);
-          m.position.set(0, 0, 0);
-          if (cfg.rotY) {
-            m.rotation.y = cfg.rotY;
-          }
-
-          // Clean out ground shadow circles / cylinders / pedestals
-          m.traverse((child: any) => {
-            if (child.isMesh && child.name) {
-              const n = child.name.toLowerCase();
-              if (
-                n.includes('circle') ||
-                n.includes('pcylinder') ||
-                n.includes('cylinder_24') ||
-                n.includes('shadow') ||
-                n.includes('pedestal') ||
-                n.includes('turntable')
-              ) {
-                child.visible = false;
-              }
-            }
-          });
-
+          this.normalizeVehicleModel(m, cfg.path);
           ThreeDrivingEngine.modelCache.set(cfg.path, m);
           applyModel(m);
         }, undefined, (err) => console.warn('Traffic GLB cache error:', err));
@@ -1170,17 +1182,44 @@ export class ThreeDrivingEngine {
     // (FIXES THE BACKWARD R AND D PERCEPTION!)
     // ========================================================
     if (isSteppedDown) {
-      // Driver stepped out on roadside sidewalk:
-      // Position camera on the sidewalk next to the passenger door
-      this.camera.position.set(laneOffsetMeters + 2.5, 1.6, 0.5);
+      if (!this.wasSteppedDown) {
+        this.driverWalkPos.set(laneOffsetMeters + 2.5, 0, 0.5);
+      }
+      this.wasSteppedDown = true;
+
+      const yaw = -Math.PI / 2 + (params.cameraLookYaw || 0);
+      const pitch = params.cameraLookPitch || 0;
+
+      // Analog joystick input (-1 to 1)
+      const joyX = params.walkMoveX || 0;
+      const joyZ = params.walkMoveZ || 0;
+
+      if (Math.abs(joyX) > 0.04 || Math.abs(joyZ) > 0.04) {
+        const walkSpeed = 4.0;
+        const fwdX = -Math.sin(yaw);
+        const fwdZ = -Math.cos(yaw);
+        const rightX = Math.cos(yaw);
+        const rightZ = -Math.sin(yaw);
+
+        const moveX = (fwdX * (-joyZ) + rightX * joyX) * walkSpeed * dt;
+        const moveZ = (fwdZ * (-joyZ) + rightZ * joyX) * walkSpeed * dt;
+
+        this.driverWalkPos.x += moveX;
+        this.driverWalkPos.z += moveZ;
+        this.driverWalkPos.x = Math.max(-15, Math.min(15, this.driverWalkPos.x));
+      }
+
+      const isWalking = Math.abs(joyX) > 0.08 || Math.abs(joyZ) > 0.08;
+      const headBob = isWalking ? Math.sin(Date.now() * 0.012) * 0.04 : 0;
+
+      this.camera.position.set(this.driverWalkPos.x, 1.65 + headBob, this.driverWalkPos.z);
       this.camera.rotation.order = 'YXZ';
-      // Look towards vehicle and allow full 360-degree free look around
-      this.camera.rotation.y = -Math.PI / 2 + (params.cameraLookYaw || 0);
-      this.camera.rotation.x = (params.cameraLookPitch || 0);
+      this.camera.rotation.y = yaw;
+      this.camera.rotation.x = pitch;
       this.camera.rotation.z = 0;
       this.camera.fov = 68;
-      this.camera.updateProjectionMatrix();
     } else if (params.cameraMode === 'TOP_DOWN' || (params.cameraMode as any) === 'BIRD') {
+      this.wasSteppedDown = false;
       // SATELLITE BIRD'S EYE VIEW: High above directly centered over the Danfo bus!
       // Captures the full bus, roof details, road lanes, and surrounding traffic like a satellite feed.
       const targetX = laneOffsetMeters;
