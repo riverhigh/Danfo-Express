@@ -1230,8 +1230,7 @@ export class ThreeDrivingEngine {
     this.underglowLight.intensity = upgrades.customUnderglow ? 3.5 : 0;
 
     // ========================================================
-    // 11. CAMERA: LOOK FORWARD OUT FRONT WINDSHIELD TOWARDS +Z
-    // (FIXES THE BACKWARD R AND D PERCEPTION!)
+    // 11. STRICT CAMERA MODES & VIEW LOGIC
     // ========================================================
     if (isSteppedDown) {
       if (!this.wasSteppedDown) {
@@ -1239,8 +1238,10 @@ export class ThreeDrivingEngine {
       }
       this.wasSteppedDown = true;
 
-      const yaw = -Math.PI / 2 + (params.cameraLookYaw || 0);
-      const pitch = params.cameraLookPitch || 0;
+      // Base yaw facing the vehicle (+Math.PI / 2) + camera look yaw
+      // Dragging LEFT adds to cameraLookYaw, rotating counter-clockwise (LEFT)
+      const yaw = Math.PI / 2 + (params.cameraLookYaw || 0);
+      const pitch = Math.max(-0.65, Math.min(0.65, params.cameraLookPitch || 0));
 
       // Analog joystick input (-1 to 1)
       const joyX = params.walkMoveX || 0;
@@ -1270,10 +1271,10 @@ export class ThreeDrivingEngine {
       this.camera.rotation.x = pitch;
       this.camera.rotation.z = 0;
       this.camera.fov = 68;
+      this.camera.updateProjectionMatrix();
     } else if (params.cameraMode === 'TOP_DOWN' || (params.cameraMode as any) === 'BIRD') {
       this.wasSteppedDown = false;
-      // SATELLITE BIRD'S EYE VIEW: High above directly centered over the Danfo bus!
-      // Captures the full bus, roof details, road lanes, and surrounding traffic like a satellite feed.
+      // SATELLITE BIRD'S EYE VIEW: High above directly centered over the Danfo bus
       const targetX = laneOffsetMeters;
       const camPos = new THREE.Vector3(targetX, 23.5, -1.8);
       this.camera.position.lerp(camPos, 0.2);
@@ -1282,6 +1283,7 @@ export class ThreeDrivingEngine {
       this.camera.fov = 48;
       this.camera.updateProjectionMatrix();
     } else if (params.cameraMode === 'THIRD_PERSON') {
+      this.wasSteppedDown = false;
       // CHASE CAM: Classic 3rd person follow camera behind Danfo bus
       const offsetZ = gear === 'R' ? 10.0 : -8.5;
       const camPos = new THREE.Vector3(laneOffsetMeters, 3.8, offsetZ);
@@ -1291,11 +1293,12 @@ export class ThreeDrivingEngine {
       this.camera.fov = 65;
       this.camera.updateProjectionMatrix();
     } else if (params.cameraMode === 'ORBIT') {
+      this.wasSteppedDown = false;
       // 360 ORBIT VIEW: Free rotate around Danfo bus
       const orbitDist = 7.5;
       const orbitHeight = 3.2;
-      const yaw = (params.cameraLookYaw || 0) + Math.PI;
-      const pitch = (params.cameraLookPitch || 0);
+      const yaw = -(params.cameraLookYaw || 0) + Math.PI;
+      const pitch = Math.max(-0.6, Math.min(0.6, params.cameraLookPitch || 0));
       const cx = laneOffsetMeters + Math.sin(yaw) * orbitDist;
       const cy = orbitHeight + Math.sin(pitch) * 4;
       const cz = -Math.cos(yaw) * orbitDist;
@@ -1305,9 +1308,9 @@ export class ThreeDrivingEngine {
       this.camera.updateProjectionMatrix();
     } else {
       this.wasSteppedDown = false;
-      // FIRST PERSON / DR. DRIVING COCKPIT VIEW:
-      // Camera is positioned on the hood/windshield looking directly forward at the road (+Z)
-      // Clean, open road view with NO dark opaque interior roof/pillars blocking the view!
+      // FIRST PERSON / DRIVER COCKPIT VIEW:
+      // STRICT LOGIC: Frame of the bus ONLY! No 360 rotation bug!
+      // The driver's view is strictly clamped to windscreen, mirrors & dashboard.
       const headBob = speedKmH > 10 ? Math.sin(Date.now() * 0.02) * 0.008 : 0;
       
       let cx = -0.35; // driver side
@@ -1328,9 +1331,15 @@ export class ThreeDrivingEngine {
       const isReversing = gear === 'R';
       const baseYaw = isReversing ? 0 : Math.PI; 
       const pitchG = isBraking ? 0.02 : (speedKmH > 20 ? -0.01 : 0);
+
+      // STRICT CLAMP TO BUS FRAME:
+      // Clamped strictly to windscreen, dashboard, and side mirrors (±42° yaw, -20° down to +15° up pitch)
+      const clampedLookYaw = Math.max(-0.75, Math.min(0.75, params.cameraLookYaw || 0));
+      const clampedLookPitch = Math.max(-0.35, Math.min(0.25, params.cameraLookPitch || 0));
+
       this.camera.rotation.order = 'YXZ';
-      this.camera.rotation.y = baseYaw + this.busRoot.rotation.y + (params.cameraLookYaw || 0);
-      this.camera.rotation.x = pitchG + (params.cameraLookPitch || 0);
+      this.camera.rotation.y = baseYaw + this.busRoot.rotation.y + clampedLookYaw;
+      this.camera.rotation.x = pitchG + clampedLookPitch;
       this.camera.rotation.z = this.busRoot.rotation.z;
       this.camera.fov = 70;
       this.camera.updateProjectionMatrix();

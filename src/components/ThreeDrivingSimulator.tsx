@@ -182,6 +182,34 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
     }
   };
 
+  // Strict camera mode switcher
+  const cycleCameraMode = useCallback(() => {
+    if (isSteppedDown) {
+      addFeedMessage('🚶 Walkout mode: Drag to look around in first-person outside your bus.');
+      return;
+    }
+    setCameraMode((prev) => {
+      let next: CameraViewMode = 'FIRST_PERSON';
+      if (prev === 'FIRST_PERSON') next = 'THIRD_PERSON';
+      else if (prev === 'THIRD_PERSON') next = 'TOP_DOWN';
+      else if (prev === 'TOP_DOWN') next = 'ORBIT';
+      else next = 'FIRST_PERSON';
+
+      // STRICT LOGIC: Always reset look yaw/pitch so angles never desync or carry over
+      lookRef.current.yaw = 0;
+      lookRef.current.pitch = 0;
+
+      const labels: Record<string, string> = {
+        FIRST_PERSON: '🎥 1ST PERSON (COCKPIT - BUS FRAME ONLY)',
+        THIRD_PERSON: '🚗 3RD PERSON (CHASE CAM)',
+        TOP_DOWN: '🦅 TOP-DOWN (BIRD EYE)',
+        ORBIT: '🔄 360 FREE ORBIT',
+      };
+      addFeedMessage(`📷 CAMERA VIEW: ${labels[next] || next}`);
+      return next;
+    });
+  }, [isSteppedDown, addFeedMessage]);
+
   const toggleStepDown = () => {
     if (simRef.current.speed > 5) {
       addFeedMessage('⚠️ Slow down to 0 KM/H before stepping down from driver seat!');
@@ -197,11 +225,42 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         simRef.current.doorState = 'OPEN';
         soundEngine.playDoorSlide(true);
       }
-      addFeedMessage('🚪 STEPPED OUT: Standing on roadside! Drag to look 360° around your vehicle!');
-      const randomNpc = LAGOS_NPCS[Math.floor(Math.random() * LAGOS_NPCS.length)];
-      setActiveNpc(randomNpc);
+      // Reset walk look angles
+      lookRef.current.yaw = 0;
+      lookRef.current.pitch = 0;
+
+      // STRICT: ONLY open NPC dialogue popup if parked at a BUS STOP or FILLING STATION!
+      const currentDist = simRef.current.distanceTraveled;
+      const nearJunction = gameState.junctions.find(
+        (j) => Math.abs(j.distanceMarkerMeters - currentDist) <= 18
+      );
+      const nearGas = (gameState.gasStations || []).find(
+        (g) => Math.abs(g.distanceMarkerMeters - currentDist) <= 22
+      );
+      const nearShop = (gameState.roadsideShops || []).find(
+        (s) => Math.abs(s.distanceMarkerMeters - currentDist) <= 22
+      );
+
+      if (nearJunction) {
+        addFeedMessage(`🚪 STEPPED OUT AT ${nearJunction.name.toUpperCase()}: Commuters waiting at the stop!`);
+        const relevantNpc = LAGOS_NPCS.find(n => n.category === 'COMMUTER' || n.category === 'MARKET_WOMAN' || n.category === 'AREA_BOY') || LAGOS_NPCS[0];
+        setActiveNpc(relevantNpc);
+      } else if (nearGas) {
+        addFeedMessage(`🚪 STEPPED OUT AT ${nearGas.name.toUpperCase()}: Fuel attendant ready!`);
+        const gasNpc = LAGOS_NPCS.find(n => n.category === 'MECHANIC') || LAGOS_NPCS[2];
+        setActiveNpc(gasNpc);
+      } else if (nearShop) {
+        addFeedMessage(`🚪 STEPPED OUT AT ${nearShop.name.toUpperCase()}: Roadside shop keeper!`);
+        const shopNpc = LAGOS_NPCS.find(n => n.category === 'STREET_HAWKER' || n.category === 'MARKET_WOMAN') || LAGOS_NPCS[1];
+        setActiveNpc(shopNpc);
+      } else {
+        // Highway / open road: NO POPUP DIALOG!
+        setActiveNpc(null);
+        addFeedMessage('🚪 STEPPED OUT: Walking on roadside. (Park at a Bus Stop or Filling Station to interact with commuters & attendants)');
+      }
     } else {
       // RE-ENTERING DRIVER SEAT: automatically ready to start & drive!
+      setActiveNpc(null);
       setDoorState('CLOSED');
       simRef.current.doorState = 'CLOSED';
       soundEngine.playDoorSlide(false);
@@ -211,6 +270,8 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       inputsRef.current.gear = 'D';
       inputsRef.current.gas = false;
       inputsRef.current.brake = false;
+      lookRef.current.yaw = 0;
+      lookRef.current.pitch = 0;
       addFeedMessage('🚌 BACK IN DRIVER SEAT: Engine running, in D gear, ready to accelerate!');
     }
   };
@@ -464,6 +525,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       if (e.key === 'i' || e.key === 'I') onOpenInventory();
       if (e.key === 'q' || e.key === 'Q') onConductorAction('CALLING');
       if (e.key === 'c' || e.key === 'C') handleCollectFares();
+      if (e.key === 'v' || e.key === 'V') cycleCameraMode();
     };
 
     const onKeyUp = (e: KeyboardEvent) => {
@@ -480,7 +542,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
     };
-  }, [handleHorn, onConductorAction, onOpenPhone, onOpenInventory]);
+  }, [handleHorn, onConductorAction, onOpenPhone, onOpenInventory, cycleCameraMode]);
 
   // Main 60 FPS RequestAnimationFrame Physics Loop
   useEffect(() => {
@@ -735,22 +797,23 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
   return (
     <div className="relative w-[100vw] h-[100vh] bg-stone-950 overflow-hidden select-none pointer-events-none" style={{ position: "relative", width: "100vw", height: "100vh" }}>
       
-        {/* CAMERA MODE BUTTON - Positioned top-right below top HUD bar so it never overlaps MiniMap or icons */}
-        <div className="absolute top-11 right-3 z-40 pointer-events-auto flex flex-col gap-1">
+        {/* CAMERA MODE BUTTON - Positioned top-right below top HUD bar */}
+        <div className="absolute top-11 right-3 z-50 pointer-events-auto flex flex-col gap-1">
           <button
-            onClick={() => setCameraMode(m => {
-              if (m === 'FIRST_PERSON') return 'THIRD_PERSON';
-              if (m === 'THIRD_PERSON') return 'TOP_DOWN';
-              if (m === 'TOP_DOWN') return 'ORBIT';
-              return 'FIRST_PERSON';
-            })}
-            className="px-3 py-1.5 bg-stone-950/90 border border-sky-400/80 hover:border-sky-300 rounded-xl text-sky-300 hover:text-white font-black text-[10px] font-mono shadow-2xl backdrop-blur flex items-center gap-1.5 active:scale-95 transition-all"
-            title="Cycle Camera View"
+            onClick={cycleCameraMode}
+            className="px-3 py-1.5 bg-stone-950/95 border-2 border-sky-400 hover:border-sky-300 rounded-xl text-sky-300 hover:text-white font-black text-[10px] font-mono shadow-2xl backdrop-blur flex items-center gap-1.5 active:scale-95 transition-all"
+            title="Cycle Camera View (or press V)"
           >
-            {cameraMode === 'FIRST_PERSON' && '🎥 1ST COCKPIT'}
-            {cameraMode === 'THIRD_PERSON' && '🚗 3RD CHASE'}
-            {cameraMode === 'TOP_DOWN' && '🦅 BIRD EYE'}
-            {cameraMode === 'ORBIT' && '🔄 360 FREE'}
+            {isSteppedDown ? (
+              '🚶 ON FOOT (DRAG TO LOOK)'
+            ) : (
+              <>
+                {cameraMode === 'FIRST_PERSON' && '🎥 1ST COCKPIT'}
+                {cameraMode === 'THIRD_PERSON' && '🚗 3RD CHASE'}
+                {cameraMode === 'TOP_DOWN' && '🦅 BIRD EYE'}
+                {cameraMode === 'ORBIT' && '🔄 360 FREE'}
+              </>
+            )}
           </button>
         </div>
 
@@ -758,7 +821,6 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       <div
         ref={mountRef}
         onPointerDown={(e) => {
-          // Allow looking around in walkout, 360, or 1st person
           lookRef.current.isDragging = true;
           lookRef.current.startX = e.clientX;
           lookRef.current.startY = e.clientY;
@@ -769,8 +831,24 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           if (!lookRef.current.isDragging) return;
           const dx = e.clientX - lookRef.current.startX;
           const dy = e.clientY - lookRef.current.startY;
-          lookRef.current.yaw = lookRef.current.startYaw + dx * 0.006;
-          lookRef.current.pitch = Math.max(-0.6, Math.min(0.6, lookRef.current.startPitch + dy * 0.005));
+
+          if (isSteppedDown) {
+            // WALKING MODE:
+            // Moving cam left (dx < 0) turns LEFT!
+            // Moving cam right (dx > 0) turns RIGHT!
+            // Moving cam up (dy < 0) looks UP!
+            // Moving cam down (dy > 0) looks DOWN!
+            lookRef.current.yaw = lookRef.current.startYaw - dx * 0.005;
+            lookRef.current.pitch = Math.max(-0.6, Math.min(0.6, lookRef.current.startPitch - dy * 0.004));
+          } else if (cameraMode === 'FIRST_PERSON') {
+            // STRICT COCKPIT: Clamped within the windscreen and dashboard frame! NEVER 360!
+            lookRef.current.yaw = Math.max(-0.75, Math.min(0.75, lookRef.current.startYaw + dx * 0.003));
+            lookRef.current.pitch = Math.max(-0.35, Math.min(0.25, lookRef.current.startPitch - dy * 0.003));
+          } else if (cameraMode === 'ORBIT') {
+            // 360 Free Orbit around the vehicle
+            lookRef.current.yaw = lookRef.current.startYaw + dx * 0.006;
+            lookRef.current.pitch = Math.max(-0.6, Math.min(0.6, lookRef.current.startPitch - dy * 0.005));
+          }
         }}
         onPointerUp={() => { lookRef.current.isDragging = false; }}
         onPointerCancel={() => { lookRef.current.isDragging = false; }}
@@ -807,6 +885,17 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           </div>
           {/* Right buttons */}
           <div className="flex items-center gap-1 px-1.5 shrink-0">
+            <button 
+              onClick={cycleCameraMode} 
+              title={isSteppedDown ? 'Walking Outside' : `Camera: ${cameraMode} (Press V)`}
+              className={`p-1.5 rounded border font-mono font-black text-[9px] transition-colors ${
+                isSteppedDown 
+                  ? 'bg-amber-500/20 border-amber-500/50 text-amber-300' 
+                  : 'bg-sky-950/80 border-sky-500/70 text-sky-300 hover:text-white hover:bg-sky-900'
+              }`}
+            >
+              {isSteppedDown ? '🚶 FOOT' : cameraMode === 'FIRST_PERSON' ? '🎥 1ST' : cameraMode === 'THIRD_PERSON' ? '🚗 3RD' : cameraMode === 'TOP_DOWN' ? '🦅 TOP' : '🔄 360'}
+            </button>
             <button onClick={toggleDoor} className={`p-1.5 rounded border font-bold transition-colors ${doorState === 'OPEN' ? 'bg-amber-400 border-amber-300 text-stone-950' : 'bg-stone-800/80 border-stone-600 text-stone-300'}`}>
               {doorState === 'OPEN' ? <DoorOpen className="w-3.5 h-3.5" /> : <DoorClosed className="w-3.5 h-3.5" />}
             </button>
@@ -863,7 +952,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           </div>
         </div>
       )}
-      {isAtCurrentJunction && !activeGasStation && !activeShop && (
+      {isAtCurrentJunction && !activeGasStation && !activeShop && !isSteppedDown && (
         <div className="absolute top-20 left-1/2 -translate-x-1/2 z-40 bg-stone-950/95 border-2 border-amber-400 rounded-2xl px-3 py-2 shadow-2xl flex items-center gap-3 pointer-events-auto">
           <MapPin className="w-5 h-5 text-amber-400 animate-pulse shrink-0" />
           <div>
@@ -875,6 +964,53 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           </button>
         </div>
       )}
+
+      {/* On-Foot Interaction Prompt (Only at Bus Stops or Filling Stations) */}
+      {isSteppedDown && !activeNpc && (() => {
+        const nearJ = gameState.junctions.find((j) => Math.abs(j.distanceMarkerMeters - currentDist) <= 18);
+        const nearG = (gameState.gasStations || []).find((g) => Math.abs(g.distanceMarkerMeters - currentDist) <= 22);
+        if (nearJ) {
+          return (
+            <div className="absolute top-20 left-1/2 -translate-x-1/2 z-40 bg-stone-950/95 border-2 border-amber-400 rounded-2xl px-4 py-2 shadow-2xl flex items-center gap-3 pointer-events-auto">
+              <span className="text-xl">🗣️</span>
+              <div>
+                <div className="text-[10px] font-mono font-black text-amber-400">BUS STOP: {nearJ.name}</div>
+                <div className="text-[11px] text-white font-semibold">Commuters waiting on roadside</div>
+              </div>
+              <button
+                onClick={() => {
+                  const relevantNpc = LAGOS_NPCS.find(n => n.category === 'COMMUTER' || n.category === 'MARKET_WOMAN' || n.category === 'AREA_BOY') || LAGOS_NPCS[0];
+                  setActiveNpc(relevantNpc);
+                }}
+                className="px-3 py-1.5 bg-amber-400 text-stone-950 font-black text-xs font-['Bungee'] rounded-xl active:scale-95 shadow-md"
+              >
+                TALK
+              </button>
+            </div>
+          );
+        }
+        if (nearG) {
+          return (
+            <div className="absolute top-20 left-1/2 -translate-x-1/2 z-40 bg-stone-950/95 border-2 border-emerald-400 rounded-2xl px-4 py-2 shadow-2xl flex items-center gap-3 pointer-events-auto">
+              <span className="text-xl">⛽</span>
+              <div>
+                <div className="text-[10px] font-mono font-black text-emerald-400">FILLING STATION: {nearG.name}</div>
+                <div className="text-[11px] text-white font-semibold">Attendant at fuel pump</div>
+              </div>
+              <button
+                onClick={() => {
+                  const gasNpc = LAGOS_NPCS.find(n => n.category === 'MECHANIC') || LAGOS_NPCS[2];
+                  setActiveNpc(gasNpc);
+                }}
+                className="px-3 py-1.5 bg-emerald-400 text-stone-950 font-black text-xs font-['Bungee'] rounded-xl active:scale-95 shadow-md"
+              >
+                TALK
+              </button>
+            </div>
+          );
+        }
+        return null;
+      })()}
 
       {/* ═══════ BOTTOM-LEFT: Wheel / Joystick ═══════ */}
       <div className="absolute bottom-4 left-2 z-30 pointer-events-auto flex flex-col items-start">
