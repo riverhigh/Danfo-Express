@@ -112,7 +112,7 @@ export class ThreeDrivingEngine {
         });
         
     const modelsToLoad = [
-      '/models/Danfo.glb',
+      '/models/danfo.glb',
       '/models/1991_honda_civic_eg6.glb',
       '/models/2010_kia_forte_koup.glb',
       '/models/honda_today_g-type_police.glb',
@@ -143,6 +143,11 @@ export class ThreeDrivingEngine {
   private exhaustParticles: THREE.Points;
   private exhaustPositions: Float32Array;
   private rainParticles: THREE.Points | null = null;
+
+  // Dynamic Chase Camera Smooth Spring Damping & Speed FOV
+  private currentChaseCamPos: THREE.Vector3 = new THREE.Vector3(0, 3.8, -10.5);
+  private currentChaseLookTarget: THREE.Vector3 = new THREE.Vector3(0, 1.4, 4.5);
+  private dynamicFov: number = 65;
 
   // Animation Timers & Physics
   private blinkerTimer: number = 0;
@@ -1157,11 +1162,11 @@ export class ThreeDrivingEngine {
     ];
 
     // Player Bus Model Loading:
-    // When Danfo bus is chosen (default), load /models/Danfo.glb!
+    // When Danfo bus is chosen (default), load /models/danfo.glb!
     const targetKey = busId || this.currentBusId || 'RUSTIC_VAN';
     const isDanfoBus = targetKey === 'RUSTIC_VAN' || targetKey === 'TURBO_SPRINTER' || targetKey === 'HIGH_RISER_COASTER' || targetKey === 'DANFO' || targetKey === 'SHARP_DANFO';
 
-    const playerGlbPath = isDanfoBus ? '/models/Danfo.glb' : ({
+    const playerGlbPath = isDanfoBus ? '/models/danfo.glb' : ({
       'HONDA_CIVIC':   '/models/1991_honda_civic_eg6.glb',
       'KEKE_NAPEP':    '/models/honda_today_g-type_police.glb',
       'POLICE_CAR':    '/models/honda_today_g-type_police.glb',
@@ -1169,7 +1174,7 @@ export class ThreeDrivingEngine {
       'KIA_CARNIVAL':  '/models/2010_kia_forte_koup.glb',
       'CIVIC_TYPE_R':  '/models/2000_honda_civic_type_r_ek9.glb',
       'KIA_FORTE':     '/models/2010_kia_forte_koup.glb',
-    }[targetKey] || '/models/Danfo.glb');
+    }[targetKey] || '/models/danfo.glb');
 
     const loader = new GLTFLoader();
     loader.load(playerGlbPath, (gltf) => {
@@ -1382,9 +1387,9 @@ export class ThreeDrivingEngine {
   private setupTrafficAndHazards() {
     const loader = new GLTFLoader();
     const lanes = [-5.5, 0, 5.5];
-    const danfoGlbPath = '/models/Danfo.glb';
+    const danfoGlbPath = '/models/danfo.glb';
 
-    // 1. EXACTLY 9 NPC RIVAL BUS DRIVERS (ALL USING Danfo.glb!)
+    // 1. EXACTLY 9 NPC RIVAL BUS DRIVERS (ALL USING danfo.glb!)
     const rivalDanfoDrivers = [
       { name: 'Alhaji Agbaje', slogan: 'No King as God', speed: 12.5, lane: -5.5, z: 45 },
       { name: 'Oshodi Overloader', slogan: 'Face Your Front', speed: 13.8, lane: 0, z: 90 },
@@ -1566,19 +1571,33 @@ export class ThreeDrivingEngine {
       this.syncJunctionShelters(junctions);
     }
 
-    // 2. Bus Root Position & Steering Tilt
+    // 2. Bus Root Position & Dynamic Suspension Tilt
     this.busRoot.position.x = laneOffsetMeters;
     this.busRoot.position.y = 0; // BASE HEIGHT: Reset every frame so bounce never accumulates!
     const steerFactor = -(steeringWheelAngleDeg / 120);
-    this.busRoot.rotation.y = steerFactor * 0.08;
-    this.busRoot.rotation.z = -steerFactor * 0.04;
+    const speedRatio = Math.min(1.0, speedKmH / 95);
 
-    // Front Wheels turn towards the steered direction
-    this.leftFrontWheel.rotation.y = steerFactor * 0.45;
-    this.rightFrontWheel.rotation.y = steerFactor * 0.45;
+    // Dynamic Suspension Physics:
+    // a) Body Roll: Chassis tilts outward into curves, scaling with speed
+    const bodyRoll = -steerFactor * (0.04 + speedRatio * 0.075);
+    // b) Pitch Squat & Dive: Brake pushes front down, throttle squats back
+    const brakePitch = isBraking ? (speedKmH > 5 ? 0.038 : 0.018) : 0;
+    const accelPitch = throttle > 0.1 ? (throttle * 0.024) : 0;
+    // c) Lagos Diesel Engine Rumble & Rattle
+    const engineRumble = isEngineRunning 
+      ? Math.sin(Date.now() * 0.038) * (speedKmH < 5 ? 0.007 : 0.003) 
+      : 0;
 
-    // Rolling Wheels
-    this.wheelRotationRad += (gear === 'R' ? -1 : 1) * speedMps * dt * 2.2;
+    this.busRoot.rotation.x = -brakePitch + accelPitch + engineRumble;
+    this.busRoot.rotation.y = steerFactor * 0.12;
+    this.busRoot.rotation.z = bodyRoll;
+
+    // Front Wheels turn towards the steered direction with high reactivity
+    this.leftFrontWheel.rotation.y = steerFactor * 0.55;
+    this.rightFrontWheel.rotation.y = steerFactor * 0.55;
+
+    // Rolling Wheels proportional to road speed
+    this.wheelRotationRad += (gear === 'R' ? -1 : 1) * speedMps * dt * 2.8;
     this.leftFrontWheel.rotation.x = this.wheelRotationRad;
     this.rightFrontWheel.rotation.x = this.wheelRotationRad;
     this.rearWheels.forEach((w) => {
@@ -1590,8 +1609,8 @@ export class ThreeDrivingEngine {
 
     // 4. Working Dashboard Needles (All 4 Working Gauges)
     // Speedometer: 0 km/h -> -135 deg, 140 km/h -> +135 deg
-    const speedRatio = Math.min(1.0, speedKmH / 140);
-    this.speedNeedle.rotation.z = -Math.PI * 0.75 + speedRatio * (Math.PI * 1.5);
+    const dashSpeedRatio = Math.min(1.0, speedKmH / 140);
+    this.speedNeedle.rotation.z = -Math.PI * 0.75 + dashSpeedRatio * (Math.PI * 1.5);
 
     // Tachometer: idling ~800 RPM, revving ~5500 RPM
     const rpm = isEngineRunning ? 800 + (speedKmH / 85) * 3500 + (throttle > 0 ? 1200 : 0) : 0;
@@ -1779,13 +1798,58 @@ export class ThreeDrivingEngine {
       this.camera.updateProjectionMatrix();
     } else if (params.cameraMode === 'THIRD_PERSON') {
       this.wasSteppedDown = false;
-      // CHASE CAM: Full view of the entire Danfo bus, wheels to roof, bumper to bumper
-      const offsetZ = gear === 'R' ? 11.5 : -10.5;
-      const camPos = new THREE.Vector3(laneOffsetMeters, 4.0, offsetZ);
-      this.camera.position.lerp(camPos, 0.15);
-      const lookTarget = new THREE.Vector3(laneOffsetMeters, 1.5, gear === 'R' ? -12.0 : 4.5);
-      this.camera.lookAt(lookTarget);
-      this.camera.fov = 64;
+      // DYNAMIC CHASE CAM: Full cinematic view of the Danfo bus with dynamic speed FOV, spring swing lag, and acceleration/braking pitch
+      const isReversing = gear === 'R';
+      const speedRatio = Math.min(1.0, speedKmH / 95);
+      
+      // Dynamic Speed FOV: expands as bus goes faster for a rush of speed!
+      const targetFov = THREE.MathUtils.lerp(65, 78, speedRatio);
+      this.dynamicFov = THREE.MathUtils.lerp(this.dynamicFov, targetFov, dt * 5.0);
+      this.camera.fov = this.dynamicFov;
+
+      // Acceleration squat (cam drops slightly & pulls back) / Brake dive (cam rises & pushes forward)
+      const accelOffsetZ = throttle > 0.1 ? (throttle * 0.9) : 0;
+      const brakeOffsetZ = isBraking ? 1.1 : 0;
+      const baseDistZ = isReversing ? 11.5 : (-10.5 - accelOffsetZ + brakeOffsetZ);
+      const baseHeightY = isReversing ? 3.9 : (3.85 - accelOffsetZ * 0.25 + (isBraking ? 0.35 : 0));
+
+      // Dynamic Swing / Spring Lag: when bus steers, camera swings to frame the turn
+      const swingX = -steerFactor * (1.1 + speedRatio * 1.6);
+      const targetCamX = laneOffsetMeters + swingX;
+
+      // High-speed Lagos road vibration & engine rattle
+      const speedShake = speedKmH > 28 ? (speedKmH / 110) * 0.035 : 0;
+      const shakeX = (Math.random() - 0.5) * speedShake;
+      const shakeY = (Math.random() - 0.5) * speedShake;
+
+      // Player mouse/touch orbit peek (if dragged in 3rd person)
+      const userYaw = params.cameraLookYaw || 0;
+      const userPitch = params.cameraLookPitch || 0;
+      const orbitOrbitDist = Math.abs(baseDistZ);
+      const orbitX = Math.sin(userYaw) * orbitOrbitDist * 0.6;
+      const orbitY = userPitch * 3.5;
+
+      const camTargetPos = new THREE.Vector3(
+        targetCamX + shakeX + orbitX,
+        Math.max(1.4, baseHeightY + shakeY + orbitY),
+        baseDistZ + shakeX * 0.4
+      );
+
+      // Smooth spring lerp for camera position
+      this.currentChaseCamPos.lerp(camTargetPos, Math.min(1.0, dt * 8.5));
+      this.camera.position.copy(this.currentChaseCamPos);
+
+      // Dynamic look target: looks down the road ahead, banking into turns
+      const targetLookZ = isReversing ? -12.0 : (4.5 + speedRatio * 5.0);
+      const targetLookX = laneOffsetMeters + steerFactor * 1.8;
+      const targetLookY = 1.45 - (isBraking ? 0.2 : 0);
+
+      const lookPos = new THREE.Vector3(targetLookX, targetLookY, targetLookZ);
+      this.currentChaseLookTarget.lerp(lookPos, Math.min(1.0, dt * 10.0));
+      this.camera.lookAt(this.currentChaseLookTarget);
+
+      // Subtle dynamic camera bank (Dutch tilt) into high-speed corners
+      this.camera.rotation.z = -steerFactor * (0.015 + speedRatio * 0.035);
       this.camera.updateProjectionMatrix();
     } else if (params.cameraMode === 'ORBIT') {
       this.wasSteppedDown = false;
@@ -1981,14 +2045,17 @@ export class ThreeDrivingEngine {
       }
     }
 
-    // 16. Exhaust Particles
-    if (isEngineRunning && speedKmH > 4) {
+    // 16. Dynamic Lagos Danfo Exhaust Particles
+    if (isEngineRunning) {
       this.exhaustParticles.visible = true;
+      const smokeFlow = (speedMps * 0.45 + (throttle > 0 ? 3.5 : 0.8)) * dt;
       for (let i = 0; i < this.exhaustPositions.length; i += 3) {
-        this.exhaustPositions[i + 2] -= speedMps * dt * 0.45;
-        if (this.exhaustPositions[i + 2] < -9) {
-          this.exhaustPositions[i] = laneOffsetMeters - 0.95 + (Math.random() - 0.5) * 0.25;
-          this.exhaustPositions[i + 1] = 0.4 + Math.random() * 0.2;
+        this.exhaustPositions[i + 2] -= smokeFlow;
+        this.exhaustPositions[i] += (Math.random() - 0.5) * 0.04;
+        this.exhaustPositions[i + 1] += dt * 0.22; // smoke billows upward
+        if (this.exhaustPositions[i + 2] < -10) {
+          this.exhaustPositions[i] = laneOffsetMeters - 0.95 + (Math.random() - 0.5) * 0.22;
+          this.exhaustPositions[i + 1] = 0.38 + Math.random() * 0.18;
           this.exhaustPositions[i + 2] = -2.6;
         }
       }

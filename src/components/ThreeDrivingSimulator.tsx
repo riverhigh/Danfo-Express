@@ -69,8 +69,8 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
   const [gyroEnabled, setGyroEnabled] = useState<boolean>(false);
   const [wheelVisualAngle, setWheelVisualAngle] = useState<number>(0);
   const [isBoarding, setIsBoarding] = useState<boolean>(false);
-  const [cameraMode, setCameraMode] = useState<CameraViewMode>('FIRST_PERSON');
-  const cameraModeRef = useRef<CameraViewMode>('FIRST_PERSON');
+  const [cameraMode, setCameraMode] = useState<CameraViewMode>('THIRD_PERSON');
+  const cameraModeRef = useRef<CameraViewMode>('THIRD_PERSON');
 
   useEffect(() => {
     cameraModeRef.current = cameraMode;
@@ -195,11 +195,11 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       return;
     }
     setCameraMode((prev) => {
-      let next: CameraViewMode = 'FIRST_PERSON';
-      if (prev === 'FIRST_PERSON') next = 'THIRD_PERSON';
-      else if (prev === 'THIRD_PERSON') next = 'TOP_DOWN';
+      let next: CameraViewMode = 'THIRD_PERSON';
+      if (prev === 'THIRD_PERSON') next = 'FIRST_PERSON';
+      else if (prev === 'FIRST_PERSON') next = 'TOP_DOWN';
       else if (prev === 'TOP_DOWN') next = 'ORBIT';
-      else next = 'FIRST_PERSON';
+      else next = 'THIRD_PERSON';
 
       cameraModeRef.current = next;
 
@@ -797,6 +797,12 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       }
 
       // 5. Update 3D Three.js Engine
+      if (cameraModeRef.current === 'THIRD_PERSON' && !lookRef.current.isDragging) {
+        const decay = Math.max(0, 1 - dt * 5.0);
+        lookRef.current.yaw *= decay;
+        lookRef.current.pitch *= decay;
+      }
+
       if (engineRef.current) {
         engineRef.current.update(
           {
@@ -913,6 +919,10 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
             // STRICT COCKPIT: Clamped within the windscreen and dashboard frame! NEVER 360!
             lookRef.current.yaw = Math.max(-0.75, Math.min(0.75, lookRef.current.startYaw + dx * 0.003));
             lookRef.current.pitch = Math.max(-0.35, Math.min(0.25, lookRef.current.startPitch - dy * 0.003));
+          } else if (cameraMode === 'THIRD_PERSON') {
+            // DYNAMIC CHASE PEEK: Pan around the bus smoothly with mouse/touch drag
+            lookRef.current.yaw = Math.max(-1.1, Math.min(1.1, lookRef.current.startYaw + dx * 0.004));
+            lookRef.current.pitch = Math.max(-0.35, Math.min(0.35, lookRef.current.startPitch - dy * 0.003));
           } else if (cameraMode === 'ORBIT') {
             // 360 Free Orbit around the vehicle
             lookRef.current.yaw = lookRef.current.startYaw + dx * 0.006;
