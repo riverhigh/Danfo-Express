@@ -802,6 +802,283 @@ class DanfoSoundEngine {
     osc.start(t);
     osc.stop(t + 0.15);
   }
+
+  /**
+   * Nigerian Bank Security Mantrap Door Buzz & Electronic Pod Chime
+   * ("BZZZT-CLICK! DING! Please step into the security booth one at a time")
+   */
+  public playBankDoorMantrap() {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+
+    // 1. Electronic magnetic lock buzz (120Hz hum)
+    const buzzOsc = this.ctx.createOscillator();
+    const buzzGain = this.ctx.createGain();
+    buzzOsc.type = 'sawtooth';
+    buzzOsc.frequency.setValueAtTime(120, t);
+    buzzGain.gain.setValueAtTime(0.14, t);
+    buzzGain.gain.exponentialRampToValueAtTime(0.005, t + 0.32);
+    buzzOsc.connect(buzzGain);
+    buzzGain.connect(this.ctx.destination);
+    buzzOsc.start(t);
+    buzzOsc.stop(t + 0.34);
+
+    // 2. Heavy glass air-lock solenoid click
+    const clickOsc = this.ctx.createOscillator();
+    const clickGain = this.ctx.createGain();
+    clickOsc.type = 'triangle';
+    clickOsc.frequency.setValueAtTime(920, t + 0.34);
+    clickOsc.frequency.exponentialRampToValueAtTime(180, t + 0.42);
+    clickGain.gain.setValueAtTime(0.25, t + 0.34);
+    clickGain.gain.exponentialRampToValueAtTime(0.001, t + 0.44);
+    clickOsc.connect(clickGain);
+    clickGain.connect(this.ctx.destination);
+    clickOsc.start(t + 0.34);
+    clickOsc.stop(t + 0.45);
+
+    // 3. Mantrap overhead sensor high chime (C6 -> G5)
+    [1046.5, 783.99].forEach((freq, idx) => {
+      if (!this.ctx) return;
+      const start = t + 0.46 + idx * 0.16;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, start);
+      gain.gain.setValueAtTime(0.18, start);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.35);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(start);
+      osc.stop(start + 0.36);
+    });
+  }
+
+  /**
+   * Authentic Nigerian Banking Hall Queue Management System (QMS) Bell Chime & Voice Call
+   * Synthesizes the classic 3-tone resonant chime ("DING - DONG - DING!") heard in
+   * Zenith / GTBank / Access / FirstBank halls when calling the next queue token.
+   */
+  public playBankQueueChime(ticketCode?: string, counterNumber?: number, speakVoice: boolean = true) {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    // Classic 3-tone QMS bell triad: G5 (783.99 Hz) -> E5 (659.25 Hz) -> C5 (523.25 Hz)
+    const chimeNotes = [
+      { freq: 783.99, offset: 0.0, duration: 0.55 },
+      { freq: 659.25, offset: 0.28, duration: 0.55 },
+      { freq: 523.25, offset: 0.56, duration: 0.85 },
+    ];
+
+    chimeNotes.forEach((note) => {
+      if (!this.ctx) return;
+      const start = t + note.offset;
+
+      // Fundamental sine bell
+      const osc = this.ctx.createOscillator();
+      // Metallic bell overtone (2.0x harmonic)
+      const harmonic = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      const harmGain = this.ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(note.freq, start);
+
+      harmonic.type = 'triangle';
+      harmonic.frequency.setValueAtTime(note.freq * 2, start);
+
+      gain.gain.setValueAtTime(0.001, start);
+      gain.gain.linearRampToValueAtTime(0.28, start + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + note.duration);
+
+      harmGain.gain.setValueAtTime(0.08, start);
+      harmGain.gain.exponentialRampToValueAtTime(0.0001, start + note.duration * 0.5);
+
+      osc.connect(gain);
+      harmonic.connect(harmGain);
+      harmGain.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start(start);
+      harmonic.start(start);
+      osc.stop(start + note.duration + 0.02);
+      harmonic.stop(start + note.duration + 0.02);
+    });
+
+    // Optional automated QMS voice callout right after the 3-tone bell chime
+    if (speakVoice && ticketCode && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      setTimeout(() => {
+        if (this.isMuted) return;
+        try {
+          window.speechSynthesis.cancel();
+          const formattedTicket = ticketCode.replace('-', ' ');
+          const utterance = new SpeechSynthesisUtterance(
+            `Ticket number ${formattedTicket}, please proceed to Counter ${counterNumber || 2}.`
+          );
+          utterance.rate = 0.96;
+          utterance.pitch = 1.05;
+          utterance.volume = 0.85;
+          window.speechSynthesis.speak(utterance);
+        } catch {
+          // Ignore if browser blocks speechSynthesis
+        }
+      }, 920);
+    }
+  }
+
+  /**
+   * High-Speed Nigerian Bank Tabletop Naira Note Counting Machine ("FRRRRRRRRR-ZT! BEEP!")
+   * Simulates a bundle of 100 Naira notes fluttering rapidly through the bill counter roller.
+   */
+  public playBankCashCounter() {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    const notesToCount = 24; // 24 rapid paper snaps over 0.72s
+
+    for (let i = 0; i < notesToCount; i++) {
+      const noteTime = t + i * 0.028;
+
+      // Short crisp paper snap noise burst
+      const buffer = this.ctx.createBuffer(1, Math.floor(this.ctx.sampleRate * 0.018), this.ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let j = 0; j < buffer.length; j++) {
+        data[j] = (Math.random() * 2 - 1) * Math.exp(-j / (this.ctx.sampleRate * 0.005));
+      }
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = buffer;
+
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(1950 + (i % 3) * 120, noteTime);
+      filter.Q.setValueAtTime(2.5, noteTime);
+
+      const gain = this.ctx.createGain();
+      gain.gain.setValueAtTime(0.22, noteTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, noteTime + 0.017);
+
+      noise.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      noise.start(noteTime);
+      noise.stop(noteTime + 0.018);
+    }
+
+    // Motor whirring undertone during counting
+    const motorOsc = this.ctx.createOscillator();
+    const motorGain = this.ctx.createGain();
+    motorOsc.type = 'sawtooth';
+    motorOsc.frequency.setValueAtTime(145, t);
+    motorOsc.frequency.linearRampToValueAtTime(185, t + 0.68);
+    motorGain.gain.setValueAtTime(0.06, t);
+    motorGain.gain.exponentialRampToValueAtTime(0.001, t + 0.72);
+    motorOsc.connect(motorGain);
+    motorGain.connect(this.ctx.destination);
+    motorOsc.start(t);
+    motorOsc.stop(t + 0.73);
+
+    // Crisp digital "100 NOTES COMPLETE" BEEP at the end of the bundle
+    const beepTime = t + 0.74;
+    const beepOsc = this.ctx.createOscillator();
+    const beepGain = this.ctx.createGain();
+    beepOsc.type = 'sine';
+    beepOsc.frequency.setValueAtTime(2450, beepTime);
+    beepGain.gain.setValueAtTime(0.2, beepTime);
+    beepGain.gain.exponentialRampToValueAtTime(0.001, beepTime + 0.14);
+    beepOsc.connect(beepGain);
+    beepGain.connect(this.ctx.destination);
+    beepOsc.start(beepTime);
+    beepOsc.stop(beepTime + 0.15);
+  }
+
+  /**
+   * Bank Teller Heavy Metal & Rubber Stamp ("KPAA-THUD! KPAA-THUD!")
+   */
+  public playBankTellerStamp() {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    [0, 0.16].forEach((offset) => {
+      if (!this.ctx) return;
+      const st = t + offset;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(160, st);
+      osc.frequency.exponentialRampToValueAtTime(38, st + 0.09);
+      gain.gain.setValueAtTime(0.35, st);
+      gain.gain.exponentialRampToValueAtTime(0.001, st + 0.11);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(st);
+      osc.stop(st + 0.12);
+    });
+  }
+
+  /**
+   * Roadside POS Terminal Beep & Thermal Receipt Printer Tear ("BEEP-BEEP! ZZZT!")
+   */
+  public playPosBeep(isApproved: boolean = true) {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    if (isApproved) {
+      // Crisp double POS approval beep (2700 Hz)
+      [0, 0.11].forEach((offset) => {
+        if (!this.ctx) return;
+        const bt = t + offset;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(2700, bt);
+        gain.gain.setValueAtTime(0.12, bt);
+        gain.gain.exponentialRampToValueAtTime(0.001, bt + 0.075);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(bt);
+        osc.stop(bt + 0.08);
+      });
+
+      // Thermal paper feed buzz
+      const feedTime = t + 0.24;
+      const feedOsc = this.ctx.createOscillator();
+      const feedGain = this.ctx.createGain();
+      feedOsc.type = 'sawtooth';
+      feedOsc.frequency.setValueAtTime(320, feedTime);
+      feedOsc.frequency.linearRampToValueAtTime(380, feedTime + 0.22);
+      feedGain.gain.setValueAtTime(0.08, feedTime);
+      feedGain.gain.exponentialRampToValueAtTime(0.001, feedTime + 0.24);
+      feedOsc.connect(feedGain);
+      feedGain.connect(this.ctx.destination);
+      feedOsc.start(feedTime);
+      feedOsc.stop(feedTime + 0.25);
+    } else {
+      // Declined / Over ₦100k limit low error buzz
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(190, t);
+      osc.frequency.setValueAtTime(150, t + 0.15);
+      gain.gain.setValueAtTime(0.22, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.36);
+    }
+  }
 }
 
 export const soundEngine = new DanfoSoundEngine();
+

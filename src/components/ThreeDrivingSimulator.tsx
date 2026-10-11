@@ -43,6 +43,7 @@ interface ThreeDrivingSimulatorProps {
   onOpenMap?: () => void;
   onGoHome?: () => void;
   onUpdateSave?: (updates: any) => void;
+  onOpenPosOrBank?: (mode: 'POS_KIOSK' | 'BANK_HALL') => void;
   actionFeed: string[];
   addFeedMessage: (msg: string) => void;
 }
@@ -58,6 +59,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
   onOpenMap,
   onGoHome,
   onUpdateSave,
+  onOpenPosOrBank,
   actionFeed,
   addFeedMessage,
 }) => {
@@ -1627,7 +1629,13 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
             <span className={`hidden sm:inline ${hudHeat > 80 ? 'text-rose-400 font-bold' : 'text-stone-300'}`}>🌡️{hudHeat}°</span>
             <div className="w-px h-4 bg-stone-700" />
             <Coins className="w-2.5 h-2.5 text-emerald-400" />
-            <span className="text-emerald-400 font-black tabular-nums">₦{gameState.walletNaira.toLocaleString()}</span>
+            <span className="text-emerald-400 font-black tabular-nums" title="Cash in Wallet">
+              ₦{gameState.walletNaira.toLocaleString()}
+            </span>
+            <div className="w-px h-4 bg-stone-700 hidden md:block" />
+            <span className="hidden md:inline text-sky-400 font-black tabular-nums" title="Bank Account Balance">
+              🏦 ₦{(gameState.bankBalanceNaira || 0).toLocaleString()}
+            </span>
             <div className="w-px h-4 bg-stone-700" />
             <span className="px-1.5 py-0.5 rounded bg-stone-900 border border-amber-400/50 text-amber-300 font-black tabular-nums">
               👥 {gameState.bus.passengers?.length || 0}/{gameState.bus.capacity || 14}
@@ -1663,6 +1671,24 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
             >
               ⚡ BOOST
             </button>
+            {onOpenPosOrBank && (
+              <>
+                <button
+                  onClick={() => onOpenPosOrBank('POS_KIOSK')}
+                  title="Roadside POS Agent (Withdraw or Deposit max ₦100,000)"
+                  className="px-2 py-1 rounded border border-sky-400/60 bg-sky-950/80 hover:bg-sky-900 text-sky-300 font-mono font-black text-[9px] flex items-center gap-1 cursor-pointer"
+                >
+                  <span>💳 POS</span>
+                </button>
+                <button
+                  onClick={() => onOpenPosOrBank('BANK_HALL')}
+                  title="Enter Nigerian Bank Branch Hall (Queue for >₦100k Withdrawal)"
+                  className="px-2 py-1 rounded border border-rose-400/60 bg-rose-950/80 hover:bg-rose-900 text-rose-300 font-mono font-black text-[9px] flex items-center gap-1 cursor-pointer"
+                >
+                  <span>🏦 BANK</span>
+                </button>
+              </>
+            )}
             <button
               onClick={triggerConductorShout}
               title="AI Conductor Shout Route (Key Q)"

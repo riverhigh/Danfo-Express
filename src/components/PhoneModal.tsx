@@ -31,6 +31,7 @@ interface PhoneModalProps {
   setGameState: React.Dispatch<React.SetStateAction<GameState>>;
   addFeedMessage: (msg: string) => void;
   onStartShift?: () => void;
+  onOpenPosOrBank?: (mode: 'POS_KIOSK' | 'BANK_HALL') => void;
 }
 
 type PhoneApp = 'HOME' | 'JOBS' | 'MESSAGES' | 'BANK' | 'CHOWDECK' | 'HOUSING' | 'BOUTIQUE' | 'RIDE' | 'GUIDE';
@@ -42,16 +43,20 @@ export const PhoneModal: React.FC<PhoneModalProps> = ({
   setGameState,
   addFeedMessage,
   onStartShift,
+  onOpenPosOrBank,
 }) => {
   const [activeApp, setActiveApp] = useState<PhoneApp>('HOME');
   const [selectedMessage, setSelectedMessage] = useState<PhoneMessage | null>(null);
 
   if (!isOpen) return null;
 
-  // Settle Bill via Bank App
+  // Settle Bill via Bank App (deducts from Bank Account first, or Wallet if Bank is lower)
   const handlePayBill = (type: 'RENT' | 'NEPA' | 'LEVY', cost: number) => {
-    if (gameState.walletNaira < cost) {
-      addFeedMessage(`⚠️ Insufficient funds! You need ₦${cost.toLocaleString()} to settle this bill.`);
+    const canPayFromBank = (gameState.bankBalanceNaira || 0) >= cost;
+    const canPayFromWallet = gameState.walletNaira >= cost;
+
+    if (!canPayFromBank && !canPayFromWallet) {
+      addFeedMessage(`⚠️ Insufficient funds in Bank or Wallet! Need ₦${cost.toLocaleString()} to settle this bill.`);
       return;
     }
 
@@ -79,9 +84,12 @@ export const PhoneModal: React.FC<PhoneModalProps> = ({
         return m;
       });
 
+      const payWithBank = (prev.bankBalanceNaira || 0) >= cost;
+
       return {
         ...prev,
-        walletNaira: prev.walletNaira - cost,
+        bankBalanceNaira: payWithBank ? (prev.bankBalanceNaira || 0) - cost : prev.bankBalanceNaira,
+        walletNaira: payWithBank ? prev.walletNaira : prev.walletNaira - cost,
         house: updatedHouse,
         rentDue: updatedRent,
         nepaBillDue: updatedNepa,
@@ -422,24 +430,50 @@ export const PhoneModal: React.FC<PhoneModalProps> = ({
               </div>
 
               <div className="flex-1 p-4 overflow-y-auto space-y-4">
-                {/* Account Balance Card */}
-                <div className="p-4 bg-gradient-to-br from-indigo-900 via-purple-900 to-stone-900 rounded-2xl border border-purple-500/30 text-white shadow-xl space-y-2">
-                  <div className="text-[10px] uppercase font-mono text-purple-300 tracking-wider">
-                    Driver Cash & Account Balance
+                {/* Bank Balance vs Wallet Cash Cards */}
+                <div className="p-4 bg-gradient-to-br from-indigo-900 via-purple-900 to-stone-900 rounded-2xl border border-purple-500/30 text-white shadow-xl space-y-3">
+                  <div>
+                    <div className="text-[10px] uppercase font-mono text-purple-300 tracking-wider">
+                      Eko Zenith Bank Account Balance
+                    </div>
+                    <div className="text-2xl font-black font-mono text-sky-300 tabular-nums">
+                      ₦{(gameState.bankBalanceNaira || 0).toLocaleString()}
+                    </div>
                   </div>
-                  <div className="text-2xl font-black font-mono text-emerald-400 tabular-nums">
-                    ₦{gameState.walletNaira.toLocaleString()}
+                  <div className="pt-2 border-t border-white/10 flex items-center justify-between text-xs font-mono">
+                    <span className="text-stone-300">Physical Cash in Wallet:</span>
+                    <span className="text-emerald-400 font-black tabular-nums">
+                      ₦{gameState.walletNaira.toLocaleString()}
+                    </span>
                   </div>
-                  <div className="text-[10px] text-stone-400 font-mono flex items-center justify-between">
-                    <span>Account: 0148924018</span>
-                    <span className="text-amber-400">Street Tier 1</span>
-                  </div>
+                  {onOpenPosOrBank && (
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      <button
+                        onClick={() => {
+                          onClose();
+                          onOpenPosOrBank('POS_KIOSK');
+                        }}
+                        className="py-2 px-2 bg-amber-400 hover:bg-amber-300 text-stone-950 font-mono font-black text-[10px] rounded-xl shadow cursor-pointer"
+                      >
+                        💳 POS Kiosk (≤₦100k)
+                      </button>
+                      <button
+                        onClick={() => {
+                          onClose();
+                          onOpenPosOrBank('BANK_HALL');
+                        }}
+                        className="py-2 px-2 bg-rose-500 hover:bg-rose-400 text-white font-mono font-black text-[10px] rounded-xl shadow cursor-pointer"
+                      >
+                        🏦 Bank Hall (&gt;₦100k)
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Settle Bills Quick Actions */}
                 <div className="space-y-2">
                   <div className="text-xs font-bold text-stone-400 uppercase tracking-wider">
-                    Bills & Taxes
+                    Bills &amp; Taxes
                   </div>
 
                   {/* 1. NEPA Electricity Bill */}

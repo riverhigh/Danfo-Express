@@ -4,6 +4,7 @@ import { GameState, HouseTierId, ShiftTimeOfDay, BusModelId } from '../types/gam
 interface SaveData {
   walletNaira: number;
   bankBalanceNaira: number;
+  bankInitialized?: boolean;
   koloBalanceNaira: number;
   hasKolo: boolean;
   ajoContributionsNaira: number;
@@ -27,7 +28,8 @@ interface SaveData {
 
 const DEFAULT_SAVE: SaveData = {
   walletNaira: 25000,
-  bankBalanceNaira: 0,
+  bankBalanceNaira: 250000,
+  bankInitialized: true,
   koloBalanceNaira: 0,
   hasKolo: false,
   ajoContributionsNaira: 0,
@@ -49,7 +51,12 @@ export function useGameSave() {
     try {
       const stored = localStorage.getItem(SAVE_KEY);
       if (stored) {
-        return { ...DEFAULT_SAVE, ...JSON.parse(stored) };
+        const parsed = JSON.parse(stored);
+        if (!parsed.bankInitialized && (!parsed.bankBalanceNaira || parsed.bankBalanceNaira === 0)) {
+          parsed.bankBalanceNaira = 250000;
+          parsed.bankInitialized = true;
+        }
+        return { ...DEFAULT_SAVE, ...parsed };
       }
     } catch (e) {
       console.error('Failed to load save data', e);

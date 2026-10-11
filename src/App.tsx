@@ -5,7 +5,6 @@ import {
   ShiftTimeOfDay,
   Passenger,
   ShiftResultData,
-  BusModelId,
   MissionGoal,
   BusUpgrades,
 } from './types/game';
@@ -29,13 +28,12 @@ import { MissionSelector } from './components/MissionSelector';
 import { PhoneModal } from './components/PhoneModal';
 import { InventoryModal } from './components/InventoryModal';
 import { MainMap } from './components/MainMap';
-import { Dealership } from './components/Dealership';
 import { CharacterCreation } from './components/CharacterCreation';
-import { NeedsPanel } from './components/NeedsPanel';
 import { AjoApp, KoloSystem } from './components/SavingsSystems';
 import { SplashLoadingScreen } from './components/SplashLoadingScreen';
 import { PwaInstallBanner } from './components/PwaInstallBanner';
 import { PlayerHome2D } from './components/PlayerHome2D';
+import { NigerianBankAndPosModal, BankingModalMode } from './components/NigerianBankAndPosModal';
 import {
   Trophy,
   Volume2,
@@ -43,7 +41,6 @@ import {
   Users,
   ArrowRight,
   RotateCcw,
-  ShieldCheck,
   Award,
   Check,
   MapPin,
@@ -51,61 +48,90 @@ import {
   Smartphone,
   Package,
   Home,
-  Car,
-  Fuel,
-  Gauge,
   Download,
-  Lock,
-  AlertTriangle,
-  Sparkles,
   Wrench,
-  Coins,
   Navigation,
+  Building2,
+  CreditCard,
+  Wallet,
+  Settings,
+  Radio,
+  Globe,
+  ShieldCheck,
+  Trash2,
 } from 'lucide-react';
 
+type MainMenuSection = 'SINGLE_PLAYER' | 'MULTIPLAYER' | 'SETTINGS';
+type SinglePlayerSubView = 'SHIFT_DISPATCH' | 'MISSIONS' | 'GARAGE';
+
 export default function App() {
-  const { saveData, updateSave } = useGameSave();
+  const { saveData, updateSave, wipeSave } = useGameSave();
   const walletNaira = saveData.walletNaira;
+  const bankBalanceNaira = saveData.bankBalanceNaira ?? 250000;
   const streetCred = saveData.streetCred;
   const selectedBusId = saveData.selectedBusId;
   const selectedSlogan = saveData.selectedSlogan;
 
   const setWalletNaira = (val: number | ((prev: number) => number)) =>
     updateSave({ walletNaira: typeof val === 'function' ? val(walletNaira) : val });
+  const setBankBalanceNaira = (val: number | ((prev: number) => number)) =>
+    updateSave({ bankBalanceNaira: typeof val === 'function' ? val(bankBalanceNaira) : val });
   const setStreetCred = (val: number | ((prev: number) => number)) =>
     updateSave({ streetCred: typeof val === 'function' ? val(streetCred) : val });
-  const setSelectedBusId = (val: BusModelId) => updateSave({ selectedBusId: val });
   const setSelectedSlogan = (val: string) => updateSave({ selectedSlogan: val });
 
   const [showSplash, setShowSplash] = useState<boolean>(true);
   const [showPwaModal, setShowPwaModal] = useState<boolean>(false);
   const [selectedShiftId, setSelectedShiftId] = useState<ShiftTimeOfDay>('MORNING_RUSH');
   const [isMuted, setIsMuted] = useState<boolean>(false);
-  const [menuTab, setMenuTab] = useState<'CAREER_SHIFT' | 'MISSIONS' | 'GARAGE_WORKSHOP' | 'HOUSING'>('CAREER_SHIFT');
+
+  // Clean 3-tab menu: SINGLE PLAYER | MULTIPLAYER | SETTINGS
+  const [mainMenuTab, setMainMenuTab] = useState<MainMenuSection>('SINGLE_PLAYER');
+  const [singlePlayerSubView, setSinglePlayerSubView] = useState<SinglePlayerSubView>('SHIFT_DISPATCH');
+
+  // Multiplayer Lobby States
+  const [mpMode, setMpMode] = useState<'EXPRESS_RACE' | 'TURF_WAR' | 'CONVOY_CRUISE'>('EXPRESS_RACE');
+  const [selectedLobbyId, setSelectedLobbyId] = useState<string>('lobby-oshodi-1');
+  const [mpRoomCode, setMpRoomCode] = useState<string>('EKO-409');
+  const [mpChatLog, setMpChatLog] = useState<Array<{ sender: string; text: string; time: string }>>([
+    { sender: 'Tunde_Ikeja', text: 'Oya who dey ready for Oshodi to CMS express run?', time: '11:54' },
+    { sender: 'Rasaki_Yellow', text: 'No overtake me for Maryland Underbridge o!', time: '11:55' },
+    { sender: 'Sabo_Express', text: 'My Danfo engine don warm. Make we move!', time: '11:56' },
+  ]);
+
   const [selectedMissionId, setSelectedMissionId] = useState<string>(MISSIONS_CATALOG[0].id);
   const [isConductorModalOpen, setIsConductorModalOpen] = useState<boolean>(false);
   const [isPhoneOpen, setIsPhoneOpen] = useState<boolean>(false);
   const [isInventoryOpen, setIsInventoryOpen] = useState<boolean>(false);
   const [isMapOpen, setIsMapOpen] = useState<boolean>(false);
-  const [isDealershipOpen, setIsDealershipOpen] = useState<boolean>(false);
   const [isKoloOpen, setIsKoloOpen] = useState<boolean>(false);
   const [isAjoOpen, setIsAjoOpen] = useState<boolean>(false);
   const [isHome2DOpen, setIsHome2DOpen] = useState<boolean>(false);
+
+  // POS Kiosk (max ₦100k) & Nigerian Bank Hall (>₦100k Queue) Modal
+  const [isBankModalOpen, setIsBankModalOpen] = useState<boolean>(false);
+  const [bankModalMode, setBankModalMode] = useState<BankingModalMode>('POS_KIOSK');
+
   const [showCharacterCreation, setShowCharacterCreation] = useState<boolean>(
     !saveData.playerName || saveData.playerName === 'Driver'
   );
-  const [gameTime] = useState(new Date('2026-10-09T07:30:00'));
+  const [driverNameInput, setDriverNameInput] = useState<string>(saveData.playerName || 'Captain');
 
   // Active driving feed
   const [actionFeed, setActionFeed] = useState<string[]>([
-    '🚌 Parked at Oshodi Motor Park (0/14 seats). Drive out the gate to Ikeja Along (160m) to load your first passengers!',
+    '🚌 Parked at Oshodi Motor Park (0/14 seats). Drive out the gate to Mangoro / Cement (150m) to load your first passengers!',
   ]);
 
   const addFeedMessage = useCallback((msg: string) => {
     setActionFeed((prev) => [msg, ...prev.slice(0, 4)]);
   }, []);
 
-  // Bus ALWAYS starts empty (0 passengers, ₦0 collected cash) so player loads from the first bus stop!
+  const openPosOrBank = useCallback((mode: BankingModalMode) => {
+    setBankModalMode(mode);
+    setIsBankModalOpen(true);
+  }, []);
+
+  // Bus ALWAYS starts empty (0 passengers, ₦0 collected cash) so player loads from the first bus stop
   const createInitialPassengers = (): Passenger[] => [];
 
   const [gameState, setGameState] = useState<GameState>(() => {
@@ -134,7 +160,7 @@ export default function App() {
         collectedCash: 0,
       },
       walletNaira: saveData.walletNaira,
-      bankBalanceNaira: saveData.bankBalanceNaira,
+      bankBalanceNaira: saveData.bankBalanceNaira ?? 250000,
       streetCred: saveData.streetCred,
       needs: saveData.needs || {
         hunger: 100,
@@ -169,11 +195,38 @@ export default function App() {
     };
   });
 
+  // Keep gameState wallet & bank in sync with saveData
+  useEffect(() => {
+    setGameState((prev) => ({
+      ...prev,
+      walletNaira: saveData.walletNaira,
+      bankBalanceNaira: saveData.bankBalanceNaira ?? 250000,
+    }));
+  }, [saveData.walletNaira, saveData.bankBalanceNaira]);
+
   // Audio toggle
   const toggleAudio = () => {
     const muted = soundEngine.toggleMute();
     setIsMuted(muted);
   };
+
+  // Update both Wallet and Bank balances from POS or Bank Hall Teller
+  const handleUpdateWalletAndBank = useCallback(
+    (newWallet: number, newBank: number, logMessage: string) => {
+      updateSave({
+        walletNaira: newWallet,
+        bankBalanceNaira: newBank,
+        bankInitialized: true,
+      });
+      setGameState((prev) => ({
+        ...prev,
+        walletNaira: newWallet,
+        bankBalanceNaira: newBank,
+      }));
+      addFeedMessage(logMessage);
+    },
+    [updateSave, addFeedMessage]
+  );
 
   // Start 3D Mission (Bus starts empty with 0 passengers)
   const handleStartMission = (mission: MissionGoal) => {
@@ -218,12 +271,14 @@ export default function App() {
       lastShiftResult: null,
     }));
 
-    addFeedMessage(`🎯 MISSION STARTED: ${mission.title}! Bus is empty (0/${bus.capacity}) — stop at Mangoro / Cement (150m) & Ikeja Along (280m) to load commuters.`);
+    addFeedMessage(
+      `🎯 MISSION STARTED: ${mission.title}! Bus is empty (0/${bus.capacity}) — stop at Mangoro / Cement (150m) & Ikeja Along (280m) to load commuters.`
+    );
     soundEngine.playHorn(bus.upgrades.musicalHorn);
   };
 
-  // Start General Career Shift (Bus starts empty with 0 passengers)
-  const handleStartShift = () => {
+  // Start General Career Shift or Multiplayer Convoy Run
+  const handleStartShift = (isMultiplayerConvoy: boolean = false) => {
     const shift = SHIFT_CONFIGS[selectedShiftId];
     const baseBus = BUS_PRESETS[selectedBusId] || BUS_PRESETS['RUSTIC_VAN'];
     const bus: typeof baseBus = JSON.parse(JSON.stringify(baseBus));
@@ -235,7 +290,13 @@ export default function App() {
     setGameState((prev) => ({
       ...prev,
       screen: 'SHIFT_ACTIVE',
-      activeShift: shift,
+      activeShift: isMultiplayerConvoy
+        ? {
+            ...shift,
+            title: `MP Convoy (${mpRoomCode}) • ${shift.title}`,
+            baseTrafficDensity: 0.85,
+          }
+        : shift,
       shiftTimeRemaining: shift.durationSeconds,
       shiftClockDisplay: shift.startTime,
       bus: bus,
@@ -253,11 +314,15 @@ export default function App() {
       lastShiftResult: null,
     }));
 
-    addFeedMessage(`🚌 SHIFT STARTED: ${shift.title}! Bus is empty (0/${bus.capacity}) — drive to Mangoro / Cement (150m) → Ikeja Along (280m) → Maryland → Oshodi → CMS!`);
+    addFeedMessage(
+      isMultiplayerConvoy
+        ? `🌐 MULTIPLAYER CONVOY LIVE (Room ${mpRoomCode}): Race rival Danfos from Ikeja Along ➔ Maryland ➔ Oshodi ➔ CMS!`
+        : `🚌 SHIFT STARTED: ${shift.title}! Bus is empty (0/${bus.capacity}) — drive to Mangoro / Cement (150m) ➔ Ikeja Along (280m) ➔ Maryland ➔ Oshodi ➔ CMS!`
+    );
     soundEngine.playHorn(bus.upgrades.musicalHorn);
   };
 
-  // Finish Shift / Mission (Balanced realistic Lagos Danfo payout)
+  // Finish Shift / Mission (Fares go to Wallet Cash; can deposit to Bank at POS or Bank Hall)
   const handleFinishShift = useCallback(
     (terminalReached: boolean = true) => {
       soundEngine.stopEngine();
@@ -307,10 +372,12 @@ export default function App() {
     [updateSave]
   );
 
-  // Purchase Upgrade
+  // Purchase Upgrade (Pays from Wallet Cash)
   const handlePurchaseUpgrade = (upgradeId: keyof BusUpgrades, cost: number) => {
     if (walletNaira < cost) {
-      addFeedMessage(`⚠️ Insufficient funds! Need ₦${cost.toLocaleString()} for this upgrade.`);
+      addFeedMessage(
+        `⚠️ Insufficient Wallet Cash! Need ₦${cost.toLocaleString()} in your wallet. Withdraw cash from POS or Bank!`
+      );
       return;
     }
     setWalletNaira((w: number) => w - cost);
@@ -348,7 +415,7 @@ export default function App() {
     if (!profile) return;
 
     if (walletNaira < profile.dailyFee) {
-      addFeedMessage(`⚠️ Need ₦${profile.dailyFee.toLocaleString()} daily fee to hire ${profile.name}!`);
+      addFeedMessage(`⚠️ Need ₦${profile.dailyFee.toLocaleString()} cash in Wallet to hire ${profile.name}!`);
       return;
     }
 
@@ -392,7 +459,6 @@ export default function App() {
 
   const unreadCount = gameState.messages?.filter((m) => m.unread).length || 0;
   const activeBusPreset = BUS_PRESETS[selectedBusId] || BUS_PRESETS['RUSTIC_VAN'];
-  const activeShiftConfig = SHIFT_CONFIGS[selectedShiftId];
 
   // Drain Needs globally every 5 seconds while driving
   useEffect(() => {
@@ -424,7 +490,7 @@ export default function App() {
     return (
       <>
         <PlayerHome2D
-          gameState={{ ...gameState, walletNaira, streetCred }}
+          gameState={{ ...gameState, walletNaira, bankBalanceNaira, streetCred }}
           onUpdateWalletAndCred={(walletDelta, credDelta = 0, staminaSet) => {
             const nextWallet = Math.max(0, walletNaira + walletDelta);
             const nextCred = Math.max(0, streetCred + credDelta);
@@ -442,7 +508,7 @@ export default function App() {
           onGoToDrive={() => {
             setIsHome2DOpen(false);
             if (gameState.screen !== 'SHIFT_ACTIVE') {
-              handleStartShift();
+              handleStartShift(false);
             }
           }}
           onOpenPhone={() => setIsPhoneOpen(true)}
@@ -457,11 +523,21 @@ export default function App() {
           gameState={gameState}
           setGameState={setGameState}
           addFeedMessage={addFeedMessage}
+          onOpenPosOrBank={openPosOrBank}
           onStartShift={() => {
             setIsPhoneOpen(false);
             setIsHome2DOpen(false);
-            handleStartShift();
+            handleStartShift(false);
           }}
+        />
+        <NigerianBankAndPosModal
+          isOpen={isBankModalOpen}
+          initialMode={bankModalMode}
+          onClose={() => setIsBankModalOpen(false)}
+          walletNaira={walletNaira}
+          bankBalanceNaira={bankBalanceNaira}
+          playerName={saveData.playerName || 'Captain'}
+          onUpdateBalances={handleUpdateWalletAndBank}
         />
       </>
     );
@@ -479,112 +555,93 @@ export default function App() {
         />
       )}
 
-      {/* HEADER NAV / MOTOR PARK COMMAND BAR */}
+      {/* CLEAN 3-ZONE HEADER BAR (NO DEALERSHIP CLUTTER) */}
       <header
-        className={`h-14 border-b px-3 sm:px-5 flex items-center justify-between z-50 shrink-0 transition-colors ${
+        className={`h-16 border-b px-4 sm:px-6 flex items-center justify-between gap-4 z-50 shrink-0 transition-colors ${
           gameState.screen === 'SHIFT_ACTIVE'
             ? 'hidden'
             : 'bg-stone-900/95 border-stone-800 backdrop-blur-md shadow-xl'
         }`}
       >
-        <div className="flex items-center gap-2.5 sm:gap-3">
-          <div className="w-9 h-9 bg-amber-400 rounded-xl border-2 border-stone-950 flex items-center justify-center font-black font-['Bungee'] text-stone-950 text-lg shadow-md">
+        {/* Zone 1: Brand Wordmark */}
+        <div className="flex items-center gap-3 shrink-0">
+          <div className="w-10 h-10 bg-amber-400 rounded-xl border-2 border-stone-950 flex items-center justify-center font-black font-['Bungee'] text-stone-950 text-lg shadow-md">
             🚌
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="font-black text-sm sm:text-base tracking-wide text-amber-400 font-['Bungee'] leading-none">
-                DANFO EXPRESS 3D
-              </h1>
-              <span className="hidden md:inline-block px-2 py-0.5 rounded bg-amber-400/15 border border-amber-400/40 text-[9px] font-mono font-bold text-amber-300">
-                OSHODI MOTOR PARK HQ
-              </span>
-            </div>
-            <div className="flex items-center gap-2 mt-0.5 text-[10px] font-mono text-stone-400">
-              <span className="text-stone-200 font-bold">🧑🏾‍✈️ {saveData.playerName || 'Captain'}</span>
-              <span>•</span>
-              <span className="text-amber-300">
-                {gameTime.toLocaleDateString('en-US', { weekday: 'short' })} {activeShiftConfig.startTime}
-              </span>
+            <h1 className="font-black text-base sm:text-lg tracking-wide text-amber-400 font-['Bungee'] leading-none whitespace-nowrap">
+              DANFO EXPRESS
+            </h1>
+            <div className="text-[11px] font-mono text-stone-400 mt-0.5">
+              {saveData.playerName || 'Captain'} · {streetCred} Cred
             </div>
           </div>
         </div>
 
-        {/* Global Wallet, PWA Install, Dealership, Phone, Inventory, Map & Sound */}
-        <div className="flex items-center gap-1.5 sm:gap-2 font-mono">
+        {/* Zone 2: Clean 3-Mode Navigation (SINGLE PLAYER | MULTIPLAYER | SETTINGS) */}
+        <nav className="flex items-center gap-1.5 bg-stone-950 p-1.5 rounded-2xl border border-stone-800">
           <button
-            onClick={() => setIsHome2DOpen(true)}
-            className="px-2.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-stone-950 text-[10px] sm:text-xs font-black flex items-center gap-1 shadow-md transition-transform active:scale-95 cursor-pointer"
-            title="Go Home to Your 2D Room"
+            onClick={() => setMainMenuTab('SINGLE_PLAYER')}
+            className={`px-4 py-2 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+              mainMenuTab === 'SINGLE_PLAYER'
+                ? 'bg-amber-400 text-stone-950 font-black shadow'
+                : 'text-stone-400 hover:text-white'
+            }`}
           >
-            <Home className="w-3.5 h-3.5" />
-            <span>GO HOME</span>
+            Single Player
+          </button>
+          <button
+            onClick={() => setMainMenuTab('MULTIPLAYER')}
+            className={`px-4 py-2 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+              mainMenuTab === 'MULTIPLAYER'
+                ? 'bg-amber-400 text-stone-950 font-black shadow'
+                : 'text-stone-400 hover:text-white'
+            }`}
+          >
+            Multiplayer
+          </button>
+          <button
+            onClick={() => setMainMenuTab('SETTINGS')}
+            className={`px-4 py-2 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+              mainMenuTab === 'SETTINGS'
+                ? 'bg-amber-400 text-stone-950 font-black shadow'
+                : 'text-stone-400 hover:text-white'
+            }`}
+          >
+            Settings
+          </button>
+        </nav>
+
+        {/* Zone 3: Distinct Wallet Cash vs Bank Account Balance & Audio */}
+        <div className="flex items-center gap-2 font-mono shrink-0">
+          {/* Wallet Cash Button (Opens POS Kiosk) */}
+          <button
+            onClick={() => openPosOrBank('POS_KIOSK')}
+            className="px-3 py-1.5 rounded-xl bg-stone-950 hover:bg-stone-800 border border-emerald-500/40 text-left transition-colors cursor-pointer"
+            title="Cash in Wallet — Click to use POS Agent (Withdraw/Deposit up to ₦100,000)"
+          >
+            <span className="text-[9px] text-stone-400 block leading-none">WALLET CASH</span>
+            <span className="text-xs font-black text-emerald-400 tabular-nums">
+              ₦{walletNaira.toLocaleString()}
+            </span>
           </button>
 
+          {/* Bank Account Button (Opens Nigerian Bank Hall Queue) */}
           <button
-            onClick={() => setShowPwaModal((v) => !v)}
-            className="px-2.5 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-stone-950 text-[10px] sm:text-xs font-black flex items-center gap-1 shadow-md transition-transform active:scale-95 cursor-pointer"
-            title="Install App on Android or iPhone"
+            onClick={() => openPosOrBank('BANK_HALL')}
+            className="px-3 py-1.5 rounded-xl bg-stone-950 hover:bg-stone-800 border border-sky-500/40 text-left transition-colors cursor-pointer"
+            title="Bank Account Balance — Click to enter Nigerian Bank Hall (Withdrawals >₦100,000)"
           >
-            <Download className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">INSTALL APP</span>
+            <span className="text-[9px] text-stone-400 block leading-none">BANK ACCOUNT</span>
+            <span className="text-xs font-black text-sky-400 tabular-nums">
+              ₦{bankBalanceNaira.toLocaleString()}
+            </span>
           </button>
-
-          <button
-            onClick={() => setIsDealershipOpen(true)}
-            className="px-2.5 py-1.5 rounded-xl bg-stone-800 hover:bg-stone-700 border border-amber-400/50 text-xs font-bold text-amber-300 flex items-center gap-1.5 transition-colors shadow cursor-pointer"
-            title="Ladipo Vehicle Dealership"
-          >
-            <Car className="w-3.5 h-3.5" />
-            <span className="hidden lg:inline">DEALERSHIP</span>
-          </button>
-
-          <button
-            onClick={() => setIsPhoneOpen(true)}
-            className="relative px-2.5 py-1.5 rounded-xl bg-indigo-950/90 border border-indigo-500/50 hover:bg-indigo-900 text-xs font-bold text-indigo-300 flex items-center gap-1.5 transition-colors shadow cursor-pointer"
-            title="Open Driver Smartphone"
-          >
-            <Smartphone className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">PHONE</span>
-            {unreadCount > 0 && (
-              <span className="w-4 h-4 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center">
-                {unreadCount}
-              </span>
-            )}
-          </button>
-
-          <button
-            onClick={() => setIsInventoryOpen(true)}
-            className="px-2.5 py-1.5 rounded-xl bg-stone-800 hover:bg-stone-700 border border-stone-700 text-xs font-bold text-amber-300 flex items-center gap-1.5 transition-colors shadow cursor-pointer"
-            title="Open Driver Inventory"
-          >
-            <Package className="w-3.5 h-3.5" />
-            <span className="hidden xl:inline">BAG</span>
-          </button>
-
-          <button
-            onClick={() => setIsMapOpen(true)}
-            className="px-2.5 py-1.5 rounded-xl bg-stone-800 hover:bg-stone-700 border border-stone-700 text-xs font-bold text-sky-300 flex items-center gap-1.5 transition-colors shadow cursor-pointer"
-            title="Open Lagos City Map"
-          >
-            <MapPin className="w-3.5 h-3.5" />
-            <span className="hidden xl:inline">MAP</span>
-          </button>
-
-          <div className="flex items-center gap-1 bg-stone-950 px-2.5 py-1.5 rounded-xl border border-emerald-500/40 text-xs font-black text-emerald-400">
-            <span>₦</span>
-            <span className="tabular-nums">{walletNaira.toLocaleString()}</span>
-          </div>
-
-          <div className="hidden md:flex items-center gap-1 bg-stone-950 px-2.5 py-1.5 rounded-xl border border-amber-500/30 text-xs font-bold text-amber-400">
-            <Award className="w-3.5 h-3.5" />
-            <span className="tabular-nums">{streetCred}</span>
-          </div>
 
           <button
             onClick={toggleAudio}
-            className="p-2 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 transition-colors cursor-pointer"
-            title="Toggle Engine & Street Audio"
+            className="p-2.5 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 transition-colors cursor-pointer"
+            title="Toggle Audio"
           >
             {isMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4 text-amber-400" />}
           </button>
@@ -597,497 +654,742 @@ export default function App() {
           gameState.screen === 'SHIFT_ACTIVE' ? 'absolute inset-0 w-full h-full' : 'flex-1'
         }`}
       >
-        {/* ═══════ REDESIGNED OSHODI MOTOR PARK MAIN MENU ═══════ */}
+        {/* ════════════════════════════════════════════════════════════════ */}
+        {/* CLEAN MAIN MENU (SINGLE PLAYER | MULTIPLAYER | SETTINGS)        */}
+        {/* ════════════════════════════════════════════════════════════════ */}
         {gameState.screen === 'MENU' && (
-          <div className="flex-1 overflow-y-auto px-3 sm:px-6 py-4 max-w-6xl mx-auto w-full space-y-4">
-            {/* 1. Prominent PWA Install Banner (Android + iPhone/iOS Share -> Add to Home Screen) */}
+          <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-5 max-w-6xl mx-auto w-full space-y-5">
+            {/* PWA Install Banner (Only shown when user requests or on mobile) */}
             <PwaInstallBanner forceShow={showPwaModal} onClose={() => setShowPwaModal(false)} />
 
-            {/* 2. Motor Park Navigation Tabs */}
-            <div className="flex flex-wrap items-center justify-between gap-2 bg-stone-900/90 p-1.5 rounded-2xl border border-stone-800">
-              <div className="flex flex-wrap gap-1.5">
-                <button
-                  onClick={() => setMenuTab('CAREER_SHIFT')}
-                  className={`px-3.5 py-2 rounded-xl font-bold text-xs font-mono transition-all flex items-center gap-2 cursor-pointer ${
-                    menuTab === 'CAREER_SHIFT'
-                      ? 'bg-amber-400 text-stone-950 shadow-md font-black'
-                      : 'bg-stone-950/60 text-stone-300 hover:text-white'
-                  }`}
-                >
-                  <Navigation className="w-3.5 h-3.5" />
-                  <span>OSHODI PARK DISPATCH</span>
-                </button>
+            {/* ──────────────────────────────────────────────────────────── */}
+            {/* 1. SINGLE PLAYER VIEW                                        */}
+            {/* ──────────────────────────────────────────────────────────── */}
+            {mainMenuTab === 'SINGLE_PLAYER' && (
+              <div className="space-y-5">
+                {/* Clean Sub-Navigation Strip for Single Player */}
+                <div className="flex flex-wrap items-center justify-between gap-3 bg-stone-900/90 p-2 rounded-2xl border border-stone-800">
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => setSinglePlayerSubView('SHIFT_DISPATCH')}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer whitespace-nowrap ${
+                        singlePlayerSubView === 'SHIFT_DISPATCH'
+                          ? 'bg-amber-400 text-stone-950 font-black'
+                          : 'text-stone-300 hover:text-white'
+                      }`}
+                    >
+                      Highway Shift
+                    </button>
+                    <button
+                      onClick={() => setSinglePlayerSubView('MISSIONS')}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer whitespace-nowrap ${
+                        singlePlayerSubView === 'MISSIONS'
+                          ? 'bg-amber-400 text-stone-950 font-black'
+                          : 'text-stone-300 hover:text-white'
+                      }`}
+                    >
+                      Driving Missions
+                    </button>
+                    <button
+                      onClick={() => setSinglePlayerSubView('GARAGE')}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer whitespace-nowrap ${
+                        singlePlayerSubView === 'GARAGE'
+                          ? 'bg-amber-400 text-stone-950 font-black'
+                          : 'text-stone-300 hover:text-white'
+                      }`}
+                    >
+                      Upgrades &amp; Conductor
+                    </button>
+                  </div>
 
-                <button
-                  onClick={() => setMenuTab('MISSIONS')}
-                  className={`px-3.5 py-2 rounded-xl font-bold text-xs font-mono transition-all flex items-center gap-2 cursor-pointer ${
-                    menuTab === 'MISSIONS'
-                      ? 'bg-amber-400 text-stone-950 shadow-md font-black'
-                      : 'bg-stone-950/60 text-stone-300 hover:text-white'
-                  }`}
-                >
-                  <Trophy className="w-3.5 h-3.5" />
-                  <span>DRIVING MISSIONS</span>
-                </button>
+                  {/* Quick Life & Banking Actions */}
+                  <div className="flex flex-wrap items-center gap-2 font-mono">
+                    <button
+                      onClick={() => openPosOrBank('POS_KIOSK')}
+                      className="px-3 py-1.5 rounded-xl bg-stone-950 hover:bg-stone-800 border border-sky-400/50 text-sky-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                    >
+                      <CreditCard className="w-3.5 h-3.5" />
+                      <span>POS Agent (≤₦100k)</span>
+                    </button>
+                    <button
+                      onClick={() => openPosOrBank('BANK_HALL')}
+                      className="px-3 py-1.5 rounded-xl bg-stone-950 hover:bg-stone-800 border border-rose-400/50 text-rose-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                    >
+                      <Building2 className="w-3.5 h-3.5" />
+                      <span>Bank Hall (&gt;₦100k)</span>
+                    </button>
+                    <button
+                      onClick={() => setIsHome2DOpen(true)}
+                      className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-stone-950 text-xs font-black flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                    >
+                      <Home className="w-3.5 h-3.5" />
+                      <span>Go Home (2D)</span>
+                    </button>
+                    <button
+                      onClick={() => setIsPhoneOpen(true)}
+                      className="relative px-3 py-1.5 rounded-xl bg-stone-950 hover:bg-stone-800 border border-stone-700 text-stone-200 text-xs font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                    >
+                      <Smartphone className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Phone</span>
+                      {unreadCount > 0 && (
+                        <span className="text-rose-400 font-black">({unreadCount})</span>
+                      )}
+                    </button>
+                  </div>
+                </div>
 
-                <button
-                  onClick={() => setMenuTab('GARAGE_WORKSHOP')}
-                  className={`px-3.5 py-2 rounded-xl font-bold text-xs font-mono transition-all flex items-center gap-2 cursor-pointer ${
-                    menuTab === 'GARAGE_WORKSHOP'
-                      ? 'bg-amber-400 text-stone-950 shadow-md font-black'
-                      : 'bg-stone-950/60 text-stone-300 hover:text-white'
-                  }`}
-                >
-                  <Wrench className="w-3.5 h-3.5" />
-                  <span>GARAGE & CONDUCTORS</span>
-                </button>
+                {/* SUBVIEW A: HIGHWAY SHIFT DISPATCH */}
+                {singlePlayerSubView === 'SHIFT_DISPATCH' && (
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                    {/* Left 7 Cols: Active Bus & Shift Launch */}
+                    <div className="lg:col-span-7 space-y-4">
+                      <div className="bg-stone-900 border border-stone-800 rounded-3xl p-5 space-y-5">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <div className="text-xs font-mono text-amber-400 font-bold">
+                              Oshodi Motor Park · Bay #01 · 20 Real Lagos Bus Stops
+                            </div>
+                            <h2 className="text-2xl font-black font-['Bungee'] text-white mt-1">
+                              {activeBusPreset.name}
+                            </h2>
+                            <p className="text-xs text-stone-400 mt-0.5">
+                              {activeBusPreset.capacity} Seats · {activeBusPreset.maxSpeed} km/h Max Speed · Conductor:{' '}
+                              <span className="text-emerald-400 font-semibold">
+                                {gameState.conductor.hasConductor ? gameState.conductor.name : 'Solo Driver'}
+                              </span>
+                            </p>
+                          </div>
 
-                <button
-                  onClick={() => setMenuTab('HOUSING')}
-                  className={`px-3.5 py-2 rounded-xl font-bold text-xs font-mono transition-all flex items-center gap-2 cursor-pointer ${
-                    menuTab === 'HOUSING'
-                      ? 'bg-amber-400 text-stone-950 shadow-md font-black'
-                      : 'bg-stone-950/60 text-stone-300 hover:text-white'
-                  }`}
-                >
-                  <Home className="w-3.5 h-3.5" />
-                  <span>MUSHIN COMPOUND & SAVINGS</span>
-                </button>
-              </div>
-
-              <div className="hidden lg:flex items-center gap-2 pr-2 text-[11px] font-mono text-stone-400">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span>20 Real Bus Stops (with UIDs) • Inbound & Opposite-Side Routes</span>
-              </div>
-            </div>
-
-            {/* ═══════ TAB 1: OSHODI PARK DISPATCH (CAREER SHIFT) ═══════ */}
-            {menuTab === 'CAREER_SHIFT' && (
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-                {/* LEFT COLUMN (7 cols): Active Bus Bay, Shift Selector & Launch CTA */}
-                <div className="lg:col-span-7 space-y-4">
-                  {/* Active Danfo Vehicle & Slogan Card */}
-                  <div className="bg-stone-900 border-2 border-amber-400/70 rounded-3xl p-4 sm:p-5 shadow-2xl space-y-4 relative overflow-hidden">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-400/15 border border-amber-400/40 text-[10px] font-mono font-black text-amber-300 uppercase">
-                          <span>🚌 PARKED AT OSHODI BAY #1</span>
-                        </div>
-                        <h2 className="text-xl sm:text-2xl font-black font-['Bungee'] text-white mt-1">
-                          {activeBusPreset.name}
-                        </h2>
-                        <p className="text-xs font-mono text-emerald-400 font-bold">
-                          🪑 Starting Load: 0 / {activeBusPreset.capacity} Passengers (Load at Stop #1: Mangoro / Ikeja!)
-                        </p>
-                      </div>
-
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => setIsDealershipOpen(true)}
-                          className="px-3 py-1.5 rounded-xl bg-stone-800 hover:bg-stone-700 border border-amber-400/50 text-amber-300 font-mono font-bold text-xs flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <Car className="w-3.5 h-3.5" />
-                          <span>CHANGE BUS</span>
-                        </button>
-                        <button
-                          onClick={() => setIsConductorModalOpen(true)}
-                          className="px-3 py-1.5 rounded-xl bg-stone-800 hover:bg-stone-700 border border-emerald-400/50 text-emerald-300 font-mono font-bold text-xs flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <Users className="w-3.5 h-3.5" />
-                          <span>{gameState.conductor.hasConductor ? gameState.conductor.name.split(' ')[0] : 'SOLO'}</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Vehicle Specs Bar */}
-                    <div className="grid grid-cols-3 gap-2.5 bg-stone-950 p-3 rounded-2xl border border-stone-800 font-mono text-xs">
-                      <div>
-                        <span className="text-[10px] text-stone-400 block">MAX SPEED</span>
-                        <span className="font-black text-amber-400">{activeBusPreset.maxSpeed} KM/H</span>
-                      </div>
-                      <div className="border-x border-stone-800 px-2">
-                        <span className="text-[10px] text-stone-400 block">SEAT CAPACITY</span>
-                        <span className="font-black text-white">{activeBusPreset.capacity} SEATS</span>
-                      </div>
-                      <div>
-                        <span className="text-[10px] text-stone-400 block">CONDUCTOR</span>
-                        <span className="font-black text-emerald-400 truncate block">
-                          {gameState.conductor.hasConductor ? gameState.conductor.name : 'Solo Driver'}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Rear Window Slogan Selector */}
-                    <div className="space-y-1.5">
-                      <div className="flex items-center justify-between text-[11px] font-mono">
-                        <span className="text-stone-400 font-bold uppercase">CUSTOM DANFO SLOGAN STICKER:</span>
-                        <span className="text-amber-400 font-black">"{selectedSlogan}"</span>
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {SLOGANS.map((slogan) => (
                           <button
-                            key={slogan}
-                            onClick={() => setSelectedSlogan(slogan)}
-                            className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold border transition-all cursor-pointer ${
-                              selectedSlogan === slogan
-                                ? 'bg-amber-400 text-stone-950 border-amber-200 font-black'
-                                : 'bg-stone-950 text-stone-400 border-stone-800 hover:border-stone-600 hover:text-white'
-                            }`}
+                            onClick={() => setIsConductorModalOpen(true)}
+                            className="px-3.5 py-2 rounded-xl bg-stone-950 hover:bg-stone-800 border border-stone-700 text-emerald-300 font-mono font-bold text-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
                           >
-                            {slogan}
+                            <Users className="w-3.5 h-3.5" />
+                            <span>Change Conductor</span>
                           </button>
-                        ))}
+                        </div>
+
+                        {/* Shift Schedule Selector */}
+                        <div className="space-y-2">
+                          <div className="text-xs font-mono text-stone-400 font-semibold">
+                            Select Shift Schedule (Ikeja ➔ Maryland ➔ Oshodi ➔ Yaba ➔ CMS)
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                            {(Object.keys(SHIFT_CONFIGS) as ShiftTimeOfDay[]).map((sKey) => {
+                              const cfg = SHIFT_CONFIGS[sKey];
+                              const isSelected = selectedShiftId === sKey;
+                              return (
+                                <button
+                                  key={sKey}
+                                  onClick={() => setSelectedShiftId(sKey)}
+                                  className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                                    isSelected
+                                      ? 'bg-amber-400/15 border-amber-400 text-white'
+                                      : 'bg-stone-950 border-stone-800 text-stone-400 hover:border-stone-700'
+                                  }`}
+                                >
+                                  <div>
+                                    <div className="flex items-center justify-between text-[10px] font-mono font-bold text-amber-400">
+                                      <span>{cfg.startTime}</span>
+                                      {cfg.floodRisk && <span className="text-sky-400">Rain</span>}
+                                    </div>
+                                    <div className="font-bold text-xs text-white mt-1">{cfg.title}</div>
+                                    <p className="text-[11px] text-stone-400 mt-1 line-clamp-2">{cfg.subtitle}</p>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Slogan Sticker Picker */}
+                        <div className="space-y-1.5">
+                          <div className="text-xs font-mono text-stone-400">
+                            Rear Window Slogan: <strong className="text-amber-400">"{selectedSlogan}"</strong>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {SLOGANS.map((slogan) => (
+                              <button
+                                key={slogan}
+                                onClick={() => setSelectedSlogan(slogan)}
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold border transition-all cursor-pointer ${
+                                  selectedSlogan === slogan
+                                    ? 'bg-amber-400 text-stone-950 border-amber-200 font-black'
+                                    : 'bg-stone-950 text-stone-400 border-stone-800 hover:text-white'
+                                }`}
+                              >
+                                {slogan}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Primary Launch CTA */}
+                        <button
+                          onClick={() => handleStartShift(false)}
+                          className="w-full py-4 px-6 bg-amber-400 hover:bg-amber-300 active:scale-[0.99] text-stone-950 font-black font-['Bungee'] text-base sm:text-lg rounded-2xl shadow-lg flex items-center justify-center gap-3 transition-all cursor-pointer"
+                        >
+                          <span>START ENGINE &amp; DRIVE</span>
+                          <ArrowRight className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Right 5 Cols: Wallet vs Bank & POS / Bank Branch Access */}
+                    <div className="lg:col-span-5 space-y-4">
+                      {/* Wallet vs Bank Card */}
+                      <div className="bg-stone-900 border border-stone-800 rounded-3xl p-5 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h3 className="text-sm font-black font-['Bungee'] text-amber-400">
+                              WALLET CASH &amp; BANKING
+                            </h3>
+                            <p className="text-xs text-stone-400 mt-0.5">
+                              POS limit is ₦100,000 · Visit the Bank Teller for &gt;₦100,000
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => soundEngine.playBankQueueChime('B-044', 2, true)}
+                            className="p-2 rounded-xl bg-stone-950 hover:bg-stone-800 border border-stone-800 text-amber-400 cursor-pointer"
+                            title="Hear Nigerian Bank Queue Sound"
+                          >
+                            <Volume2 className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 font-mono">
+                          <div className="p-3.5 rounded-2xl bg-stone-950 border border-stone-800">
+                            <span className="text-[10px] text-stone-400 block">WALLET (CASH)</span>
+                            <span className="text-base font-black text-emerald-400 tabular-nums mt-0.5 block">
+                              ₦{walletNaira.toLocaleString()}
+                            </span>
+                            <span className="text-[10px] text-stone-500">Pocket cash on hand</span>
+                          </div>
+
+                          <div className="p-3.5 rounded-2xl bg-stone-950 border border-stone-800">
+                            <span className="text-[10px] text-stone-400 block">EKO ZENITH BANK</span>
+                            <span className="text-base font-black text-sky-400 tabular-nums mt-0.5 block">
+                              ₦{bankBalanceNaira.toLocaleString()}
+                            </span>
+                            <span className="text-[10px] text-stone-500">Savings account</span>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          <button
+                            onClick={() => openPosOrBank('POS_KIOSK')}
+                            className="py-3 px-3.5 rounded-2xl bg-stone-950 hover:bg-stone-800 border border-sky-400/50 text-sky-300 font-mono text-xs font-bold flex items-center justify-center gap-2 cursor-pointer"
+                          >
+                            <CreditCard className="w-4 h-4" />
+                            <span>POS Agent (Max ₦100k)</span>
+                          </button>
+
+                          <button
+                            onClick={() => openPosOrBank('BANK_HALL')}
+                            className="py-3 px-3.5 rounded-2xl bg-rose-500 hover:bg-rose-400 text-white font-mono text-xs font-black flex items-center justify-center gap-2 shadow cursor-pointer"
+                          >
+                            <Building2 className="w-4 h-4" />
+                            <span>Enter Bank (&gt;₦100k)</span>
+                          </button>
+                        </div>
+
+                        {/* Traditional Kolo & Ajo Savings */}
+                        <div className="pt-2 border-t border-stone-800 grid grid-cols-2 gap-2">
+                          <button
+                            onClick={() => setIsKoloOpen(true)}
+                            className="py-2 px-3 rounded-xl bg-stone-950 hover:bg-stone-800 border border-stone-800 text-amber-300 font-mono text-xs font-bold cursor-pointer tabular-nums"
+                          >
+                            🏺 Kolo: ₦{saveData.koloBalanceNaira.toLocaleString()}
+                          </button>
+                          <button
+                            onClick={() => setIsAjoOpen(true)}
+                            className="py-2 px-3 rounded-xl bg-stone-950 hover:bg-stone-800 border border-stone-800 text-purple-300 font-mono text-xs font-bold cursor-pointer tabular-nums"
+                          >
+                            🤝🏾 Ajo: ₦{saveData.ajoContributionsNaira.toLocaleString()}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Route Overview Card */}
+                      <div className="bg-stone-900 border border-stone-800 rounded-3xl p-4 flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-xs font-bold text-white">
+                            20 Real-World Lagos Bus Stops (with UIDs)
+                          </div>
+                          <div className="text-[11px] text-stone-400">
+                            Mangoro ➔ Ikeja ➔ Maryland ➔ Oshodi BRT ➔ Yaba ➔ CMS
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => setIsMapOpen(true)}
+                          className="px-3 py-2 rounded-xl bg-stone-950 hover:bg-stone-800 border border-stone-700 text-sky-300 font-mono text-xs font-bold cursor-pointer whitespace-nowrap shrink-0"
+                        >
+                          View Route Map
+                        </button>
                       </div>
                     </div>
                   </div>
+                )}
 
-                  {/* Shift Time of Day Selector */}
-                  <div className="bg-stone-900 border border-stone-800 rounded-3xl p-4 sm:p-5 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-mono font-black text-amber-400 uppercase tracking-wider">
-                        SELECT LAGOS SHIFT SCHEDULE
-                      </span>
-                      <span className="text-[11px] font-mono text-stone-400">
-                        Balanced Fares: ₦150 – ₦350 per stop
-                      </span>
+                {/* SUBVIEW B: DRIVING MISSIONS */}
+                {singlePlayerSubView === 'MISSIONS' && (
+                  <div className="bg-stone-900 border border-stone-800 rounded-3xl p-5">
+                    <MissionSelector
+                      selectedMissionId={selectedMissionId}
+                      onSelectMission={(m) => setSelectedMissionId(m.id)}
+                      onStartMission={handleStartMission}
+                    />
+                  </div>
+                )}
+
+                {/* SUBVIEW C: GARAGE UPGRADES & CONDUCTORS */}
+                {singlePlayerSubView === 'GARAGE' && (
+                  <div className="space-y-5">
+                    <div className="p-5 bg-stone-900 border border-stone-800 rounded-3xl space-y-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <h3 className="font-bold text-base text-amber-400">
+                            Hire Your Lagos Conductor (Agbero)
+                          </h3>
+                          <p className="text-xs text-stone-400">
+                            Calls out destinations at bus stops and collects passenger fares automatically.
+                          </p>
+                        </div>
+                        <div className="font-mono text-xs text-stone-300 bg-stone-950 px-3 py-1.5 rounded-xl border border-stone-800">
+                          Active:{' '}
+                          <strong className="text-amber-400">
+                            {gameState.conductor.hasConductor ? gameState.conductor.name : 'Solo Driver'}
+                          </strong>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        {CONDUCTOR_ROSTER.map((c) => {
+                          const isCurrent = gameState.conductor.hasConductor && gameState.conductor.id === c.id;
+                          return (
+                            <div
+                              key={c.id}
+                              className={`p-4 rounded-2xl border flex flex-col justify-between ${
+                                isCurrent
+                                  ? 'bg-amber-400/15 border-amber-400'
+                                  : 'bg-stone-950 border-stone-800'
+                              }`}
+                            >
+                              <div>
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="font-bold text-sm text-amber-400">{c.name}</span>
+                                  <span className="text-xs font-mono font-bold text-emerald-400 tabular-nums">
+                                    ₦{c.dailyFee.toLocaleString()}/day
+                                  </span>
+                                </div>
+                                <div className="text-xs text-stone-300 mb-2">"{c.nickname}"</div>
+                                <p className="text-xs text-stone-400 mb-3">{c.description}</p>
+                              </div>
+                              <button
+                                onClick={() => handleHireConductor(c.id)}
+                                className={`w-full py-2 rounded-xl font-bold text-xs transition-colors cursor-pointer ${
+                                  isCurrent
+                                    ? 'bg-emerald-500 text-stone-950 font-black'
+                                    : 'bg-stone-800 hover:bg-amber-400 hover:text-stone-950 text-stone-200'
+                                }`}
+                              >
+                                {isCurrent ? 'On Duty' : `Hire (₦${c.dailyFee.toLocaleString()})`}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                      {(Object.keys(SHIFT_CONFIGS) as ShiftTimeOfDay[]).map((sKey) => {
-                        const cfg = SHIFT_CONFIGS[sKey];
-                        const isSelected = selectedShiftId === sKey;
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {UPGRADE_CATALOG.map((item) => {
+                        const isOwned = gameState.bus.upgrades[item.id];
+                        const canAfford = walletNaira >= item.costNaira;
                         return (
-                          <button
-                            key={sKey}
-                            onClick={() => setSelectedShiftId(sKey)}
-                            className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
-                              isSelected
-                                ? 'bg-amber-400/15 border-amber-400 ring-1 ring-amber-400 text-white shadow-lg'
-                                : 'bg-stone-950 border-stone-800 text-stone-400 hover:border-stone-700'
+                          <div
+                            key={item.id}
+                            className={`p-4 rounded-2xl border flex flex-col justify-between ${
+                              isOwned ? 'bg-emerald-950/20 border-emerald-500/50' : 'bg-stone-900 border-stone-800'
                             }`}
                           >
                             <div>
-                              <div className="flex items-center justify-between text-[10px] font-mono font-bold text-amber-400">
-                                <span>{cfg.startTime}</span>
-                                {cfg.floodRisk && <span className="text-sky-400">🌧️ RAIN</span>}
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="font-bold text-sm text-amber-400">
+                                  {item.icon} {item.name}
+                                </span>
+                                <span className="font-mono text-xs font-bold tabular-nums">
+                                  {isOwned ? (
+                                    <span className="text-emerald-400">Installed</span>
+                                  ) : (
+                                    `₦${item.costNaira.toLocaleString()}`
+                                  )}
+                                </span>
                               </div>
-                              <div className="font-black text-xs text-white mt-0.5">{cfg.title}</div>
-                              <p className="text-[10px] text-stone-400 mt-1 line-clamp-2">{cfg.subtitle}</p>
+                              <p className="text-xs text-stone-300 mb-2">{item.description}</p>
+                              <div className="text-xs font-semibold text-emerald-400">✓ {item.benefit}</div>
                             </div>
-                            <div className="mt-2 pt-1.5 border-t border-stone-800/80 flex items-center justify-between text-[10px] font-mono">
-                              <span className="text-emerald-400 font-bold">20 Real Stops</span>
-                              <span className="text-stone-300">3.8 km</span>
+                            <div className="mt-4 pt-2 border-t border-stone-800 flex justify-end">
+                              {isOwned ? (
+                                <span className="text-xs font-bold text-emerald-400 flex items-center gap-1">
+                                  <Check className="w-4 h-4" /> Mounted on 3D Bus
+                                </span>
+                              ) : (
+                                <button
+                                  onClick={() => handlePurchaseUpgrade(item.id, item.costNaira)}
+                                  disabled={!canAfford}
+                                  className={`px-4 py-2 font-bold text-xs rounded-xl cursor-pointer ${
+                                    canAfford
+                                      ? 'bg-amber-400 hover:bg-amber-300 text-stone-950 font-black'
+                                      : 'bg-stone-800 text-stone-500 cursor-not-allowed'
+                                  }`}
+                                >
+                                  Buy &amp; Install (₦{item.costNaira.toLocaleString()})
+                                </button>
+                              )}
                             </div>
-                          </button>
+                          </div>
                         );
                       })}
                     </div>
+                  </div>
+                )}
+              </div>
+            )}
 
-                    {/* Launch 3D Simulator CTA Button */}
+            {/* ──────────────────────────────────────────────────────────── */}
+            {/* 2. MULTIPLAYER VIEW (LAGOS CONVOY & HIGHWAY TURF LOBBY)      */}
+            {/* ──────────────────────────────────────────────────────────── */}
+            {mainMenuTab === 'MULTIPLAYER' && (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                {/* Left 7 Cols: Multiplayer Mode & Active Lagos Rooms */}
+                <div className="lg:col-span-7 space-y-4">
+                  <div className="bg-stone-900 border border-stone-800 rounded-3xl p-5 space-y-5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <h2 className="text-xl font-black font-['Bungee'] text-amber-400">
+                          LAGOS MULTIPLAYER CONVOY LOBBY
+                        </h2>
+                        <p className="text-xs text-stone-400 mt-0.5">
+                          Compete with rival Danfo drivers for commuters along Ikeja ➔ Oshodi ➔ CMS
+                        </p>
+                      </div>
+                      <div className="font-mono text-xs bg-stone-950 border border-stone-800 px-3 py-1.5 rounded-xl text-emerald-400 font-bold">
+                        Room Code: {mpRoomCode}
+                      </div>
+                    </div>
+
+                    {/* Multiplayer Game Mode Selector */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      {[
+                        {
+                          id: 'EXPRESS_RACE' as const,
+                          title: 'Oshodi–CMS Sprint',
+                          desc: '4 Danfos race from Ikeja Along to CMS Marina.',
+                        },
+                        {
+                          id: 'TURF_WAR' as const,
+                          title: 'Passenger Turf War',
+                          desc: 'Poach waiting commuters at 20 bus stops before rivals.',
+                        },
+                        {
+                          id: 'CONVOY_CRUISE' as const,
+                          title: 'Lagos Convoy Cruise',
+                          desc: 'Open highway convoy with side-street shortcuts.',
+                        },
+                      ].map((m) => (
+                        <button
+                          key={m.id}
+                          onClick={() => setMpMode(m.id)}
+                          className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
+                            mpMode === m.id
+                              ? 'bg-amber-400/15 border-amber-400 text-white'
+                              : 'bg-stone-950 border-stone-800 text-stone-400 hover:border-stone-700'
+                          }`}
+                        >
+                          <div className="font-bold text-xs text-amber-400">{m.title}</div>
+                          <p className="text-[11px] text-stone-300 mt-1">{m.desc}</p>
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Active Lagos Highway Lobbies */}
+                    <div className="space-y-2">
+                      <div className="text-xs font-mono text-stone-400 font-semibold">
+                        Select Active Lagos Server Room
+                      </div>
+                      {[
+                        {
+                          id: 'lobby-oshodi-1',
+                          name: 'Oshodi Underbridge Express #01',
+                          route: 'Ikeja Along ➔ Maryland ➔ Oshodi ➔ CMS',
+                          players: '3 / 4 Drivers',
+                          code: 'EKO-409',
+                        },
+                        {
+                          id: 'lobby-yaba-2',
+                          name: 'Yaba / Ojuelegba Rush Hour #02',
+                          route: 'Palmgrove ➔ Jibowu ➔ Yaba ➔ Costain',
+                          players: '2 / 4 Drivers',
+                          code: 'YBA-218',
+                        },
+                        {
+                          id: 'lobby-island-3',
+                          name: 'CMS Marina Night Convoy #03',
+                          route: 'Obanikoro ➔ Stadium ➔ CMS Terminal',
+                          players: '4 / 4 Drivers',
+                          code: 'CMS-884',
+                        },
+                      ].map((room) => (
+                        <button
+                          key={room.id}
+                          onClick={() => {
+                            setSelectedLobbyId(room.id);
+                            setMpRoomCode(room.code);
+                            soundEngine.playHorn(false);
+                          }}
+                          className={`w-full p-3.5 rounded-2xl border text-left flex items-center justify-between transition-all cursor-pointer ${
+                            selectedLobbyId === room.id
+                              ? 'bg-stone-950 border-amber-400 text-white'
+                              : 'bg-stone-950/60 border-stone-800 text-stone-400 hover:border-stone-700'
+                          }`}
+                        >
+                          <div>
+                            <div className="font-bold text-xs text-white">{room.name}</div>
+                            <div className="text-[11px] font-mono text-stone-400 mt-0.5">{room.route}</div>
+                          </div>
+                          <div className="text-right font-mono">
+                            <div className="text-xs font-bold text-emerald-400">{room.players}</div>
+                            <div className="text-[10px] text-stone-500">{room.code}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Launch Multiplayer Convoy Run */}
                     <button
-                      onClick={handleStartShift}
-                      className="w-full py-4 px-6 bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-400 hover:from-amber-300 hover:to-yellow-200 active:scale-[0.99] text-stone-950 font-black font-['Bungee'] text-base sm:text-lg rounded-2xl shadow-[0_10px_30px_rgba(250,204,21,0.3)] border-2 border-stone-950 flex items-center justify-center gap-3 transition-all cursor-pointer"
+                      onClick={() => handleStartShift(true)}
+                      className="w-full py-4 px-6 bg-amber-400 hover:bg-amber-300 text-stone-950 font-black font-['Bungee'] text-base rounded-2xl shadow-lg flex items-center justify-center gap-3 cursor-pointer"
                     >
-                      <span>🚌 START ENGINE & DRIVE OUT OF PARK</span>
+                      <Globe className="w-5 h-5" />
+                      <span>JOIN ROOM ({mpRoomCode}) &amp; LAUNCH CONVOY</span>
                       <ArrowRight className="w-5 h-5" />
                     </button>
                   </div>
                 </div>
 
-                {/* RIGHT COLUMN (5 cols): 20-Bus-Stop Route Corridor, Intersections & Locked 3rd Mainland Bridge */}
+                {/* Right 5 Cols: Motor Park Radio & Quick Pidgin Callouts */}
                 <div className="lg:col-span-5 space-y-4">
-                  <div className="bg-stone-900 border border-stone-800 rounded-3xl p-4 sm:p-5 space-y-3">
+                  <div className="bg-stone-900 border border-stone-800 rounded-3xl p-5 flex flex-col justify-between space-y-4 h-full">
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-black font-['Bungee'] text-amber-400 flex items-center gap-2">
+                          <Radio className="w-4 h-4 text-emerald-400" />
+                          <span>PARK CB RADIO CHAT</span>
+                        </h3>
+                        <span className="text-[11px] font-mono text-stone-400">Channel 19 · Lagos Mainland</span>
+                      </div>
+
+                      <div className="bg-stone-950 border border-stone-800 rounded-2xl p-3.5 space-y-2.5 max-h-[240px] overflow-y-auto font-mono text-xs">
+                        {mpChatLog.map((entry, idx) => (
+                          <div key={idx} className="border-b border-stone-900 pb-2 last:border-none last:pb-0">
+                            <div className="flex justify-between text-[10px] text-stone-500">
+                              <span className="font-bold text-amber-400">{entry.sender}</span>
+                              <span>{entry.time}</span>
+                            </div>
+                            <div className="text-stone-200 mt-0.5">{entry.text}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="text-[11px] font-mono text-stone-400">Send Quick Pidgin Radio Callout:</div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {[
+                          'No dulling! Clear road o!',
+                          'Oshodi straight, follow my back!',
+                          'LASTMA dey Maryland Underbridge!',
+                          'My Danfo full ground, see you at CMS!',
+                        ].map((msg) => (
+                          <button
+                            key={msg}
+                            onClick={() => {
+                              soundEngine.playDoorSlap();
+                              setMpChatLog((prev) => [
+                                ...prev,
+                                {
+                                  sender: saveData.playerName || 'Captain',
+                                  text: msg,
+                                  time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                                },
+                              ]);
+                            }}
+                            className="p-2 rounded-xl bg-stone-950 hover:bg-stone-800 border border-stone-800 text-[11px] font-mono text-stone-300 hover:text-amber-300 text-left transition-colors cursor-pointer"
+                          >
+                            "{msg}"
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ──────────────────────────────────────────────────────────── */}
+            {/* 3. SETTINGS VIEW (AUDIO, NIGERIAN BANK SOUNDS, PWA, SAVE)   */}
+            {/* ──────────────────────────────────────────────────────────── */}
+            {mainMenuTab === 'SETTINGS' && (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                {/* Left 6 Cols: Audio & Nigerian Bank Soundboard */}
+                <div className="lg:col-span-6 space-y-4">
+                  <div className="bg-stone-900 border border-stone-800 rounded-3xl p-5 space-y-4">
                     <div className="flex items-center justify-between">
                       <div>
-                        <h3 className="text-sm font-black font-['Bungee'] text-amber-400">
-                          LAGOS CORRIDOR ROUTE (20 STOPS)
-                        </h3>
-                        <p className="text-[11px] text-stone-400">
-                          Real geographic sequence (Ikeja ➔ Maryland ➔ Oshodi ➔ Yaba ➔ CMS)
+                        <h2 className="text-lg font-black font-['Bungee'] text-amber-400">
+                          AUDIO &amp; NIGERIAN BANK SOUNDS
+                        </h2>
+                        <p className="text-xs text-stone-400">
+                          Configure game sound effects and preview the Nigerian Banking Hall audio synthesizer
                         </p>
                       </div>
                       <button
-                        onClick={() => setIsMapOpen(true)}
-                        className="px-2.5 py-1 rounded-lg bg-stone-800 hover:bg-stone-700 text-sky-300 font-mono text-[10px] font-bold border border-stone-700 cursor-pointer"
+                        onClick={toggleAudio}
+                        className={`px-4 py-2 rounded-xl font-mono text-xs font-black cursor-pointer ${
+                          isMuted
+                            ? 'bg-rose-500 text-white'
+                            : 'bg-emerald-500 text-stone-950'
+                        }`}
                       >
-                        🗺️ FULL MAP
+                        {isMuted ? 'Audio Muted' : 'Audio Active'}
                       </button>
                     </div>
 
-                    {/*Locked 3rd Mainland Bridge Special Alert Card */}
-                    <div className="p-3 rounded-2xl bg-rose-950/40 border-2 border-rose-500/60 flex items-center justify-between gap-2.5">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-9 h-9 rounded-xl bg-rose-500/20 border border-rose-400 flex items-center justify-center text-lg shrink-0">
-                          🚧
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-xs font-black font-mono text-rose-300">
-                              🌉 3RD MAINLAND BRIDGE RAMP (600m)
-                            </span>
-                            <span className="px-1.5 py-0.5 rounded bg-rose-500 text-white text-[8px] font-mono font-black flex items-center gap-0.5">
-                              <Lock className="w-2.5 h-2.5" /> LOCKED
-                            </span>
-                          </div>
-                          <p className="text-[10px] text-stone-300">
-                            Federal Works roadblock active at 600m & 2,020m. Stay on Mainland Express!
-                          </p>
-                        </div>
+                    <div className="space-y-2 pt-2 border-t border-stone-800">
+                      <div className="text-xs font-mono text-stone-400 font-semibold">
+                        Preview Nigerian Bank &amp; Street Sound Effects:
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <button
+                          onClick={() => soundEngine.playBankQueueChime('B-044', 2, true)}
+                          className="p-3 rounded-2xl bg-stone-950 hover:bg-stone-800 border border-stone-800 text-left font-mono text-xs text-amber-300 flex items-center justify-between cursor-pointer"
+                        >
+                          <span>🔔 Bank Hall Queue Call</span>
+                          <Volume2 className="w-4 h-4 shrink-0" />
+                        </button>
+
+                        <button
+                          onClick={() => soundEngine.playBankCashCounter()}
+                          className="p-3 rounded-2xl bg-stone-950 hover:bg-stone-800 border border-stone-800 text-left font-mono text-xs text-emerald-300 flex items-center justify-between cursor-pointer"
+                        >
+                          <span>💵 Naira Counting Machine</span>
+                          <Volume2 className="w-4 h-4 shrink-0" />
+                        </button>
+
+                        <button
+                          onClick={() => soundEngine.playBankDoorMantrap()}
+                          className="p-3 rounded-2xl bg-stone-950 hover:bg-stone-800 border border-stone-800 text-left font-mono text-xs text-sky-300 flex items-center justify-between cursor-pointer"
+                        >
+                          <span>🚪 Security Mantrap Door</span>
+                          <Volume2 className="w-4 h-4 shrink-0" />
+                        </button>
+
+                        <button
+                          onClick={() => soundEngine.playBankTellerStamp()}
+                          className="p-3 rounded-2xl bg-stone-950 hover:bg-stone-800 border border-stone-800 text-left font-mono text-xs text-rose-300 flex items-center justify-between cursor-pointer"
+                        >
+                          <span>💮 Bank Teller Rubber Stamp</span>
+                          <Volume2 className="w-4 h-4 shrink-0" />
+                        </button>
+
+                        <button
+                          onClick={() => soundEngine.playPosBeep(true)}
+                          className="p-3 rounded-2xl bg-stone-950 hover:bg-stone-800 border border-stone-800 text-left font-mono text-xs text-stone-200 flex items-center justify-between cursor-pointer"
+                        >
+                          <span>💳 POS Terminal Approval</span>
+                          <Volume2 className="w-4 h-4 shrink-0" />
+                        </button>
+
+                        <button
+                          onClick={() => soundEngine.playHorn(false)}
+                          className="p-3 rounded-2xl bg-stone-950 hover:bg-stone-800 border border-stone-800 text-left font-mono text-xs text-amber-400 flex items-center justify-between cursor-pointer"
+                        >
+                          <span>📯 Danfo Air Horn</span>
+                          <Volume2 className="w-4 h-4 shrink-0" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right 6 Cols: Driver Profile, PWA Install & Save Management */}
+                <div className="lg:col-span-6 space-y-4">
+                  <div className="bg-stone-900 border border-stone-800 rounded-3xl p-5 space-y-4">
+                    <h2 className="text-lg font-black font-['Bungee'] text-amber-400">
+                      DRIVER PROFILE &amp; APP SETTINGS
+                    </h2>
+
+                    {/* Driver Name */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-mono text-stone-400 block">Driver Callsign / Name:</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={driverNameInput}
+                          onChange={(e) => setDriverNameInput(e.target.value)}
+                          className="flex-1 px-3.5 py-2.5 rounded-xl bg-stone-950 border border-stone-800 text-sm font-mono text-white focus:outline-none focus:border-amber-400"
+                        />
+                        <button
+                          onClick={() => {
+                            if (driverNameInput.trim()) {
+                              updateSave({ playerName: driverNameInput.trim() });
+                              soundEngine.playCoin();
+                            }
+                          }}
+                          className="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-stone-950 font-mono font-black text-xs cursor-pointer"
+                        >
+                          Save Name
+                        </button>
                       </div>
                     </div>
 
-                    {/* Scrollable 20 Bus Stops List with UID & Directional Next Stop */}
-                    <div className="max-h-[260px] overflow-y-auto space-y-1.5 pr-1">
-                      {DEFAULT_JUNCTIONS.map((junc, idx) => (
-                        <div
-                          key={junc.uid}
-                          className="flex flex-col gap-1 px-3 py-2 rounded-xl bg-stone-950 border border-stone-800/90 text-xs font-mono"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <span className="w-5 h-5 rounded-full bg-amber-400 text-stone-950 font-black text-[10px] flex items-center justify-center shrink-0">
-                                {idx + 1}
-                              </span>
-                              <div className="truncate">
-                                <div className="flex items-center gap-1.5">
-                                  <span className="font-bold text-stone-100 truncate">{junc.name}</span>
-                                  <span className="px-1 py-0.2 rounded bg-stone-800 text-[8px] text-stone-400 shrink-0">
-                                    {junc.uid}
-                                  </span>
-                                </div>
-                                <div className="text-[9px] text-stone-400 truncate">
-                                  {junc.distanceMarkerMeters}m • {junc.landmark}
-                                </div>
-                              </div>
-                            </div>
-                            <span className="px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 font-black text-[10px] shrink-0">
-                              ₦{junc.averageFare}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between text-[8px] text-stone-400 pt-1 border-t border-stone-900">
-                            <span className="text-emerald-300 truncate">➔ Next (Inbound): {junc.nextStopName}</span>
-                            <span className="text-sky-300 truncate">↩ Other Side: {junc.oppositeNextStopName}</span>
-                          </div>
+                    {/* Install App (Android / iOS) */}
+                    <div className="pt-2 border-t border-stone-800 flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-xs font-bold text-white">Install Danfo Express Web App</div>
+                        <div className="text-[11px] text-stone-400">
+                          Full-screen offline support for Android &amp; iPhone (Share ➔ Add to Home Screen)
                         </div>
-                      ))}
-                    </div>
-
-                    {/* Quick Savings & Driver Needs Footer */}
-                    <div className="pt-2 border-t border-stone-800 grid grid-cols-2 gap-2">
-                      <button
-                        onClick={() => setIsKoloOpen(true)}
-                        className="py-2 px-3 rounded-xl bg-stone-950 hover:bg-stone-800 border border-amber-400/40 text-amber-300 font-mono font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
-                      >
-                        <span>🏺 KOLO: ₦{saveData.koloBalanceNaira.toLocaleString()}</span>
-                      </button>
-                      <button
-                        onClick={() => setIsAjoOpen(true)}
-                        className="py-2 px-3 rounded-xl bg-stone-950 hover:bg-stone-800 border border-purple-400/40 text-purple-300 font-mono font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
-                      >
-                        <span>🤝🏾 AJO: ₦{saveData.ajoContributionsNaira.toLocaleString()}</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ═══════ TAB 2: DRIVING MISSIONS ═══════ */}
-            {menuTab === 'MISSIONS' && (
-              <div className="bg-stone-900/90 border border-stone-800 rounded-3xl p-5">
-                <MissionSelector
-                  selectedMissionId={selectedMissionId}
-                  onSelectMission={(m) => setSelectedMissionId(m.id)}
-                  onStartMission={handleStartMission}
-                />
-              </div>
-            )}
-
-            {/* ═══════ TAB 3: GARAGE & CONDUCTOR ROSTER ═══════ */}
-            {menuTab === 'GARAGE_WORKSHOP' && (
-              <div className="w-full space-y-6">
-                <div className="p-5 bg-stone-900 border border-stone-800 rounded-2xl space-y-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <div className="font-bold text-base text-amber-400 flex items-center gap-2">
-                        <Users className="w-4 h-4 text-emerald-400" />
-                        Hire Your Lagos Conductor (Agbero)
                       </div>
-                      <p className="text-xs text-stone-400">
-                        A conductor calls out destinations at bus stops and collects passenger fares automatically upon boarding.
-                      </p>
+                      <button
+                        onClick={() => setShowPwaModal(true)}
+                        className="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-stone-950 font-mono font-black text-xs flex items-center gap-1.5 cursor-pointer shrink-0"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>Install App</span>
+                      </button>
                     </div>
 
-                    <div className="font-mono text-xs text-stone-300 bg-stone-950 px-3 py-1.5 rounded-lg border border-stone-800">
-                      Current:{' '}
-                      <strong className="text-amber-400">
-                        {gameState.conductor.hasConductor ? gameState.conductor.name : 'Solo Driver'}
-                      </strong>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    {CONDUCTOR_ROSTER.map((c) => {
-                      const isCurrent = gameState.conductor.hasConductor && gameState.conductor.id === c.id;
-                      return (
-                        <div
-                          key={c.id}
-                          className={`p-4 rounded-xl border flex flex-col justify-between ${
-                            isCurrent
-                              ? 'bg-amber-400/15 border-amber-400 ring-1 ring-amber-400'
-                              : 'bg-stone-950 border-stone-800'
-                          }`}
-                        >
-                          <div>
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="font-black text-sm text-amber-400">{c.name}</span>
-                              <span className="text-xs font-mono font-bold text-emerald-400">
-                                ₦{c.dailyFee.toLocaleString()}/day
-                              </span>
-                            </div>
-                            <div className="text-[11px] font-bold text-stone-300 mb-2">"{c.nickname}"</div>
-                            <p className="text-xs text-stone-400 mb-3">{c.description}</p>
-                          </div>
-
-                          <button
-                            onClick={() => handleHireConductor(c.id)}
-                            className={`w-full py-2 rounded-lg font-bold text-xs transition-colors cursor-pointer ${
-                              isCurrent
-                                ? 'bg-emerald-500 text-stone-950 font-black cursor-default'
-                                : 'bg-stone-800 hover:bg-amber-400 hover:text-stone-950 text-stone-200'
-                            }`}
-                          >
-                            {isCurrent ? 'HIRED & ON DUTY' : `HIRE (₦${c.dailyFee.toLocaleString()})`}
-                          </button>
+                    {/* Reset Save Data */}
+                    <div className="pt-2 border-t border-stone-800 flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-xs font-bold text-rose-400">Reset Career Save Data</div>
+                        <div className="text-[11px] text-stone-400">
+                          Resets Wallet to ₦25,000 and Bank Account to ₦250,000
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Mechanical Upgrades */}
-                <div className="space-y-3">
-                  <div className="text-xs font-semibold text-stone-400 uppercase tracking-wider">
-                    Mechanical Danfo Upgrades (Rendered in Full 3D)
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {UPGRADE_CATALOG.map((item) => {
-                      const isOwned = gameState.bus.upgrades[item.id];
-                      const canAfford = walletNaira >= item.costNaira;
-                      return (
-                        <div
-                          key={item.id}
-                          className={`p-4 rounded-xl border flex flex-col justify-between ${
-                            isOwned ? 'bg-emerald-950/20 border-emerald-500/50' : 'bg-stone-900 border-stone-800'
-                          }`}
-                        >
-                          <div>
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="font-bold text-sm text-amber-400 flex items-center gap-2">
-                                <span>{item.icon}</span>
-                                {item.name}
-                              </span>
-                              <span className="font-mono text-xs font-bold">
-                                {isOwned ? (
-                                  <span className="text-emerald-400">INSTALLED</span>
-                                ) : (
-                                  `₦${item.costNaira.toLocaleString()}`
-                                )}
-                              </span>
-                            </div>
-                            <p className="text-xs text-stone-300 mb-2">{item.description}</p>
-                            <div className="text-xs font-semibold text-emerald-400">✓ {item.benefit}</div>
-                          </div>
-
-                          <div className="mt-4 pt-2 border-t border-stone-800 flex justify-end">
-                            {isOwned ? (
-                              <span className="text-xs font-bold text-emerald-400 flex items-center gap-1">
-                                <Check className="w-4 h-4" /> 3D Mounted
-                              </span>
-                            ) : (
-                              <button
-                                onClick={() => handlePurchaseUpgrade(item.id, item.costNaira)}
-                                disabled={!canAfford}
-                                className={`px-4 py-2 font-bold text-xs rounded-lg cursor-pointer ${
-                                  canAfford
-                                    ? 'bg-amber-400 hover:bg-amber-300 text-stone-950 font-black'
-                                    : 'bg-stone-800 text-stone-500 cursor-not-allowed'
-                                }`}
-                              >
-                                BUY & INSTALL (₦{item.costNaira.toLocaleString()})
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ═══════ TAB 4: MUSHIN COMPOUND & SAVINGS ═══════ */}
-            {menuTab === 'HOUSING' && (
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <div className="lg:col-span-2 p-6 bg-stone-900 border border-stone-800 rounded-3xl space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h2 className="text-lg font-black text-amber-400 font-['Bungee']">{gameState.house.title}</h2>
-                      <p className="text-xs text-stone-400">{gameState.house.location}</p>
-                    </div>
-                    <div className="font-mono text-xs text-emerald-400 bg-stone-950 px-3 py-1.5 rounded-xl border border-stone-800">
-                      Weekly Rent: ₦{gameState.house.rentCost.toLocaleString()}
+                      </div>
+                      <button
+                        onClick={() => {
+                          wipeSave();
+                          window.location.reload();
+                        }}
+                        className="px-3.5 py-2 rounded-xl bg-rose-950 hover:bg-rose-900 border border-rose-500/50 text-rose-300 font-mono font-bold text-xs flex items-center gap-1.5 cursor-pointer shrink-0"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Reset Save</span>
+                      </button>
                     </div>
                   </div>
-
-                  <p className="text-xs text-stone-300">{gameState.house.description}</p>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs font-mono">
-                    <div className="p-3 bg-stone-950 border border-stone-800 rounded-xl">
-                      <span className="text-stone-400 text-[10px] block">POWER STATUS</span>
-                      <strong className={gameState.house.nepaActive ? 'text-emerald-400' : 'text-rose-400'}>
-                        {gameState.house.nepaActive ? '⚡ NEPA Active' : '❌ NEPA Blackout!'}
-                      </strong>
-                    </div>
-
-                    <div className="p-3 bg-stone-950 border border-stone-800 rounded-xl">
-                      <span className="text-stone-400 text-[10px] block">KITCHEN STOVE</span>
-                      <strong className="text-emerald-400">Available (Cook food)</strong>
-                    </div>
-
-                    <div className="p-3 bg-stone-950 border border-stone-800 rounded-xl">
-                      <span className="text-stone-400 text-[10px] block">COMFORT RATING</span>
-                      <strong className="text-amber-400">{gameState.house.comfortRating} / 100</strong>
-                    </div>
-                  </div>
-
-                  <div className="pt-2 flex flex-wrap gap-3">
-                    <button
-                      onClick={() => setIsHome2DOpen(true)}
-                      className="flex-1 py-3 px-4 bg-emerald-500 hover:bg-emerald-400 text-stone-950 font-black font-['Bungee'] text-xs rounded-xl shadow-lg flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      <Home className="w-4 h-4" />
-                      <span>🏠 GO HOME (ENTER 2D ROOM)</span>
-                    </button>
-                    <button
-                      onClick={() => setIsPhoneOpen(true)}
-                      className="flex-1 py-3 px-4 bg-amber-400 hover:bg-amber-300 text-stone-950 font-black font-mono text-xs rounded-xl shadow-lg flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      <Smartphone className="w-4 h-4" />
-                      <span>PAY RENT & NEPA BILLS</span>
-                    </button>
-                    <button
-                      onClick={() => setIsInventoryOpen(true)}
-                      className="py-3 px-5 bg-stone-800 hover:bg-stone-700 text-stone-200 font-bold font-mono text-xs rounded-xl flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      <Package className="w-4 h-4" />
-                      <span>INVENTORY</span>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="p-5 bg-stone-900 border border-stone-800 rounded-3xl flex flex-col justify-between gap-4">
-                  <NeedsPanel needs={gameState.needs} />
                 </div>
               </div>
             )}
@@ -1107,6 +1409,7 @@ export default function App() {
             onOpenMap={() => setIsMapOpen(true)}
             onGoHome={() => setIsHome2DOpen(true)}
             onUpdateSave={updateSave}
+            onOpenPosOrBank={openPosOrBank}
             actionFeed={actionFeed}
             addFeedMessage={addFeedMessage}
           />
@@ -1117,20 +1420,18 @@ export default function App() {
           <div className="flex-1 overflow-y-auto px-6 py-8 flex flex-col items-center justify-center max-w-2xl mx-auto w-full">
             <div className="w-full bg-stone-900 border-2 border-amber-400/70 rounded-3xl p-6 shadow-2xl space-y-6">
               <div className="text-center space-y-1">
-                <div className="inline-block px-3 py-1 bg-amber-400/15 border border-amber-400/40 text-amber-400 text-xs font-mono font-bold uppercase rounded-full">
+                <div className="text-amber-400 text-xs font-mono font-bold uppercase">
                   Oshodi — CMS Route Audit
                 </div>
                 <h2 className="text-2xl md:text-3xl font-black font-['Bungee'] text-white">
                   {gameState.lastShiftResult.terminalReached ? 'ROUTE COMPLETED!' : 'SHIFT ENDED'}
                 </h2>
-                <p className="text-xs text-stone-400">
-                  {gameState.lastShiftResult.shiftTitle} summary:
-                </p>
+                <p className="text-xs text-stone-400">{gameState.lastShiftResult.shiftTitle} summary:</p>
               </div>
 
               <div className="space-y-3 bg-stone-950 p-4 rounded-2xl border border-stone-800 text-sm">
                 <div className="flex justify-between items-center">
-                  <span className="text-stone-400">Passenger Fares & Terminal Bonus</span>
+                  <span className="text-stone-400">Passenger Fares &amp; Terminal Bonus</span>
                   <span className="font-mono font-bold text-emerald-400 tabular-nums">
                     +₦{gameState.lastShiftResult.totalFaresCollected.toLocaleString()}
                   </span>
@@ -1142,7 +1443,7 @@ export default function App() {
                   </span>
                 </div>
                 <div className="flex justify-between items-center text-rose-400">
-                  <span className="text-stone-400">Wear & Tear</span>
+                  <span className="text-stone-400">Wear &amp; Tear</span>
                   <span className="font-mono font-bold tabular-nums">
                     -₦{gameState.lastShiftResult.fuelAndRepairsCost.toLocaleString()}
                   </span>
@@ -1151,7 +1452,7 @@ export default function App() {
                 <div className="h-px bg-stone-800 my-2" />
 
                 <div className="flex justify-between items-center text-base font-bold">
-                  <span className="text-white">Total Net Shift Earnings</span>
+                  <span className="text-white">Net Cash Added to Wallet</span>
                   <span className="font-mono text-emerald-400 tabular-nums text-lg">
                     ₦{gameState.lastShiftResult.netProfit.toLocaleString()}
                   </span>
@@ -1160,42 +1461,42 @@ export default function App() {
 
               <div className="grid grid-cols-3 gap-3 text-center">
                 <div className="p-3 bg-stone-950 rounded-xl border border-stone-800">
-                  <div className="text-[10px] text-stone-400 uppercase">Street Cred</div>
-                  <div className="text-lg font-mono font-bold text-amber-400 tabular-nums">
-                    +{gameState.lastShiftResult.streetCredEarned}
-                  </div>
-                </div>
-                <div className="p-3 bg-stone-950 rounded-xl border border-stone-800">
-                  <div className="text-[10px] text-stone-400 uppercase">Comfort Score</div>
-                  <div className="text-lg font-mono font-bold text-emerald-400 tabular-nums">
-                    {gameState.bus.comfortMeter}%
-                  </div>
-                </div>
-                <div className="p-3 bg-stone-950 rounded-xl border border-stone-800">
-                  <div className="text-[10px] text-stone-400 uppercase">Wallet Balance</div>
-                  <div className="text-lg font-mono font-bold text-sky-400 tabular-nums">
+                  <div className="text-[10px] text-stone-400 uppercase">Wallet Cash</div>
+                  <div className="text-base font-mono font-bold text-emerald-400 tabular-nums">
                     ₦{walletNaira.toLocaleString()}
+                  </div>
+                </div>
+                <div className="p-3 bg-stone-950 rounded-xl border border-stone-800">
+                  <div className="text-[10px] text-stone-400 uppercase">Bank Balance</div>
+                  <div className="text-base font-mono font-bold text-sky-400 tabular-nums">
+                    ₦{bankBalanceNaira.toLocaleString()}
+                  </div>
+                </div>
+                <div className="p-3 bg-stone-950 rounded-xl border border-stone-800">
+                  <div className="text-[10px] text-stone-400 uppercase">Street Cred</div>
+                  <div className="text-base font-mono font-bold text-amber-400 tabular-nums">
+                    +{gameState.lastShiftResult.streetCredEarned}
                   </div>
                 </div>
               </div>
 
               <div className="flex flex-wrap gap-3">
                 <button
-                  onClick={() => setIsHome2DOpen(true)}
-                  className="flex-1 py-3 bg-emerald-500 hover:bg-emerald-400 text-stone-950 font-black font-['Bungee'] rounded-xl text-sm transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                  onClick={() => openPosOrBank('POS_KIOSK')}
+                  className="flex-1 py-3 bg-sky-500 hover:bg-sky-400 text-stone-950 font-black font-mono rounded-xl text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  <Home className="w-4 h-4" />
-                  <span>GO HOME (2D ROOM)</span>
+                  <CreditCard className="w-4 h-4" />
+                  <span>POS / BANK DEPOSIT</span>
                 </button>
                 <button
                   onClick={() => setGameState((prev) => ({ ...prev, screen: 'MENU' }))}
                   className="flex-1 py-3 bg-stone-800 hover:bg-stone-700 text-stone-200 font-bold rounded-xl text-sm transition-colors flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <RotateCcw className="w-4 h-4" />
-                  <span>Motor Park</span>
+                  <span>Main Menu</span>
                 </button>
                 <button
-                  onClick={handleStartShift}
+                  onClick={() => handleStartShift(false)}
                   className="flex-1 py-3 bg-amber-400 hover:bg-amber-300 text-stone-950 font-black font-['Bungee'] rounded-xl text-sm tracking-wider transition-colors flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <span>NEXT SHIFT</span>
@@ -1207,6 +1508,17 @@ export default function App() {
         )}
       </main>
 
+      {/* NIGERIAN BANK HALL (QUEUE + TELLER >₦100K) & ROADSIDE POS (MAX ₦100K) MODAL */}
+      <NigerianBankAndPosModal
+        isOpen={isBankModalOpen}
+        initialMode={bankModalMode}
+        onClose={() => setIsBankModalOpen(false)}
+        walletNaira={walletNaira}
+        bankBalanceNaira={bankBalanceNaira}
+        playerName={saveData.playerName || 'Captain'}
+        onUpdateBalances={handleUpdateWalletAndBank}
+      />
+
       {/* DRIVER SMARTPHONE MODAL */}
       <PhoneModal
         isOpen={isPhoneOpen}
@@ -1214,9 +1526,10 @@ export default function App() {
         gameState={gameState}
         setGameState={setGameState}
         addFeedMessage={addFeedMessage}
+        onOpenPosOrBank={openPosOrBank}
         onStartShift={() => {
           setIsPhoneOpen(false);
-          handleStartShift();
+          handleStartShift(false);
         }}
       />
 
@@ -1304,6 +1617,7 @@ export default function App() {
         <CharacterCreation
           onComplete={(name, gender) => {
             updateSave({ playerName: name, playerGender: gender });
+            setDriverNameInput(name);
             setShowCharacterCreation(false);
             addFeedMessage(`🎉 Welcome to Lagos, ${name}! Your Danfo is parked at Oshodi.`);
           }}
@@ -1316,32 +1630,13 @@ export default function App() {
         onClose={() => setIsMapOpen(false)}
         walletNaira={walletNaira}
         onNavigateTo={(loc) => {
-          if (loc.type === 'DEALERSHIP') {
-            setIsDealershipOpen(true);
-          } else if (loc.type === 'MARKET') {
+          if (loc.type === 'MARKET') {
             setIsKoloOpen(true);
           } else if (loc.type === 'GARAGE') {
-            setMenuTab('GARAGE_WORKSHOP');
+            setMainMenuTab('SINGLE_PLAYER');
+            setSinglePlayerSubView('GARAGE');
           }
           addFeedMessage(`📍 Selected ${loc.name}`);
-        }}
-      />
-
-      {/* DEALERSHIP */}
-      <Dealership
-        isOpen={isDealershipOpen}
-        onClose={() => setIsDealershipOpen(false)}
-        walletNaira={walletNaira}
-        streetCred={streetCred}
-        ownedVehicles={saveData.ownedVehicles}
-        onPurchase={(vehicle) => {
-          updateSave({
-            walletNaira: walletNaira - vehicle.price,
-            ownedVehicles: [...saveData.ownedVehicles, vehicle.id as BusModelId] as BusModelId[],
-            selectedBusId: vehicle.id as BusModelId,
-          });
-          setSelectedBusId(vehicle.id as BusModelId);
-          addFeedMessage(`🚗 PURCHASED: ${vehicle.name} added to your garage!`);
         }}
       />
 
