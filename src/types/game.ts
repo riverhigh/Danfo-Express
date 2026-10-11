@@ -78,7 +78,7 @@ export interface RoadHazard {
   hit: boolean;
 }
 
-export type CameraViewMode = 'CABIN_1ST' | 'CHASE_3RD' | 'TOP_DOWN' | 'ON_FOOT' | 'FIRST_PERSON' | 'THIRD_PERSON' | 'ORBIT';
+export type CameraViewMode = 'CABIN_1ST' | 'CHASE_3RD' | 'TOP_DOWN' | 'ON_FOOT' | 'FIRST_PERSON' | 'THIRD_PERSON' | 'ORBIT' | 'CABIN_VIEW';
 
 export type GearPosition = 'P' | 'R' | 'N' | 'D' | 'L';
 

@@ -131,8 +131,111 @@ export default function App() {
     setIsBankModalOpen(true);
   }, []);
 
-  // Bus ALWAYS starts empty (0 passengers, ₦0 collected cash) so player loads from the first bus stop
-  const createInitialPassengers = (): Passenger[] => [];
+  // Commuters boarding directly from the Ikeja Central Motor Park Departure Terminal (Bay 02)
+  const createInitialPassengers = (): Passenger[] => [
+    {
+      id: 'p-motorpark-1',
+      name: 'Brother Emeka',
+      archetype: 'CORPORATE',
+      archetypeLabel: '💼 Office Worker',
+      destination: 'CMS Marina Terminal',
+      destinationUid: 'junc-cms',
+      fare: 250,
+      seatsTaken: 1,
+      paid: true,
+      patience: 90,
+      maxPatience: 100,
+      hasBigBill: false,
+      changeNeeded: 0,
+      seatedAt: 0,
+      satisfaction: 'HAPPY',
+    },
+    {
+      id: 'p-motorpark-2',
+      name: 'Mama Nkechi',
+      archetype: 'MARKET_WOMAN',
+      archetypeLabel: '🧺 Market Woman',
+      destination: 'Oshodi Interchange',
+      destinationUid: 'junc-oshodi',
+      fare: 300,
+      seatsTaken: 1,
+      paid: true,
+      patience: 95,
+      maxPatience: 100,
+      hasBigBill: false,
+      changeNeeded: 0,
+      seatedAt: 1,
+      satisfaction: 'HAPPY',
+    },
+    {
+      id: 'p-motorpark-3',
+      name: 'Tunde Campus',
+      archetype: 'STUDENT',
+      archetypeLabel: '🎒 Student',
+      destination: 'Yaba Tech / Sabo',
+      destinationUid: 'junc-yaba',
+      fare: 150,
+      seatsTaken: 1,
+      paid: true,
+      patience: 90,
+      maxPatience: 100,
+      hasBigBill: false,
+      changeNeeded: 0,
+      seatedAt: 2,
+      satisfaction: 'HAPPY',
+    },
+    {
+      id: 'p-motorpark-4',
+      name: 'Sister Blessing',
+      archetype: 'PREACHER',
+      archetypeLabel: '🤰 VIP Mama',
+      destination: 'Maryland Mall',
+      destinationUid: 'junc-maryland',
+      fare: 250,
+      seatsTaken: 1,
+      paid: true,
+      patience: 88,
+      maxPatience: 100,
+      hasBigBill: false,
+      changeNeeded: 0,
+      seatedAt: 3,
+      satisfaction: 'HAPPY',
+    },
+    {
+      id: 'p-motorpark-5',
+      name: 'Alhaji Rasheed',
+      archetype: 'CORPORATE',
+      archetypeLabel: '💼 Corporate Banker',
+      destination: 'CMS Marina Terminal',
+      destinationUid: 'junc-cms',
+      fare: 350,
+      seatsTaken: 1,
+      paid: true,
+      patience: 85,
+      maxPatience: 100,
+      hasBigBill: false,
+      changeNeeded: 0,
+      seatedAt: 4,
+      satisfaction: 'HAPPY',
+    },
+    {
+      id: 'p-motorpark-6',
+      name: 'Chinedu Alaba',
+      archetype: 'STUDENT',
+      archetypeLabel: '🎒 Computer Village Boy',
+      destination: 'Ikeja Along',
+      destinationUid: 'junc-ikeja',
+      fare: 200,
+      seatsTaken: 1,
+      paid: true,
+      patience: 95,
+      maxPatience: 100,
+      hasBigBill: false,
+      changeNeeded: 0,
+      seatedAt: 5,
+      satisfaction: 'HAPPY',
+    },
+  ];
 
   const [gameState, setGameState] = useState<GameState>(() => {
     const shift = SHIFT_CONFIGS.MORNING_RUSH;
@@ -228,13 +331,13 @@ export default function App() {
     [updateSave, addFeedMessage]
   );
 
-  // Start 3D Mission (Bus starts empty with 0 passengers)
+  // Start 3D Mission
   const handleStartMission = (mission: MissionGoal) => {
     const baseBus = BUS_PRESETS[selectedBusId] || BUS_PRESETS['RUSTIC_VAN'];
     const bus: typeof baseBus = JSON.parse(JSON.stringify(baseBus));
     bus.slogan = selectedSlogan;
     bus.upgrades = { ...gameState.bus.upgrades };
-    bus.passengers = [];
+    bus.passengers = createInitialPassengers();
     const junctions = JSON.parse(JSON.stringify(DEFAULT_JUNCTIONS));
 
     setGameState((prev) => ({
@@ -272,7 +375,7 @@ export default function App() {
     }));
 
     addFeedMessage(
-      `🎯 MISSION STARTED: ${mission.title}! Bus is empty (0/${bus.capacity}) — stop at Mangoro / Cement (150m) & Ikeja Along (280m) to load commuters.`
+      `🎯 MISSION STARTED: ${mission.title}! Boarded ${bus.passengers.length} commuters at Ikeja Central Motor Park — take off for ${mission.location}!`
     );
     soundEngine.playHorn(bus.upgrades.musicalHorn);
   };
@@ -284,7 +387,7 @@ export default function App() {
     const bus: typeof baseBus = JSON.parse(JSON.stringify(baseBus));
     bus.slogan = selectedSlogan;
     bus.upgrades = { ...gameState.bus.upgrades };
-    bus.passengers = [];
+    bus.passengers = createInitialPassengers();
     const junctions = JSON.parse(JSON.stringify(DEFAULT_JUNCTIONS));
 
     setGameState((prev) => ({

@@ -155,12 +155,16 @@ export class ThreeDrivingEngine {
   private rightBlinker: THREE.Mesh;
   private leftBrakeLight: THREE.Mesh;
   private rightBrakeLight: THREE.Mesh;
+  private leftReverseLight: THREE.Mesh;
+  private rightReverseLight: THREE.Mesh;
+  private cabinDomeLight!: THREE.PointLight;
   private wipersGroup: THREE.Group;
   private danglingRosary: THREE.Group;
   private bullBarMesh: THREE.Group;
   private roofSpeakersMesh: THREE.Group;
   private underglowLight: THREE.PointLight;
   private headLights: THREE.SpotLight[] = [];
+  private isVehicleCollidingWithObstacle: boolean = false;
 
   // Road & Environment
   private trafficModels: THREE.Group[] = [];
@@ -262,6 +266,9 @@ export class ThreeDrivingEngine {
     this.rightBlinker = busComponents.rBlinker;
     this.leftBrakeLight = busComponents.lBrake;
     this.rightBrakeLight = busComponents.rBrake;
+    this.leftReverseLight = busComponents.lReverse;
+    this.rightReverseLight = busComponents.rReverse;
+    this.cabinDomeLight = busComponents.cabinDomeLight;
     this.wipersGroup = busComponents.wipers;
     this.danglingRosary = busComponents.rosary as any;
     this.bullBarMesh = busComponents.bullBar as any;
@@ -354,68 +361,241 @@ export class ThreeDrivingEngine {
     let minX = -8.8;
     let maxX = 8.8;
 
-    // 1. Starting Oshodi Bus Park + Oshodi BRT Terminal 1 (z < 145 on Right -X side)
-    if (z < 145) {
-      minX = -27.5;
+    // 1. Starting Oshodi Bus Park (z = -22..38 on Right -X side; terminal building is at x = -24.5)
+    if (z >= -25 && z <= 38) {
+      minX = -22.5;
     }
     // 1b. Oshodi Interchange BRT Mega Terminal 2 (z = 1775..1885 on Right -X side)
     if (z >= 1775 && z <= 1885) {
-      minX = Math.min(minX, -27.5);
+      minX = Math.min(minX, -22.5);
     }
     // 2. Gas Station #1 Pull-Off Side Lane (Conoil Express at z = 210 on Right -X side)
-    if (z >= 182 && z <= 238) {
-      minX = Math.min(minX, -20.5);
+    if (z >= 185 && z <= 235) {
+      minX = Math.min(minX, -18.0);
     }
-    // 3. Branching Intersection #1: Allen Ave Right-Turn Shortcut Block (z = 340..840 on Right -X side)
-    if (z >= 325 && z <= 855) {
-      minX = Math.min(minX, -24.5);
+    // 3. Branching Intersection #1: Allen Ave Right-Turn Shortcut Block (z = 330..850 on Right -X side)
+    if (z >= 330 && z <= 850) {
+      minX = Math.min(minX, -21.0);
     }
     // 4. Gas Station #2 Pull-Off Side Lane (Total Energies at z = 520 on Left +X side)
-    if (z >= 492 && z <= 548) {
-      maxX = Math.max(maxX, 20.5);
+    if (z >= 495 && z <= 545) {
+      maxX = Math.max(maxX, 18.0);
     }
-    // 5. Branching Intersection #2: Toyin St / Alausa Left-Turn Link (z = 660..1100 on Left +X side)
-    if (z >= 645 && z <= 1115) {
-      maxX = Math.max(maxX, 24.5);
+    // 5. Branching Intersection #2: Toyin St / Alausa Left-Turn Link (z = 650..1110 on Left +X side)
+    if (z >= 650 && z <= 1110) {
+      maxX = Math.max(maxX, 21.0);
     }
-    // 6. Branching Intersection #3: Mushin / Ladipo Right-Turn Shortcut Block (z = 1280..1800 on Right -X side)
-    if (z >= 1265 && z <= 1815) {
-      minX = Math.min(minX, -24.5);
+    // 6. Branching Intersection #3: Mushin / Ladipo Right-Turn Shortcut Block (z = 1270..1810 on Right -X side)
+    if (z >= 1270 && z <= 1810) {
+      minX = Math.min(minX, -21.0);
     }
-    // 7. Gas Station #3 Pull-Off Side Lane (Oando Mega Petrol at z = 1750 on Left +X side)
-    if (z >= 1722 && z <= 1778) {
-      maxX = Math.max(maxX, 20.5);
+    // 7. Gas Station #3 Pull-Off Side Lane (Oando Mega Petrol at z = 1725..1775 on Left +X side)
+    if (z >= 1725 && z <= 1775) {
+      maxX = Math.max(maxX, 18.0);
     }
-    // 8. Branching Intersection #4: Surulere / Bode Thomas Left-Turn Link (z = 2320..2880 on Left +X side)
-    if (z >= 2305 && z <= 2895) {
-      maxX = Math.max(maxX, 24.5);
+    // 8. Branching Intersection #4: Surulere / Bode Thomas Left-Turn Link (z = 2310..2890 on Left +X side)
+    if (z >= 2310 && z <= 2890) {
+      maxX = Math.max(maxX, 21.0);
     }
     // 9. Mechanic Drive-In Compound #1 (Baba Suwe Mechanic Yard at z = 95 on Left +X side)
-    if (z >= 66 && z <= 124) {
-      maxX = Math.max(maxX, 25.5);
+    if (z >= 70 && z <= 120) {
+      maxX = Math.max(maxX, 21.5);
     }
     // 10. Mechanic Drive-In Compound #2 (Ladipo Auto Mechanic Village at z = 1160 on Right -X side)
-    if (z >= 1130 && z <= 1190) {
-      minX = Math.min(minX, -25.5);
+    if (z >= 1135 && z <= 1185) {
+      minX = Math.min(minX, -21.5);
     }
     // 11. Mechanic Drive-In Compound #3 (Costain / Surulere Mechanic Compound at z = 2120 on Left +X side)
-    if (z >= 2090 && z <= 2150) {
-      maxX = Math.max(maxX, 25.5);
+    if (z >= 2095 && z <= 2145) {
+      maxX = Math.max(maxX, 21.5);
     }
 
     // 12. Modular RoadManager T-Junctions, 4-Way Intersections, Roundabouts & Active Market Side Streets
     if (this.roadManager) {
       const tileBounds = this.roadManager.getCorridorBoundsAtZ(z);
-      const currX = this.busRoot ? this.busRoot.position.x : 0;
-      if (tileBounds.canTurnRight || currX < -9.5) {
-        minX = Math.min(minX, -24.5);
+      if (tileBounds.canTurnRight) {
+        minX = Math.min(minX, -21.0);
       }
-      if (tileBounds.canTurnLeft || currX > 9.5) {
-        maxX = Math.max(maxX, 24.5);
+      if (tileBounds.canTurnLeft) {
+        maxX = Math.max(maxX, 21.0);
       }
     }
 
     return { minX, maxX };
+  }
+
+  public isColliding(): boolean {
+    return this.isVehicleCollidingWithObstacle;
+  }
+
+  /**
+   * Solid obstacle & building collision resolution:
+   * Prevents Danfo bus from driving through walls, buildings, curbs, and roadblock barricades!
+   */
+  public resolveVehicleObstacleCollisions(
+    targetX: number,
+    targetZ: number,
+    _speedMps: number,
+    _dt: number
+  ): { x: number; z: number; collided: boolean; message: string | null } {
+    let newX = targetX;
+    let newZ = targetZ;
+    let collided = false;
+    let collisionMsg: string | null = null;
+
+    // 1. Starting Motor Park Terminal Grounds (targetZ <= 40)
+    if (targetZ < 40) {
+      // Rear perimeter wall (z = -24) & rear parked buses
+      if (newZ < -16.5) {
+        newZ = -16.5;
+        collided = true;
+        collisionMsg = '🚧 Motor Park back wall! Shift to D to drive forward!';
+      }
+      // Yellow perimeter curb wall separating park tarmac from main expressway (x = -11.2, from z = -24 to z = 13.5)
+      if (newZ < 13.5 && newX > -12.4) {
+        newX = -12.4;
+        collided = true;
+        collisionMsg = '🚧 Motor Park perimeter wall! Follow yellow arrows forward to the exit gate!';
+      }
+      // Front boundary perimeter fence (z > 36.5) when not merged onto highway (x < -10.5)
+      if (newZ > 36.5 && newX < -10.5) {
+        newZ = 36.5;
+        collided = true;
+        collisionMsg = '🚧 Motor Park boundary fence! Merge left through the gate onto the highway!';
+      }
+      // Right side terminal buildings & parked Danfo buses at x < -18.2 (z = -20..26)
+      if (newX < -18.2 && newZ < 26.0) {
+        newX = -18.2;
+        collided = true;
+        collisionMsg = '💥 Watch out! You bumped a parked Danfo bus in the terminal!';
+      }
+      // Far right tarmac wall at x < -21.8
+      if (newX < -21.8) {
+        newX = -21.8;
+        collided = true;
+        collisionMsg = '💥 Motor park boundary wall!';
+      }
+    } else {
+      // 2. 3rd Mainland Bridge Roadblock Barricades
+      if (targetZ >= 586 && targetZ <= 614 && newX <= -8.8) {
+        newX = -8.6;
+        collided = true;
+        collisionMsg = '⛔ 3RD MAINLAND BRIDGE ROADBLOCK! Route closed by LASTMA!';
+      }
+      if (targetZ >= 2006 && targetZ <= 2034 && newX >= 8.8) {
+        newX = 8.6;
+        collided = true;
+        collisionMsg = '⛔ 3RD MAINLAND BRIDGE ROADBLOCK! Construction barricade!';
+      }
+
+      // 3. Dynamic Corridor Bounds (handles Highway, Gas Stations, Mechanics & 4 Shortcut Branches)
+      const bounds = this.getAllowedRoadBounds(targetZ);
+
+      // Check Branching Shortcut Island Separators:
+      // When between the entry and exit intersections, solid island buildings separate the highway and shortcut street
+      const isShortcutZone1 = targetZ >= 358 && targetZ <= 822; // Allen Ave (Right, lane -18.5)
+      const isShortcutZone2 = targetZ >= 678 && targetZ <= 1082; // Toyin St (Left, lane +18.5)
+      const isShortcutZone3 = targetZ >= 1298 && targetZ <= 1782; // Mushin (Right, lane -18.5)
+      const isShortcutZone4 = targetZ >= 2338 && targetZ <= 2862; // Surulere (Left, lane +18.5)
+
+      if (isShortcutZone1) {
+        if (targetX > -11.0) {
+          // Player is on main highway - cannot cross through island buildings into side street
+          if (newX < -8.6) {
+            newX = -8.6;
+            collided = true;
+            collisionMsg = '💥 GBAM! You hit the island divider wall! Enter shortcut at the marked intersection!';
+          }
+        } else {
+          // Player is inside the side street shortcut
+          if (newX > -14.2) {
+            newX = -14.2;
+            collided = true;
+            collisionMsg = '💥 Island divider barrier! Merge back only at the marked exit intersection!';
+          } else if (newX < -21.2) {
+            newX = -21.2;
+            collided = true;
+            collisionMsg = '💥 GBAM! Roadside shopfront facade impact!';
+          }
+        }
+      } else if (isShortcutZone2) {
+        if (targetX < 11.0) {
+          if (newX > 8.6) {
+            newX = 8.6;
+            collided = true;
+            collisionMsg = '💥 Island divider wall! Enter shortcut at the marked intersection!';
+          }
+        } else {
+          if (newX < 14.2) {
+            newX = 14.2;
+            collided = true;
+            collisionMsg = '💥 Island divider barrier!';
+          } else if (newX > 21.2) {
+            newX = 21.2;
+            collided = true;
+            collisionMsg = '💥 GBAM! Roadside commercial building wall!';
+          }
+        }
+      } else if (isShortcutZone3) {
+        if (targetX > -11.0) {
+          if (newX < -8.6) {
+            newX = -8.6;
+            collided = true;
+            collisionMsg = '💥 Island divider wall!';
+          }
+        } else {
+          if (newX > -14.2) {
+            newX = -14.2;
+            collided = true;
+            collisionMsg = '💥 Island divider barrier!';
+          } else if (newX < -21.2) {
+            newX = -21.2;
+            collided = true;
+            collisionMsg = '💥 GBAM! Ladipo market building wall!';
+          }
+        }
+      } else if (isShortcutZone4) {
+        if (targetX < 11.0) {
+          if (newX > 8.6) {
+            newX = 8.6;
+            collided = true;
+            collisionMsg = '💥 Island divider wall!';
+          }
+        } else {
+          if (newX < 14.2) {
+            newX = 14.2;
+            collided = true;
+            collisionMsg = '💥 Island divider barrier!';
+          } else if (newX > 21.2) {
+            newX = 21.2;
+            collided = true;
+            collisionMsg = '💥 GBAM! Roadside building wall!';
+          }
+        }
+      } else {
+        // Standard Roadside Curbs & Building Facades
+        if (newX < bounds.minX) {
+          newX = bounds.minX;
+          collided = true;
+          if (!collisionMsg) {
+            collisionMsg = bounds.minX < -10.0
+              ? '💥 GBAM! You hit the roadside shopfront wall!'
+              : '💥 GBAM! You hit the street curb!';
+          }
+        } else if (newX > bounds.maxX) {
+          newX = bounds.maxX;
+          collided = true;
+          if (!collisionMsg) {
+            collisionMsg = bounds.maxX > 10.0
+              ? '💥 GBAM! You hit the roadside building facade!'
+              : '💥 GBAM! You hit the expressway median curb!';
+          }
+        }
+      }
+    }
+
+    this.isVehicleCollidingWithObstacle = collided;
+    return { x: newX, z: newZ, collided, message: collisionMsg };
   }
 
   public getStreetNavigationTelemetry(): StreetNavigationTelemetry | null {
@@ -2414,11 +2594,12 @@ export class ThreeDrivingEngine {
       roughness: 0.3,
     });
     const glassMat = new THREE.MeshStandardMaterial({
-      color: 0x0c192c,
-      roughness: 0.05,
-      metalness: 0.25,
+      color: 0x93c5fd,
+      roughness: 0.04,
+      metalness: 0.12,
       transparent: true,
-      opacity: 0.58,
+      opacity: 0.22, // Clean transparent tinted glass so cabin interior is crystal clear!
+      depthWrite: false, // Ensures interior passengers and benches are never occluded
       side: THREE.DoubleSide,
     });
     const tireMat = new THREE.MeshStandardMaterial({ color: 0x141417, roughness: 0.85 });
@@ -2438,14 +2619,46 @@ export class ThreeDrivingEngine {
     rockerSkirt.position.set(0, 0.64, 0.22);
     danfoGroup.add(rockerSkirt);
 
-    // 2. Sculpted Lower Body Shell & Upper Beltline Molding
-    const lowerBody = new THREE.Mesh(new THREE.BoxGeometry(2.32, 0.88, 5.26), yellowMat);
-    lowerBody.position.set(0, 1.15, 0.18);
-    danfoGroup.add(lowerBody);
+    // 2. Sculpted Hollow Cabin Body Panels (Hollow Interior so Cabin & Seated Passengers are 100% visible!)
+    // Left exterior side wall panel
+    const leftSideWall = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.88, 5.26), yellowMat);
+    leftSideWall.position.set(-1.10, 1.15, 0.18);
+    danfoGroup.add(leftSideWall);
 
-    const beltMolding = new THREE.Mesh(new THREE.BoxGeometry(2.35, 0.07, 5.32), warmAmberMat);
-    beltMolding.position.set(0, 1.56, 0.18);
-    danfoGroup.add(beltMolding);
+    // Right exterior side wall panel (split to leave sliding door entrance cavity open)
+    const rightSideWallFront = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.88, 1.8), yellowMat);
+    rightSideWallFront.position.set(1.10, 1.15, 1.91);
+    const rightSideWallRear = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.88, 2.16), yellowMat);
+    rightSideWallRear.position.set(1.10, 1.15, -1.37);
+    danfoGroup.add(rightSideWallFront, rightSideWallRear);
+
+    // Front firewall & dashboard bulkhead
+    const frontBulkhead = new THREE.Mesh(new THREE.BoxGeometry(2.18, 0.88, 0.12), yellowMat);
+    frontBulkhead.position.set(0, 1.15, 2.76);
+    danfoGroup.add(frontBulkhead);
+
+    // Rear tailgate perimeter frame
+    const rearWallL = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.88, 0.12), yellowMat);
+    rearWallL.position.set(-0.95, 1.15, -2.42);
+    const rearWallR = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.88, 0.12), yellowMat);
+    rearWallR.position.set(0.95, 1.15, -2.42);
+    danfoGroup.add(rearWallL, rearWallR);
+
+    // Inner Cabin Floor with ribbed center aisle runner
+    const cabinFloor = new THREE.Mesh(new THREE.BoxGeometry(2.18, 0.04, 5.1), woodBenchMat);
+    cabinFloor.position.set(0, 0.76, 0.18);
+    const aisleRunner = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.045, 4.8), darkMat);
+    aisleRunner.position.set(0, 0.77, 0.1);
+    danfoGroup.add(cabinFloor, aisleRunner);
+
+    // Beltline molding on exterior perimeter
+    const beltL = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.07, 5.32), warmAmberMat);
+    beltL.position.set(-1.16, 1.56, 0.18);
+    const beltR = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.07, 5.32), warmAmberMat);
+    beltR.position.set(1.16, 1.56, 0.18);
+    const beltF = new THREE.Mesh(new THREE.BoxGeometry(2.35, 0.07, 0.06), warmAmberMat);
+    beltF.position.set(0, 1.56, 2.82);
+    danfoGroup.add(beltL, beltR, beltF);
 
     // 3. Flared Black Wheel Arch Fenders over all 4 Wheels
     const archGeo = new THREE.CylinderGeometry(0.47, 0.47, 0.14, 20, 1, false, 0, Math.PI);
@@ -2581,14 +2794,36 @@ export class ThreeDrivingEngine {
       danfoGroup.add(ventPanel);
     });
 
-    // Main Roof & Rounded Upper Roof Crown
-    const roof = new THREE.Mesh(new THREE.BoxGeometry(2.32, 0.18, 5.22), yellowMat);
-    roof.position.set(0, 2.45, 0.12);
-    danfoGroup.add(roof);
+    // Main Framed Roof with Panoramic Glass Sunroof Skylights (Permits looking straight down into the seated passengers from 3rd-Person Chase Cam!)
+    const frontRoofCap = new THREE.Mesh(new THREE.BoxGeometry(2.32, 0.18, 1.15), yellowMat);
+    frontRoofCap.position.set(0, 2.45, 2.15);
+    const rearRoofCap = new THREE.Mesh(new THREE.BoxGeometry(2.32, 0.18, 1.05), yellowMat);
+    rearRoofCap.position.set(0, 2.45, -1.96);
+    const leftRoofRim = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.18, 3.05), yellowMat);
+    leftRoofRim.position.set(-0.97, 2.45, 0.095);
+    const rightRoofRim = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.18, 3.05), yellowMat);
+    rightRoofRim.position.set(0.97, 2.45, 0.095);
+    const centerRoofSpine = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.18, 3.05), warmAmberMat);
+    centerRoofSpine.position.set(0, 2.45, 0.095);
+    const midCrossRib = new THREE.Mesh(new THREE.BoxGeometry(2.32, 0.18, 0.24), warmAmberMat);
+    midCrossRib.position.set(0, 2.45, 0.095);
+    danfoGroup.add(frontRoofCap, rearRoofCap, leftRoofRim, rightRoofRim, centerRoofSpine, midCrossRib);
 
-    const roofCrown = new THREE.Mesh(new THREE.BoxGeometry(2.08, 0.12, 4.95), warmAmberMat);
-    roofCrown.position.set(0, 2.57, 0.1);
-    danfoGroup.add(roofCrown);
+    // Twin Clear Panoramic Roof Skylights
+    const skylightGlassL = new THREE.Mesh(new THREE.PlaneGeometry(0.66, 2.85), glassMat);
+    skylightGlassL.rotation.x = -Math.PI / 2;
+    skylightGlassL.position.set(-0.48, 2.47, 0.095);
+    const skylightGlassR = new THREE.Mesh(new THREE.PlaneGeometry(0.66, 2.85), glassMat);
+    skylightGlassR.rotation.x = -Math.PI / 2;
+    skylightGlassR.position.set(0.48, 2.47, 0.095);
+    danfoGroup.add(skylightGlassL, skylightGlassR);
+
+    // Upper Roof Perimeter Crown Rails
+    const crownFront = new THREE.Mesh(new THREE.BoxGeometry(2.08, 0.1, 0.95), warmAmberMat);
+    crownFront.position.set(0, 2.56, 2.12);
+    const crownRear = new THREE.Mesh(new THREE.BoxGeometry(2.08, 0.1, 0.9), warmAmberMat);
+    crownRear.position.set(0, 2.56, -1.94);
+    danfoGroup.add(crownFront, crownRear);
 
     // Side Route Banner Boards along Roofline ("OSHODI • IKEJA • CMS EXPRESS")
     const routeSideTex = createSignboardTexture('OSHODI • IKEJA • CMS', 'EXPRESS COMMUTER DANFO', '#111827');
@@ -2741,6 +2976,21 @@ export class ThreeDrivingEngine {
     );
     rBrake.position.set(0.96, 1.18, -2.48);
     danfoGroup.add(rBrake);
+
+    // Twin Clear-Lens White Reverse Backup Lamps
+    const lReverse = new THREE.Mesh(
+      new THREE.BoxGeometry(0.24, 0.12, 0.095),
+      new THREE.MeshStandardMaterial({ color: 0x27272a, emissive: 0x000000, roughness: 0.2 })
+    );
+    lReverse.position.set(-0.96, 0.94, -2.48);
+    danfoGroup.add(lReverse);
+
+    const rReverse = new THREE.Mesh(
+      new THREE.BoxGeometry(0.24, 0.12, 0.095),
+      new THREE.MeshStandardMaterial({ color: 0x27272a, emissive: 0x000000, roughness: 0.2 })
+    );
+    rReverse.position.set(0.96, 0.94, -2.48);
+    danfoGroup.add(rReverse);
 
     // Rear Amber Indicator Accents above Brake Lenses
     [-0.96, 0.96].forEach((tx) => {
@@ -2950,7 +3200,7 @@ export class ThreeDrivingEngine {
     const spokeB = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.17, 0.02), chromeMat);
     spokeB.position.set(0, -0.12, 0);
     steeringWheel.add(rim, woodArc, spokeL, spokeR, spokeB, hub);
-    steeringWheel.position.set(0.55, 1.5, 2.15);
+    steeringWheel.position.set(-0.55, 1.5, 2.15);
     steeringWheel.rotation.x = -Math.PI * 0.28;
     danfoGroup.add(steeringWheel);
 
@@ -2984,13 +3234,82 @@ export class ThreeDrivingEngine {
     rosary.add(rosaryString, rosaryCross);
     danfoGroup.add(rosary);
 
-    // Driver Seat, Wooden Passenger Benches & Seated Commuters Inside Cabin
+    // Warm Interior Cabin Dome Ceiling Light (casts warm glow on all passengers)
+    const cabinDomeLight = new THREE.PointLight(0xfef08a, 2.8, 7.5);
+    cabinDomeLight.position.set(0, 2.38, 0.2);
+    danfoGroup.add(cabinDomeLight);
+
+    // Overhead Yellow Handrails & Hanging Passenger Grab Straps
+    const handrailGeo = new THREE.CylinderGeometry(0.02, 0.02, 4.2, 10);
+    [-0.38, 0.38].forEach((hx) => {
+      const hRail = new THREE.Mesh(handrailGeo, yellowMat);
+      hRail.rotation.x = Math.PI / 2;
+      hRail.position.set(hx, 2.3, 0.1);
+      danfoGroup.add(hRail);
+      [-1.4, -0.6, 0.2, 1.0].forEach((sz) => {
+        const strap = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.16, 0.035), darkMat);
+        strap.position.set(hx, 2.18, sz);
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(0.04, 0.012, 8, 16), yellowMat);
+        ring.position.set(hx, 2.08, sz);
+        danfoGroup.add(strap, ring);
+      });
+    });
+
+    // Driver Seat & 3D Driver Model
     const driverSeat = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.15, 0.65), darkMat);
     driverSeat.position.set(-0.55, 0.95, 1.7);
     danfoGroup.add(driverSeat);
 
-    const paxShirtColors = [0x1d4ed8, 0xdc2626, 0x15803d, 0x9333ea, 0xd97706, 0x0284c7];
+    const driverGroup = new THREE.Group();
+    driverGroup.position.set(-0.55, 0.95, 1.82);
+    const driverTorso = new THREE.Mesh(
+      new THREE.BoxGeometry(0.36, 0.46, 0.24),
+      new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.6 })
+    );
+    driverTorso.position.set(0, 0.36, 0);
+    const driverHead = new THREE.Mesh(
+      new THREE.SphereGeometry(0.125, 12, 12),
+      new THREE.MeshStandardMaterial({ color: 0x3e2723, roughness: 0.7 })
+    );
+    driverHead.position.set(0, 0.68, 0.02);
+    const driverCap = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.13, 0.13, 0.05, 12),
+      new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.5 })
+    );
+    driverCap.position.set(0, 0.76, 0.03);
+    driverCap.rotation.x = -0.12;
+    const driverArmL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.3, 0.08), new THREE.MeshStandardMaterial({ color: 0x3e2723 }));
+    driverArmL.position.set(-0.16, 0.3, 0.16);
+    driverArmL.rotation.x = Math.PI * 0.3;
+    const driverArmR = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.3, 0.08), new THREE.MeshStandardMaterial({ color: 0x3e2723 }));
+    driverArmR.position.set(0.16, 0.3, 0.16);
+    driverArmR.rotation.x = Math.PI * 0.3;
+    const driverLegs = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.2, 0.38), darkMat);
+    driverLegs.position.set(0, 0.1, 0.16);
+    driverGroup.add(driverTorso, driverHead, driverCap, driverArmL, driverArmR, driverLegs);
+    danfoGroup.add(driverGroup);
+
+    // Rich African Passenger Styles & Commuters
+    const paxStylePresets = [
+      { shirt: 0xdc2626, headgear: 'CAP', headgearColor: 0xfacc15, skin: 0x3e2723 },
+      { shirt: 0x1e3a8a, headgear: 'GELE', headgearColor: 0x9333ea, skin: 0x4a2c18 },
+      { shirt: 0xf8fafc, headgear: 'NONE', headgearColor: 0x000000, skin: 0x3e2723 },
+      { shirt: 0x16a34a, headgear: 'HEADPHONES', headgearColor: 0x111827, skin: 0x4a2c18 },
+      { shirt: 0xd97706, headgear: 'BEANIE', headgearColor: 0xdc2626, skin: 0x381e0d },
+      { shirt: 0x7c3aed, headgear: 'GELE', headgearColor: 0xec4899, skin: 0x4a2c18 },
+      { shirt: 0x0284c7, headgear: 'CAP', headgearColor: 0x15803d, skin: 0x3e2723 },
+      { shirt: 0x111827, headgear: 'NONE', headgearColor: 0x000000, skin: 0x4a2c18 },
+      { shirt: 0xea580c, headgear: 'HEADPHONES', headgearColor: 0xfacc15, skin: 0x3e2723 },
+      { shirt: 0x059669, headgear: 'CAP', headgearColor: 0x1e293b, skin: 0x381e0d },
+      { shirt: 0xb91c1c, headgear: 'GELE', headgearColor: 0xf59e0b, skin: 0x4a2c18 },
+      { shirt: 0x4f46e5, headgear: 'NONE', headgearColor: 0x000000, skin: 0x3e2723 },
+      { shirt: 0xca8a04, headgear: 'BEANIE', headgearColor: 0x166534, skin: 0x4a2c18 },
+      { shirt: 0x0f766e, headgear: 'CAP', headgearColor: 0xd97706, skin: 0x381e0d },
+    ];
+
     this.cabinPassengerMeshes = [];
+    let paxGlobalIdx = 0;
+
     [1.65, 0.5, -0.65, -1.75].forEach((pz, rIdx) => {
       const bench = new THREE.Mesh(new THREE.BoxGeometry(2.04, 0.07, 0.46), woodBenchMat);
       bench.position.set(0, 1.05, pz);
@@ -3000,25 +3319,76 @@ export class ThreeDrivingEngine {
       benchBack.position.set(0, 1.35, pz - 0.22);
       danfoGroup.add(benchBack);
 
-      // Create dynamic 3D seated passenger figures (initially hidden because bus starts empty at 0/14!)
+      // Create dynamic 3D seated passenger figures
       [-0.64, -0.18, 0.28, 0.68].forEach((px, cIdx) => {
         if (rIdx === 0 && cIdx < 2) return; // Leave front driver seat & steering area open
+        if (paxGlobalIdx >= 14) return;
+
+        const preset = paxStylePresets[paxGlobalIdx % paxStylePresets.length];
+        paxGlobalIdx++;
+
         const paxGroup = new THREE.Group();
+        // Torso with colorful shirt
         const paxTorso = new THREE.Mesh(
-          new THREE.BoxGeometry(0.32, 0.42, 0.24),
-          new THREE.MeshStandardMaterial({
-            color: paxShirtColors[(rIdx + cIdx) % paxShirtColors.length],
-            roughness: 0.6,
-          })
+          new THREE.BoxGeometry(0.32, 0.44, 0.24),
+          new THREE.MeshStandardMaterial({ color: preset.shirt, roughness: 0.6 })
         );
         paxTorso.position.set(px, 1.32, pz - 0.04);
+
+        // Head with authentic skin tone
         const paxHead = new THREE.Mesh(
-          new THREE.SphereGeometry(0.12, 10, 10),
-          new THREE.MeshStandardMaterial({ color: 0x3e2723, roughness: 0.7 })
+          new THREE.SphereGeometry(0.12, 12, 12),
+          new THREE.MeshStandardMaterial({ color: preset.skin, roughness: 0.7 })
         );
         paxHead.position.set(px, 1.64, pz - 0.04);
         paxGroup.add(paxTorso, paxHead);
-        paxGroup.visible = false; // Starts EMPTY until passengers board at the bus stop!
+
+        // Headwear / accessories
+        if (preset.headgear === 'GELE') {
+          const gele = new THREE.Mesh(
+            new THREE.BoxGeometry(0.28, 0.12, 0.26),
+            new THREE.MeshStandardMaterial({ color: preset.headgearColor, roughness: 0.4 })
+          );
+          gele.position.set(px, 1.74, pz - 0.04);
+          paxGroup.add(gele);
+        } else if (preset.headgear === 'CAP') {
+          const cap = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.13, 0.13, 0.05, 12),
+            new THREE.MeshStandardMaterial({ color: preset.headgearColor, roughness: 0.5 })
+          );
+          cap.position.set(px, 1.73, pz - 0.03);
+          paxGroup.add(cap);
+        } else if (preset.headgear === 'BEANIE') {
+          const beanie = new THREE.Mesh(
+            new THREE.SphereGeometry(0.125, 10, 10, 0, Math.PI * 2, 0, Math.PI * 0.55),
+            new THREE.MeshStandardMaterial({ color: preset.headgearColor, roughness: 0.8 })
+          );
+          beanie.position.set(px, 1.66, pz - 0.04);
+          paxGroup.add(beanie);
+        } else if (preset.headgear === 'HEADPHONES') {
+          const band = new THREE.Mesh(
+            new THREE.TorusGeometry(0.125, 0.016, 8, 16, Math.PI),
+            new THREE.MeshStandardMaterial({ color: preset.headgearColor, metalness: 0.6 })
+          );
+          band.rotation.x = Math.PI / 2;
+          band.position.set(px, 1.66, pz - 0.04);
+          paxGroup.add(band);
+        }
+
+        // Seated arms resting on lap or seat
+        const armL = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.28, 0.07), new THREE.MeshStandardMaterial({ color: preset.skin }));
+        armL.position.set(px - 0.16, 1.25, pz + 0.06);
+        armL.rotation.x = Math.PI * 0.35;
+        const armR = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.28, 0.07), new THREE.MeshStandardMaterial({ color: preset.skin }));
+        armR.position.set(px + 0.16, 1.25, pz + 0.06);
+        armR.rotation.x = Math.PI * 0.35;
+
+        // Seated legs on cabin floor
+        const legs = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.16, 0.34), darkMat);
+        legs.position.set(px, 1.08, pz + 0.12);
+
+        paxGroup.add(armL, armR, legs);
+        paxGroup.visible = false; // Starts empty until passengers board at bus stops!
         danfoGroup.add(paxGroup);
         this.cabinPassengerMeshes.push(paxGroup);
       });
@@ -3090,6 +3460,9 @@ export class ThreeDrivingEngine {
       rBlinker,
       lBrake,
       rBrake,
+      lReverse,
+      rReverse,
+      cabinDomeLight,
       wipers: wipersGroup,
       rosary,
       bullBar,
@@ -4203,10 +4576,25 @@ export class ThreeDrivingEngine {
 
     // TIGHT 'DR. DRIVING' LATERAL VELOCITY DAMPENING & ACKERMANN KINEMATICS (Zero Ice-Sliding!)
     const turnDir = gear === 'R' ? -1 : 1;
-    const roadBounds = this.getAllowedRoadBounds(roadDistanceTraveled);
-    const minRoadX = roadBounds.minX;
-    const maxRoadX = roadBounds.maxX;
-    const targetX = Math.max(minRoadX, Math.min(maxRoadX, laneOffsetMeters));
+    const collisionCheck = this.resolveVehicleObstacleCollisions(
+      laneOffsetMeters,
+      roadDistanceTraveled,
+      speedMps,
+      dt
+    );
+    const targetX = collisionCheck.x;
+    const targetZ = collisionCheck.z;
+
+    if (collisionCheck.collided && collisionCheck.message) {
+      const now = performance.now();
+      if (now - this.lastCollisionAlertTime > 1200) {
+        this.lastCollisionAlertTime = now;
+        this.bumpImpulse = 0.85;
+        this.bumpTimer = 0;
+        soundEngine.playCrash();
+        this.pendingCollisionMessage = collisionCheck.message;
+      }
+    }
 
     // Step Cannon-es physics world & cancel out any local lateral sideways velocity slide
     this.world.step(1 / 60, Math.min(dt, 0.05), 2);
@@ -4222,8 +4610,8 @@ export class ThreeDrivingEngine {
     // Direct synchronization of physics chassis & visual 3D bus
     this.chassisBody.position.x = targetX;
     this.busRoot.position.x = targetX;
-    this.chassisBody.position.z = roadDistanceTraveled;
-    this.busRoot.position.z = roadDistanceTraveled;
+    this.chassisBody.position.z = targetZ;
+    this.busRoot.position.z = targetZ;
     this.chassisBody.velocity.x =
       isEngineRunning ? speedMps * localForwardX + dampedLateral * localRightX : 0;
     this.chassisBody.velocity.z =
@@ -4385,6 +4773,26 @@ export class ThreeDrivingEngine {
     } else {
       lBrakeMat.color.setHex(0x500707);
       rBrakeMat.color.setHex(0x500707);
+    }
+
+    // Reverse backup lights
+    const isReversingGear = gear === 'R';
+    const lRevMat = this.leftReverseLight.material as THREE.MeshStandardMaterial;
+    const rRevMat = this.rightReverseLight.material as THREE.MeshStandardMaterial;
+    if (isReversingGear) {
+      lRevMat.color.setHex(0xffffff);
+      lRevMat.emissive.setHex(0xffffff);
+      lRevMat.emissiveIntensity = 2.5;
+      rRevMat.color.setHex(0xffffff);
+      rRevMat.emissive.setHex(0xffffff);
+      rRevMat.emissiveIntensity = 2.5;
+    } else {
+      lRevMat.color.setHex(0x27272a);
+      lRevMat.emissive.setHex(0x000000);
+      lRevMat.emissiveIntensity = 0;
+      rRevMat.color.setHex(0x27272a);
+      rRevMat.emissive.setHex(0x000000);
+      rRevMat.emissiveIntensity = 0;
     }
 
     // 6. Sliding Passenger Door Animation (Pops outward on rail and slides 1.35m back to reveal open step-well!)
@@ -4604,8 +5012,9 @@ export class ThreeDrivingEngine {
 
         const accelOffsetZ = throttle > 0.1 ? throttle * 0.55 : 0;
         const brakeOffsetZ = isBraking ? 0.55 : 0;
-        const desiredFollowDist = isReversing ? -9.2 : (8.8 + accelOffsetZ - brakeOffsetZ);
-        const baseHeightY = isReversing ? 3.55 : (3.45 - accelOffsetZ * 0.12 + (isBraking ? 0.18 : 0));
+        // In reverse: maintain elevated rear chase perspective so driver clearly sees reversing trajectory, obstacles, and curbs!
+        const desiredFollowDist = isReversing ? 7.6 : (8.8 + accelOffsetZ - brakeOffsetZ);
+        const baseHeightY = isReversing ? 4.25 : (3.45 - accelOffsetZ * 0.12 + (isBraking ? 0.18 : 0));
 
         const userYaw = params.cameraLookYaw || 0;
         const userPitch = params.cameraLookPitch || 0;
@@ -4628,12 +5037,33 @@ export class ThreeDrivingEngine {
           this.busRoot.position.z - Math.cos(this.smoothedCamYaw) * this.smoothedFollowDist
         );
 
-        const lookAheadDist = isReversing ? -10.0 : (5.5 + speedRatio * 4.0);
+        const lookAheadDist = isReversing ? 2.0 : (5.5 + speedRatio * 4.0);
         this.camera.lookAt(
           this.smoothedCamX + Math.sin(this.busHeadingYaw) * lookAheadDist,
-          this.busRoot.position.y + 1.45 - (isBraking ? 0.1 : 0),
+          this.busRoot.position.y + (isReversing ? 1.15 : 1.45) - (isBraking ? 0.1 : 0),
           this.busRoot.position.z + Math.cos(this.busHeadingYaw) * lookAheadDist
         );
+        this.camera.updateProjectionMatrix();
+      } else if (params.cameraMode === 'CABIN_VIEW' || (params.cameraMode as any) === 'CABIN_1ST') {
+        this.camera.up.set(0, 1, 0);
+        // CABIN INTERIOR PASSENGER VIEW:
+        // Positioned at the front of the cabin behind windshield (x = 0, y = 1.80, z = 2.15)
+        // looking straight down the central aisle (-Z) at all 4 rows of seated commuters!
+        const headBob = speedKmH > 10 ? Math.sin(Date.now() * 0.02) * 0.005 : 0;
+        const localCamPos = new THREE.Vector3(0.0, 1.80 + headBob, 2.15);
+        localCamPos.applyQuaternion(this.busRoot.quaternion);
+        localCamPos.add(this.busRoot.position);
+        this.camera.position.copy(localCamPos);
+
+        const userYaw = params.cameraLookYaw || 0;
+        const userPitch = Math.max(-0.45, Math.min(0.45, params.cameraLookPitch || 0));
+
+        this.camera.rotation.order = 'YXZ';
+        // Base yaw 0 looks towards -Z (rear of bus down the aisle). User yaw allows 360-degree cabin pan!
+        this.camera.rotation.y = this.busHeadingYaw + userYaw;
+        this.camera.rotation.x = userPitch;
+        this.camera.rotation.z = 0;
+        this.camera.fov = 78; // Wide angle interior passenger cabin view
         this.camera.updateProjectionMatrix();
       } else if (params.cameraMode === 'ORBIT') {
         this.camera.up.set(0, 1, 0);
@@ -4662,12 +5092,13 @@ export class ThreeDrivingEngine {
         localCamPos.add(this.busRoot.position);
         this.camera.position.copy(localCamPos);
 
-        // Maintain forward-facing driver cockpit view looking through windshield glass (zero jarring 180-deg flip!)
+        // Maintain forward-facing driver cockpit view looking through windshield glass
         const baseYaw = Math.PI;
         const pitchG = isBraking ? 0.018 : (speedKmH > 20 ? -0.006 : 0);
 
-        const clampedLookYaw = Math.max(-0.65, Math.min(0.65, params.cameraLookYaw || 0));
-        const clampedLookPitch = Math.max(-0.30, Math.min(0.22, params.cameraLookPitch || 0));
+        // Allow full 180-degree head rotation so driver can glance around and look back directly at all passengers in the cabin!
+        const clampedLookYaw = Math.max(-Math.PI, Math.min(Math.PI, params.cameraLookYaw || 0));
+        const clampedLookPitch = Math.max(-0.45, Math.min(0.35, params.cameraLookPitch || 0));
 
         this.camera.rotation.order = 'YXZ';
         this.camera.rotation.y = baseYaw + this.busHeadingYaw + clampedLookYaw;
@@ -5011,7 +5442,7 @@ export class ThreeDrivingEngine {
           const pushSign = dx >= 0 ? 1 : -1;
           const playerPushX = pushSign * (overlapX * 0.7 + 0.08);
           const npcPushX = -pushSign * (overlapX * 0.3 + 0.05);
-          this.busRoot.position.x = Math.max(minRoadX, Math.min(8.8, this.busRoot.position.x + playerPushX));
+          this.busRoot.position.x = Math.max(-8.8, Math.min(8.8, this.busRoot.position.x + playerPushX));
           this.chassisBody.position.x = this.busRoot.position.x;
           npc.position.x = Math.max(-7.8, Math.min(7.8, npc.position.x + npcPushX));
           this.chassisBody.velocity.z *= 0.82;
@@ -5205,11 +5636,9 @@ export class ThreeDrivingEngine {
     }
 
     // 17c. Restore full viewport & render main camera scene across full window
-    const hide3DBusInCockpit = params.cameraMode === 'FIRST_PERSON' && !isSteppedDown;
-    this.busBody.visible = !hide3DBusInCockpit;
+    this.busBody.visible = true;
     this.renderer.setViewport(0, 0, fullW, fullH);
     this.renderer.render(this.scene, this.camera);
-    this.busBody.visible = true;
   }
 
   /**

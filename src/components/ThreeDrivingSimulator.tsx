@@ -405,8 +405,29 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
     }
   };
 
+  const [isLookingBack, setIsLookingBack] = useState<boolean>(false);
+  const isLookingBackRef = useRef<boolean>(false);
+
+  const toggleLookBack = useCallback(() => {
+    const next = !isLookingBackRef.current;
+    isLookingBackRef.current = next;
+    setIsLookingBack(next);
+    if (next) {
+      lookRef.current.yaw = Math.PI; // Look 180 degrees backwards into the passenger cabin
+      addFeedMessage('👀 GLANCING BACK: Checking all seated commuters in the cabin!');
+    } else {
+      lookRef.current.yaw = 0; // Return to windshield view
+      addFeedMessage('👀 LOOKING AHEAD: Eyes back on the road!');
+    }
+  }, [addFeedMessage]);
+
   // Strict camera mode switcher (Works both while Driving and in On-Foot Walk Mode!)
   const cycleCameraMode = useCallback(() => {
+    if (isLookingBackRef.current) {
+      isLookingBackRef.current = false;
+      setIsLookingBack(false);
+    }
+
     if (simRef.current.isSteppedDown) {
       const nextWalk3P = !walkThirdPersonRef.current;
       walkThirdPersonRef.current = nextWalk3P;
@@ -421,7 +442,8 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
 
     const prev = cameraModeRef.current;
     let next: CameraViewMode = 'FIRST_PERSON';
-    if (prev === 'FIRST_PERSON') next = 'THIRD_PERSON';
+    if (prev === 'FIRST_PERSON') next = 'CABIN_VIEW';
+    else if (prev === 'CABIN_VIEW') next = 'THIRD_PERSON';
     else if (prev === 'THIRD_PERSON') next = 'TOP_DOWN';
     else if (prev === 'TOP_DOWN') next = 'ORBIT';
     else next = 'FIRST_PERSON';
@@ -435,6 +457,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
 
     const labels: Record<string, string> = {
       FIRST_PERSON: '🎥 1ST PERSON (DR. DRIVING BUS DASH)',
+      CABIN_VIEW: '🚌 CABIN INTERIOR (PASSENGER SEATS VIEW)',
       THIRD_PERSON: '🚗 3RD PERSON (CHASE CAM)',
       TOP_DOWN: '🦅 TOP-DOWN (BIRD EYE)',
       ORBIT: '🔄 360 FREE ORBIT',
@@ -931,7 +954,14 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         triggerConductorShout();
         onConductorAction('CALLING');
       }
-      if (e.key === 'c' || e.key === 'C') handleCollectFares();
+      if (e.key === 'c' || e.key === 'C') {
+        if (cameraModeRef.current === 'FIRST_PERSON') {
+          toggleLookBack();
+        } else {
+          handleCollectFares();
+        }
+      }
+      if (e.key === 'l' || e.key === 'L') toggleLookBack();
       if (e.key === 'v' || e.key === 'V') cycleCameraMode();
     };
 
@@ -1048,10 +1078,10 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           }
         } else if (inp.gear === 'R') {
           if (inp.gas) {
-            sim.speed = Math.min(25, sim.speed + 16 * dt);
-            sim.fuel = Math.max(0, sim.fuel - 0.04 * dt);
+            sim.speed = Math.min(18, sim.speed + 14 * dt); // Realistic reverse speed ~18 km/h
+            sim.fuel = Math.max(0, sim.fuel - 0.03 * dt);
           } else {
-            sim.speed = Math.max(0, sim.speed - 18 * dt);
+            sim.speed = Math.max(0, sim.speed - 22 * dt);
           }
         } else if (inp.gear === 'L') {
           if (inp.gas) {
@@ -1082,30 +1112,48 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         const speedMps = (sim.speed * 1000) / 3600;
         const isReversing = inp.gear === 'R';
 
-        if (Math.abs(steerFactor) > 0.012) {
-          // NATURAL DRIVING STEERING (Left turns to Left +X, Right turns to Right -X):
-          // In Three.js world space looking down +Z: Left side of road is +X, Right side is -X.
-          // When turning left: sim.steeringAngle < 0, steerFactor < 0.
-          // Target heading yaw points towards Left (+X), so targetHeadingYaw must be POSITIVE.
-          const targetHeadingYaw = -steerFactor * 0.44 * (isReversing ? -0.7 : 1.0);
-          sim.headingYaw += (targetHeadingYaw - sim.headingYaw) * Math.min(1.0, 14.5 * dt);
-        } else {
-          // Centered steering: cancel out lateral heading drift immediately
-          sim.headingYaw *= Math.pow(0.0005, dt);
-          if (Math.abs(sim.headingYaw) < 0.002) sim.headingYaw = 0;
-        }
-        sim.headingYaw = Math.max(-0.46, Math.min(0.46, sim.headingYaw));
-
         if (isReversing) {
-          // In reverse: turning wheel right smoothly steers the rear to the right (-X)
-          const reverseLatSpeed = -steerFactor * 3.6 * Math.min(1.0, sim.speed / 14);
-          sim.laneOffset += reverseLatSpeed * dt;
+          // REALISTIC REVERSING KINEMATICS:
+          // Turning wheel RIGHT (steerFactor > 0) pivots the rear of the bus to the RIGHT (-X direction).
+          // Front nose swings to LEFT (+X direction). Heading yaw rotates towards POSITIVE yaw angle!
+          const targetRevHeadingYaw = steerFactor * 0.85;
+          if (Math.abs(steerFactor) > 0.012) {
+            sim.headingYaw += (targetRevHeadingYaw - sim.headingYaw) * Math.min(1.0, 16.0 * dt);
+          } else {
+            sim.headingYaw = THREE.MathUtils.damp(sim.headingYaw, 0, 7.5, dt);
+            if (Math.abs(sim.headingYaw) < 0.002) sim.headingYaw = 0;
+          }
+          sim.headingYaw = Math.max(-0.95, Math.min(0.95, sim.headingYaw));
+
+          // Vehicle rolls backwards along its oriented heading vector:
+          sim.laneOffset += -Math.sin(sim.headingYaw) * speedMps * dt;
+          sim.distanceTraveled = Math.max(0, sim.distanceTraveled - Math.cos(sim.headingYaw) * speedMps * dt);
         } else {
+          // FORWARD DRIVING TURNS with dynamic Ackermann steering agility:
+          // Low speed (0-35 km/h): high angular agility (up to 0.95 rad ~54 deg) for tight corners, parking bays, and motor park exit gate!
+          // High speed (>60 km/h): stable highway tracking (capped at ~0.42 rad ~24 deg) with damping
+          const speedRatio = Math.min(1.0, sim.speed / 65);
+          const maxTurnAngle = THREE.MathUtils.lerp(0.95, 0.42, speedRatio);
+          const targetHeadingYaw = -steerFactor * maxTurnAngle;
+
+          const turnRate = THREE.MathUtils.lerp(18.0, 12.0, speedRatio);
+          if (Math.abs(steerFactor) > 0.012) {
+            sim.headingYaw += (targetHeadingYaw - sim.headingYaw) * Math.min(1.0, turnRate * dt);
+          } else {
+            sim.headingYaw = THREE.MathUtils.damp(sim.headingYaw, 0, 9.0, dt);
+            if (Math.abs(sim.headingYaw) < 0.002) sim.headingYaw = 0;
+          }
+          sim.headingYaw = Math.max(-1.05, Math.min(1.05, sim.headingYaw));
+
           sim.laneOffset += Math.sin(sim.headingYaw) * speedMps * dt;
+          const currentlyOnShortcut = engineRef.current ? engineRef.current.isOnShortcutBranch() : false;
+          const shortcutMult = currentlyOnShortcut ? 1.35 : 1.0;
+          sim.distanceTraveled += Math.cos(sim.headingYaw) * speedMps * shortcutMult * dt;
         }
+
         const allowedBounds = engineRef.current
           ? engineRef.current.getAllowedRoadBounds(sim.distanceTraveled)
-          : { minX: sim.distanceTraveled < 48 ? -26.5 : -8.8, maxX: 8.8 };
+          : { minX: sim.distanceTraveled < 40 ? -22.5 : -8.8, maxX: 8.8 };
 
         if (sim.laneOffset <= allowedBounds.minX) {
           sim.laneOffset = allowedBounds.minX;
@@ -1128,14 +1176,6 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
             triggerCashToast(350, '+₦350 Shortcut Time-Saver Bonus!');
             addFeedMessage('↩ REJOINED MAIN EXPRESSWAY: +₦350 Shortcut Time-Saver Bonus earned!');
           }
-        }
-
-        const shortcutMult = currentlyOnShortcut ? 1.35 : 1.0;
-        const forwardDeltaM = Math.cos(sim.headingYaw) * speedMps * shortcutMult * dt;
-        if (inp.gear === 'R') {
-          sim.distanceTraveled = Math.max(0, sim.distanceTraveled - forwardDeltaM);
-        } else {
-          sim.distanceTraveled += forwardDeltaM;
         }
       }
 
@@ -1544,11 +1584,15 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
             sim.distanceTraveled = Math.max(0, phys.position.z);
           }
 
+          const isCollidingNow = engineRef.current.isColliding();
           const collisionMsg = engineRef.current.consumeCollisionMessage();
-          if (collisionMsg) {
-            sim.speed = Math.max(0, sim.speed * 0.72);
-            sim.comfort = Math.max(10, sim.comfort - 8);
-            addFeedMessage(collisionMsg);
+          if (isCollidingNow) {
+            // STOP immediately on solid wall/obstacle collision so vehicle CANNOT phase or push through!
+            sim.speed = 0;
+            if (collisionMsg) {
+              sim.comfort = Math.max(10, sim.comfort - 8);
+              addFeedMessage(collisionMsg);
+            }
           }
         } catch (err) {
           console.error('3D Engine update error:', err);
@@ -2466,10 +2510,26 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                         e.stopPropagation();
                         cycleCameraMode();
                       }}
-                      className="w-6 sm:w-7 py-0.5 rounded border border-sky-500/70 bg-sky-950/80 text-sky-300 hover:text-white text-[8px] font-mono font-black"
-                      title="Switch Camera View (V)"
+                      className="px-1.5 py-0.5 rounded border border-sky-500/70 bg-sky-950/80 text-sky-300 hover:text-white text-[8px] font-mono font-black flex items-center gap-0.5"
+                      title="Switch Camera View (V) - Cockpit, Cabin, 3rd, Top, Orbit"
                     >
-                      🎥
+                      <span>🎥</span>
+                      <span className="text-[7px]">CABIN</span>
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleLookBack();
+                      }}
+                      className={`px-1.5 py-0.5 rounded border text-[8px] font-mono font-black flex items-center gap-0.5 ${
+                        isLookingBack
+                          ? 'bg-amber-400 text-stone-950 border-amber-200 animate-pulse'
+                          : 'border-amber-500/60 bg-stone-900/90 text-amber-300 hover:text-white'
+                      }`}
+                      title="Glance Back at Commuters in Cabin (L / C)"
+                    >
+                      <span>👀</span>
+                      <span className="text-[7px]">{isLookingBack ? 'FRONT' : 'CABIN'}</span>
                     </button>
                     <button
                       onClick={(e) => {
