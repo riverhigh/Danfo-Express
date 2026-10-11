@@ -4,6 +4,10 @@ import { ThreeDrivingEngine } from '../game/three/ThreeDrivingEngine';
 import { StreetNavigationTelemetry } from '../game/three/RoadManager';
 import { GameState, CameraViewMode, GearPosition, DoorState, JunctionStop, GasStationBay, RoadsideShop, Passenger, PassengerArchetype, DeliveryJob } from '../types/game';
 import { soundEngine } from '../audio/soundEngine';
+import { howlerAudio } from '../audio/howlerAudio';
+import { RapierPhysicsEngine } from '../game/physics/RapierPhysicsEngine';
+import { useDanfoStore } from '../game/store/useDanfoStore';
+import { NippleJoystick } from './NippleJoystick';
 import { MiniMap } from './MiniMap';
 import { LAGOS_NPCS, LagosNpc } from '../game/npcData';
 import { NpcInteractionModal } from './NpcInteractionModal';
@@ -110,6 +114,15 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
   const [conductorShoutText, setConductorShoutText] = useState<string>('');
   const [isBoosting, setIsBoosting] = useState<boolean>(false);
   const boostTimerRef = useRef<number>(0);
+  const rapierRef = useRef<RapierPhysicsEngine | null>(null);
+  const [touchControlMode, setTouchControlMode] = useState<'WHEEL' | 'JOYSTICK'>('WHEEL');
+
+  // Initialize Rapier WASM High-Performance Physics Engine
+  useEffect(() => {
+    RapierPhysicsEngine.getInstance().then((engine) => {
+      rapierRef.current = engine;
+    }).catch((e) => console.warn('Rapier load notice:', e));
+  }, []);
 
   useEffect(() => {
     fareBargainModeRef.current = fareBargainMode;
@@ -370,7 +383,32 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
     }, 4200);
   }, [gameState.junctions, addFeedMessage, setGameState]);
 
-  // Overtake / Boost Move with Funny Pidgin Quotes
+  // Consumable Nitro Boost Canister Purchase (₦500 per canister)
+  const handleBuyBoost = useCallback((count: number = 1) => {
+    const costPer = 500;
+    const totalCost = count * costPer;
+    if (gameState.walletNaira < totalCost) {
+      addFeedMessage(`⚠️ INSUFFICIENT NAIRA: Need ₦${totalCost.toLocaleString()} to purchase ${count} Nitro Boost Canister(s)!`);
+      return false;
+    }
+    soundEngine.playCoin();
+    triggerCashToast(-totalCost, `-₦${totalCost.toLocaleString()} Bought +${count} Boost Canister(s)`);
+    setGameState((prev) => {
+      const nextWallet = prev.walletNaira - totalCost;
+      const nextBoosts = (prev.boostCanisters ?? 0) + count;
+      onUpdateSave?.({ walletNaira: nextWallet, boostCanisters: nextBoosts });
+      useDanfoStore.getState().buyBoostCanisters(count, costPer);
+      return {
+        ...prev,
+        walletNaira: nextWallet,
+        boostCanisters: nextBoosts,
+      };
+    });
+    addFeedMessage(`⚡ BOUGHT +${count} NITRO BOOST CANISTER(S)! Total inventory: ${(gameState.boostCanisters ?? 0) + count}`);
+    return true;
+  }, [gameState.walletNaira, gameState.boostCanisters, onUpdateSave, addFeedMessage, triggerCashToast]);
+
+  // Overtake / Nitro Boost Move (Consumes 1 Canister per activation)
   const triggerOvertakeBoost = useCallback(() => {
     if (!inputsRef.current.isEngineRunning) {
       addFeedMessage('🔑 Turn ON Engine (E / K) before using Overtake Boost!');
@@ -380,16 +418,40 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       addFeedMessage('⛽ Fuel too low for Overtake Boost!');
       return;
     }
-    boostTimerRef.current = 3.5;
+
+    const availableBoosts = gameState.boostCanisters ?? 0;
+    if (availableBoosts <= 0) {
+      if (gameState.walletNaira >= 500) {
+        addFeedMessage('⚡ 0 BOOSTS REMAINING: Auto-purchasing 1 Boost Canister for ₦500...');
+        const bought = handleBuyBoost(1);
+        if (!bought) return;
+      } else {
+        addFeedMessage('⚠️ NO NITRO BOOST CANISTERS LEFT! Buy more for ₦500 at shops or tap +₦500 on HUD.');
+        return;
+      }
+    } else {
+      const nextBoosts = Math.max(0, availableBoosts - 1);
+      setGameState((prev) => {
+        const next = Math.max(0, (prev.boostCanisters ?? 1) - 1);
+        onUpdateSave?.({ boostCanisters: next });
+        return { ...prev, boostCanisters: next };
+      });
+      useDanfoStore.getState().useBoostCanister();
+    }
+
+    boostTimerRef.current = 4.0;
     setIsBoosting(true);
+    howlerAudio.playBoostIgnite();
     soundEngine.playHorn(true);
+
+    const remainingCount = Math.max(0, (gameState.boostCanisters ?? 1) - 1);
     const pidginBoostQuotes = [
-      '⚡ OVERTAKE BOOST: "Comot for road! Danfo wan fly!" 🚌💨',
-      '⚡ OVERTAKE BOOST: "No Condition Is Permanent! Hold your seat o!" 🔥',
-      '⚡ OVERTAKE BOOST: "Clear road for Lagos King! Waka fast!" 🚀',
+      `⚡ AGBAARA NITRO FIRED (${remainingCount} left): "Comot for road! Danfo wan fly!" 🚌💨`,
+      `⚡ AGBAARA NITRO FIRED (${remainingCount} left): "No Condition Is Permanent! Hold your seat o!" 🔥`,
+      `⚡ AGBAARA NITRO FIRED (${remainingCount} left): "Clear road for Lagos King! Waka fast!" 🚀`,
     ];
     addFeedMessage(pidginBoostQuotes[Math.floor(Math.random() * pidginBoostQuotes.length)]);
-  }, [addFeedMessage]);
+  }, [gameState.boostCanisters, gameState.walletNaira, onUpdateSave, addFeedMessage, handleBuyBoost]);
 
   const toggleDoor = () => {
     const nextDoor: DoorState = doorState === 'CLOSED' ? 'OPEN' : 'CLOSED';
@@ -719,10 +781,15 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         }];
       }
       const nextWallet = prev.walletNaira - item.price;
-      onUpdateSave?.({ walletNaira: nextWallet });
+      const nextBoosts = item.id === 'item-boost-canister' ? (prev.boostCanisters ?? 0) + 1 : prev.boostCanisters;
+      onUpdateSave?.({ walletNaira: nextWallet, boostCanisters: nextBoosts });
+      if (item.id === 'item-boost-canister') {
+        useDanfoStore.getState().buyBoostCanisters(1, item.price);
+      }
       return {
         ...prev,
         walletNaira: nextWallet,
+        boostCanisters: nextBoosts,
         inventory: updatedInv,
       };
     });
@@ -1599,7 +1666,15 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         }
       }
 
-      // 6. Decoupled UI Telemetry at 10 Hz
+      // 5b. Step Rapier WASM Physics Engine for Continuous Collision Detection & Rigids
+      if (rapierRef.current) {
+        try {
+          rapierRef.current.step(dt);
+          rapierRef.current.updateVehicleTransform(sim.laneOffset, 1.0, sim.distanceTraveled, sim.headingYaw);
+        } catch {}
+      }
+
+      // 6. Decoupled UI Telemetry at 10 Hz & Zustand Store Sync
       if (telemetryAcc >= 0.1) {
         telemetryAcc = 0;
         setHudSpeed(Math.round(sim.speed));
@@ -1612,6 +1687,17 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         setActiveJuncIndex(sim.activeJunctionIndex);
         setIsBoarding(sim.isBoarding);
         setWheelVisualAngle(sim.steeringAngle);
+
+        // Sync high-performance telemetry to Zustand store (Zero React re-render overhead!)
+        useDanfoStore.getState().updateTelemetry({
+          speedKmH: Math.round(sim.speed),
+          fuelPercent: Math.round(sim.fuel),
+          engineHeat: Math.round(sim.heat),
+          comfortMeter: Math.round(sim.comfort),
+          distanceTraveledMeters: Math.round(sim.distanceTraveled),
+          passengersCount: passengersCountRef.current,
+        });
+
         if (engineRef.current) {
           setStreetTelemetry(engineRef.current.getStreetNavigationTelemetry());
         }
@@ -1703,49 +1789,25 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
             </span>
           </div>
 
-          {/* Center: Consolidated Essential Telemetry (Speed, Gear, Fuel, Passengers, Finances) */}
+          {/* Center: Sleek Gear & Next Stop Status (Speed, Gas, Balance, People Counter removed per request!) */}
           <div className="flex items-center gap-2 text-[10px] font-mono">
-            <span className="text-amber-300 font-black tabular-nums">{hudSpeed} KM/H</span>
             <span
-              className={`px-1.5 py-0.5 rounded text-[8px] font-mono font-black ${
+              className={`px-2 py-0.5 rounded text-[8px] font-mono font-black ${
                 gear === 'R'
                   ? 'bg-rose-600 text-white shadow ring-1 ring-rose-300 animate-pulse'
                   : 'bg-stone-800 text-stone-200'
               }`}
             >
-              {gear}
+              GEAR: {gear}
             </span>
-            {gear === 'R' && (
-              <span className="bg-emerald-950/90 border border-emerald-400 text-emerald-300 px-1.5 py-0.5 rounded text-[8px] font-mono font-black shrink-0">
-                [✓ Fixed] R-Gear Sound
+            {currentJunction && (
+              <span className="hidden sm:inline text-stone-400 text-[9px] truncate max-w-[170px] md:max-w-xs">
+                ➔ Next: <strong className="text-amber-300">{currentJunction.name}</strong>
               </span>
             )}
-            <span className="text-stone-700 hidden sm:inline">·</span>
-            <span className="text-stone-400 hidden md:inline tabular-nums">⛽{hudFuel}%</span>
-            <span className="text-stone-700 hidden sm:inline">·</span>
-            <button
-              onClick={() => onOpenPosOrBank?.('POS_KIOSK')}
-              className="flex items-center gap-1 text-emerald-400 font-black tabular-nums hover:text-emerald-300 cursor-pointer"
-              title="Wallet Cash (Click for POS Agent ≤₦100k)"
-            >
-              <Coins className="w-3 h-3" />
-              <span>₦{gameState.walletNaira.toLocaleString()}</span>
-            </button>
-            <span className="text-stone-700">·</span>
-            <button
-              onClick={() => onOpenPosOrBank?.('BANK_HALL')}
-              className="hidden lg:flex items-center gap-1 text-sky-400 font-black tabular-nums hover:text-sky-300 cursor-pointer"
-              title="Bank Balance (Click for Bank Hall >₦100k)"
-            >
-              <span>🏦 ₦{(gameState.bankBalanceNaira || 0).toLocaleString()}</span>
-            </button>
-            <span className="text-stone-700 hidden sm:inline">·</span>
-            <span className="text-amber-300 font-black tabular-nums">
-              👥 {gameState.bus.passengers?.length || 0}/{gameState.bus.capacity || 14}
-            </span>
           </div>
 
-          {/* Right: Compact Controls (Dashboard Mode Toggle, Camera, Walk, Engine, Boost, Home, Exit) */}
+          {/* Right: Compact Controls (Dashboard Mode Toggle, Camera, Walk, Engine, Boost with Counter & Buy, Home, Exit) */}
           <div className="flex items-center gap-1 shrink-0">
             {!isSteppedDown && cameraMode === 'FIRST_PERSON' && (
               <button
@@ -1790,17 +1852,33 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
               <Power className="w-3 h-3" />
               <span className="hidden sm:inline">{isEngineRunning ? 'ENG: ON' : 'ENG: OFF'}</span>
             </button>
-            <button
-              onClick={triggerOvertakeBoost}
-              title="Overtake Boost (Shift)"
-              className={`px-2 py-1 rounded border font-mono font-black text-[9px] hidden md:inline-block ${
-                isBoosting
-                  ? 'bg-amber-400 text-stone-950 border-amber-200'
-                  : 'bg-stone-900 border-amber-500/60 text-amber-300'
-              }`}
-            >
-              ⚡ BOOST
-            </button>
+
+            {/* Consumable Nitro Boost with Counter & Buy */}
+            <div className="flex items-center gap-0.5 bg-stone-900/90 border border-amber-400/50 rounded-lg p-0.5 shadow-sm">
+              <button
+                onClick={triggerOvertakeBoost}
+                title="Consume 1 Nitro Boost (Shift)"
+                className={`px-2 py-1 rounded font-mono font-black text-[9px] transition-all flex items-center gap-1 active:scale-95 ${
+                  isBoosting
+                    ? 'bg-amber-400 text-stone-950 animate-pulse'
+                    : (gameState.boostCanisters ?? 0) > 0
+                    ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-stone-950 hover:from-amber-400 hover:to-amber-500 shadow'
+                    : 'bg-stone-800 text-stone-400 hover:text-white'
+                }`}
+              >
+                <span>⚡ BOOST</span>
+                <span className="px-1 py-0.2 rounded bg-black/40 text-amber-200 font-mono text-[8px] font-black border border-black/20">
+                  {gameState.boostCanisters ?? 0}
+                </span>
+              </button>
+              <button
+                onClick={() => handleBuyBoost(1)}
+                title="Buy 1 Nitro Boost Canister for ₦500"
+                className="px-1.5 py-1 bg-amber-500/20 hover:bg-amber-400 hover:text-stone-950 text-amber-300 rounded font-mono font-black text-[8px] transition-all active:scale-95"
+              >
+                +₦500
+              </button>
+            </div>
             {onGoHome && (
               <button
                 onClick={onGoHome}
@@ -2541,65 +2619,93 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                     >
                       🚶
                     </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setTouchControlMode((v) => (v === 'WHEEL' ? 'JOYSTICK' : 'WHEEL'));
+                      }}
+                      className="px-1 py-0.5 rounded border border-amber-400/80 bg-stone-900/90 text-amber-300 hover:text-white text-[8px] font-mono font-black shrink-0"
+                      title="Toggle 3-Spoke Wheel vs NippleJS Analog Virtual Joystick"
+                    >
+                      {touchControlMode === 'WHEEL' ? '🕹️ JOY' : '🎡 WHL'}
+                    </button>
                   </div>
                 </div>
 
-                {/* REDESIGNED 3-SPOKE COMMERCIAL BUS STEERING WHEEL */}
-                <div
-                  ref={wheelElementRef}
-                  onPointerDown={handleWheelPointerDown}
-                  onPointerMove={handleWheelPointerMove}
-                  onPointerUp={handleWheelPointerUp}
-                  onPointerCancel={handleWheelPointerUp}
-                  className="relative w-[84px] h-[84px] sm:w-[98px] sm:h-[98px] rounded-full cursor-grab active:cursor-grabbing touch-none select-none flex items-center justify-center z-30 shrink-0 -mt-1"
-                  style={{
-                    transform: `rotate(${wheelVisualAngle}deg)`,
-                    filter: 'drop-shadow(0 6px 12px rgba(0,0,0,0.95))',
-                  }}
-                >
-                  <svg viewBox="0 0 200 200" className="w-full h-full overflow-visible pointer-events-none">
-                    <defs>
-                      <radialGradient id="busRimGrad" cx="50%" cy="50%" r="50%">
-                        <stop offset="72%" stopColor="#1c1917" />
-                        <stop offset="86%" stopColor="#3f3f46" />
-                        <stop offset="95%" stopColor="#18181b" />
-                        <stop offset="100%" stopColor="#09090b" />
-                      </radialGradient>
-                      <linearGradient id="spokeMetal" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" stopColor="#71717a" />
-                        <stop offset="50%" stopColor="#3f3f46" />
-                        <stop offset="100%" stopColor="#18181b" />
-                      </linearGradient>
-                      <linearGradient id="woodTopGrip" x1="0%" y1="0%" x2="100%" y2="0%">
-                        <stop offset="0%" stopColor="#78350f" />
-                        <stop offset="50%" stopColor="#b45309" />
-                        <stop offset="100%" stopColor="#78350f" />
-                      </linearGradient>
-                    </defs>
-                    <circle cx="100" cy="100" r="90" fill="none" stroke="rgba(0,0,0,0.55)" strokeWidth="18" />
-                    <path d="M 18 102 L 72 90 L 74 114 L 18 118 Z" fill="url(#spokeMetal)" stroke="#52525b" strokeWidth="1.5" />
-                    <path d="M 182 102 L 128 90 L 126 114 L 182 118 Z" fill="url(#spokeMetal)" stroke="#52525b" strokeWidth="1.5" />
-                    <path d="M 88 124 L 112 124 L 116 184 L 84 184 Z" fill="url(#spokeMetal)" stroke="#52525b" strokeWidth="1.5" />
-                    <rect x="32" y="101" width="28" height="5" rx="2.5" fill="#a1a1aa" opacity="0.75" />
-                    <rect x="140" y="101" width="28" height="5" rx="2.5" fill="#a1a1aa" opacity="0.75" />
-                    <rect x="97" y="140" width="6" height="28" rx="3" fill="#a1a1aa" opacity="0.75" />
-                    <circle cx="100" cy="100" r="86" fill="none" stroke="url(#busRimGrad)" strokeWidth="18" />
-                    <path d="M 32 50 A 86 86 0 0 1 168 50" fill="none" stroke="url(#woodTopGrip)" strokeWidth="16" strokeLinecap="round" />
-                    <circle cx="100" cy="100" r="77" fill="none" stroke="rgba(255,255,255,0.14)" strokeWidth="1.2" strokeDasharray="6 4" />
-                    <rect x="96" y="5" width="8" height="19" rx="2" fill="#facc15" stroke="#18181b" strokeWidth="1.5" />
-                    <circle cx="100" cy="105" r="34" fill="#18181b" stroke="#52525b" strokeWidth="3" />
-                  </svg>
-
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleHorn();
+                {/* 3-SPOKE COMMERCIAL BUS STEERING WHEEL OR NIPPLEJS ANALOG VIRTUAL JOYSTICK */}
+                {touchControlMode === 'JOYSTICK' ? (
+                  <div className="flex items-center justify-center shrink-0 z-30 select-none touch-none">
+                    <NippleJoystick
+                      size={76}
+                      label="NIPPLE JOYSTICK"
+                      onMove={(vec) => {
+                        const clamped = Math.max(-135, Math.min(135, vec.x * 135));
+                        simRef.current.steeringAngle = clamped;
+                        setWheelVisualAngle(clamped);
+                      }}
+                      onEnd={() => {
+                        simRef.current.steeringAngle = 0;
+                        setWheelVisualAngle(0);
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <div
+                    ref={wheelElementRef}
+                    onPointerDown={handleWheelPointerDown}
+                    onPointerMove={handleWheelPointerMove}
+                    onPointerUp={handleWheelPointerUp}
+                    onPointerCancel={handleWheelPointerUp}
+                    className="relative w-[84px] h-[84px] sm:w-[98px] sm:h-[98px] rounded-full cursor-grab active:cursor-grabbing touch-none select-none flex items-center justify-center z-30 shrink-0 -mt-1"
+                    style={{
+                      transform: `rotate(${wheelVisualAngle}deg)`,
+                      filter: 'drop-shadow(0 6px 12px rgba(0,0,0,0.95))',
                     }}
-                    className="absolute w-8 h-8 sm:w-9 sm:h-9 mt-0.5 rounded-full bg-gradient-to-b from-amber-400 to-amber-500 active:scale-95 text-stone-950 font-black text-[7px] sm:text-[8px] font-['Bungee'] flex items-center justify-center shadow border border-stone-900 pointer-events-auto"
                   >
-                    HORN
-                  </button>
-                </div>
+                    <svg viewBox="0 0 200 200" className="w-full h-full overflow-visible pointer-events-none">
+                      <defs>
+                        <radialGradient id="busRimGrad" cx="50%" cy="50%" r="50%">
+                          <stop offset="72%" stopColor="#1c1917" />
+                          <stop offset="86%" stopColor="#3f3f46" />
+                          <stop offset="95%" stopColor="#18181b" />
+                          <stop offset="100%" stopColor="#09090b" />
+                        </radialGradient>
+                        <linearGradient id="spokeMetal" x1="0%" y1="0%" x2="100%" y2="100%">
+                          <stop offset="0%" stopColor="#71717a" />
+                          <stop offset="50%" stopColor="#3f3f46" />
+                          <stop offset="100%" stopColor="#18181b" />
+                        </linearGradient>
+                        <linearGradient id="woodTopGrip" x1="0%" y1="0%" x2="100%" y2="0%">
+                          <stop offset="0%" stopColor="#78350f" />
+                          <stop offset="50%" stopColor="#b45309" />
+                          <stop offset="100%" stopColor="#78350f" />
+                        </linearGradient>
+                      </defs>
+                      <circle cx="100" cy="100" r="90" fill="none" stroke="rgba(0,0,0,0.55)" strokeWidth="18" />
+                      <path d="M 18 102 L 72 90 L 74 114 L 18 118 Z" fill="url(#spokeMetal)" stroke="#52525b" strokeWidth="1.5" />
+                      <path d="M 182 102 L 128 90 L 126 114 L 182 118 Z" fill="url(#spokeMetal)" stroke="#52525b" strokeWidth="1.5" />
+                      <path d="M 88 124 L 112 124 L 116 184 L 84 184 Z" fill="url(#spokeMetal)" stroke="#52525b" strokeWidth="1.5" />
+                      <rect x="32" y="101" width="28" height="5" rx="2.5" fill="#a1a1aa" opacity="0.75" />
+                      <rect x="140" y="101" width="28" height="5" rx="2.5" fill="#a1a1aa" opacity="0.75" />
+                      <rect x="97" y="140" width="6" height="28" rx="3" fill="#a1a1aa" opacity="0.75" />
+                      <circle cx="100" cy="100" r="86" fill="none" stroke="url(#busRimGrad)" strokeWidth="18" />
+                      <path d="M 32 50 A 86 86 0 0 1 168 50" fill="none" stroke="url(#woodTopGrip)" strokeWidth="16" strokeLinecap="round" />
+                      <circle cx="100" cy="100" r="77" fill="none" stroke="rgba(255,255,255,0.14)" strokeWidth="1.2" strokeDasharray="6 4" />
+                      <rect x="96" y="5" width="8" height="19" rx="2" fill="#facc15" stroke="#18181b" strokeWidth="1.5" />
+                      <circle cx="100" cy="105" r="34" fill="#18181b" stroke="#52525b" strokeWidth="3" />
+                    </svg>
+
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleHorn();
+                      }}
+                      className="absolute w-8 h-8 sm:w-9 sm:h-9 mt-0.5 rounded-full bg-gradient-to-b from-amber-400 to-amber-500 active:scale-95 text-stone-950 font-black text-[7px] sm:text-[8px] font-['Bungee'] flex items-center justify-center shadow border border-stone-900 pointer-events-auto"
+                    >
+                      HORN
+                    </button>
+                  </div>
+                )}
 
                 {/* Integrated In-Dash Digital Instrument Cluster */}
                 <div className="bg-stone-950 border-2 border-stone-700 rounded-xl px-2.5 py-1.5 flex flex-col justify-between w-[104px] sm:w-[138px] h-[74px] sm:h-[84px] shadow-inner shrink-0">

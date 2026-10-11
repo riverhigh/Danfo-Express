@@ -11,16 +11,21 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@dimforge/rapier3d-compat": "^0.21.0",
     "@google/genai": "^2.4.0",
+    "@types/howler": "^2.2.13",
     "@types/three": "^0.186.0",
     "cannon-es": "^0.20.0",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
+    "howler": "^2.2.4",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
+    "nipplejs": "^1.0.4",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
-    "three": "^0.186.1"
+    "three": "^0.186.1",
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",

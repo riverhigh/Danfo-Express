@@ -1177,6 +1177,7 @@ export const DEFAULT_ROADSIDE_SHOPS = [
     distanceMarkerMeters: 1280,
     category: 'AUTO_PARTS' as const,
     items: [
+      { id: 'item-boost-canister', name: 'Agbara Nitro Boost Canister', price: 500, icon: '⚡', description: 'Consumable Overtake Boost canister (+1 Boost)', category: 'SPARE_PART' as const },
       { id: 'item-coolant-shop', name: 'Heavy Radiator Coolant', price: 2800, icon: '❄️', description: 'Cools engine by 40°C', category: 'SPARE_PART' as const },
       { id: 'item-spark-plugs', name: 'Bosch Spark Plugs Set', price: 4500, icon: '⚙️', description: '+15% acceleration boost', category: 'SPARE_PART' as const },
       { id: 'item-brake-fluid', name: 'DOT 4 Hydraulic Brake Fluid', price: 3200, icon: '🛑', description: 'Restores 100% brake stopping power', category: 'SPARE_PART' as const },

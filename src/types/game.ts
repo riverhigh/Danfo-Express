@@ -289,6 +289,7 @@ export interface GameState {
   walletNaira: number;
   bankBalanceNaira: number;
   streetCred: number; // Level / XP
+  boostCanisters: number; // Consumable Nitrous Boost canisters bought in shops
   
   // Survival Needs
   needs: {

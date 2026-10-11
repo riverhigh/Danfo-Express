@@ -265,6 +265,7 @@ export default function App() {
       walletNaira: saveData.walletNaira,
       bankBalanceNaira: saveData.bankBalanceNaira ?? 250000,
       streetCred: saveData.streetCred,
+      boostCanisters: saveData.boostCanisters ?? 3,
       needs: saveData.needs || {
         hunger: 100,
         energy: 100,

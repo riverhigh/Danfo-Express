@@ -9,6 +9,7 @@ interface SaveData {
   hasKolo: boolean;
   ajoContributionsNaira: number;
   streetCred: number;
+  boostCanisters: number;
   playerName: string;
   playerGender: 'MALE' | 'FEMALE';
   ownedVehicles: BusModelId[];
@@ -34,6 +35,7 @@ const DEFAULT_SAVE: SaveData = {
   hasKolo: false,
   ajoContributionsNaira: 0,
   streetCred: 240,
+  boostCanisters: 3,
   playerName: 'Driver',
   playerGender: 'MALE',
   ownedVehicles: ['RUSTIC_VAN'],
@@ -63,6 +65,7 @@ export function useGameSave() {
           bankBalanceNaira: typeof parsed.bankBalanceNaira === 'number' && !isNaN(parsed.bankBalanceNaira) ? parsed.bankBalanceNaira : DEFAULT_SAVE.bankBalanceNaira,
           koloBalanceNaira: typeof parsed.koloBalanceNaira === 'number' && !isNaN(parsed.koloBalanceNaira) ? parsed.koloBalanceNaira : DEFAULT_SAVE.koloBalanceNaira,
           streetCred: typeof parsed.streetCred === 'number' && !isNaN(parsed.streetCred) ? parsed.streetCred : DEFAULT_SAVE.streetCred,
+          boostCanisters: typeof parsed.boostCanisters === 'number' && !isNaN(parsed.boostCanisters) ? parsed.boostCanisters : DEFAULT_SAVE.boostCanisters,
           ownedVehicles: Array.isArray(parsed.ownedVehicles) && parsed.ownedVehicles.length > 0 ? parsed.ownedVehicles : DEFAULT_SAVE.ownedVehicles,
           unlockedHouses: Array.isArray(parsed.unlockedHouses) && parsed.unlockedHouses.length > 0 ? parsed.unlockedHouses : DEFAULT_SAVE.unlockedHouses,
           needs: { ...DEFAULT_SAVE.needs, ...(parsed.needs || {}) },
