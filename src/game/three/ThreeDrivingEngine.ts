@@ -50,6 +50,7 @@ export class ThreeDrivingEngine {
   private static modelCache: Map<string, THREE.Group> = new Map();
   private currentBusId: string = 'RUSTIC_VAN';
   private driverWalkPos: THREE.Vector3 = new THREE.Vector3(2.5, 0, 0.5);
+  private walkBaseYaw: number = 0;
   private wasSteppedDown: boolean = false;
   private bumpTimer: number = 0;
   private bumpImpulse: number = 0;
@@ -259,6 +260,15 @@ export class ThreeDrivingEngine {
     const msg = this.pendingCollisionMessage;
     this.pendingCollisionMessage = null;
     return msg;
+  }
+
+  public getWalkLookYawToBus(): number {
+    if (!this.busRoot) return 0;
+    const targetYaw = Math.atan2(
+      this.driverWalkPos.x - this.busRoot.position.x,
+      this.driverWalkPos.z - this.busRoot.position.z
+    );
+    return targetYaw - this.walkBaseYaw;
   }
 
   /**
@@ -1400,20 +1410,8 @@ export class ThreeDrivingEngine {
       createDanfoWheel(-1.12, -1.6),
     ];
 
-    // Player Bus Model Loading: Always load /models/danfo.glb
-    const playerGlbPath = '/models/danfo.glb';
-
-    const loader = new GLTFLoader();
-    loader.load(playerGlbPath, (gltf) => {
-      const model = gltf.scene;
-      this.normalizeVehicleModel(model, playerGlbPath);
-      model.rotation.set(0, 0, 0); // STRICT FRONT-FACING: Front faces +Z, back faces -Z!
-      danfoGroup.visible = false;
-      busBody.add(model);
-      (this as any)._playerModel = model;
-    }, undefined, (err) => {
-      console.warn('Player GLB load error, using procedural Danfo:', err);
-    });
+    // Keep procedural Danfo group visible so animated sliding door, boot, conductor, blinkers & turning wheels are always visible!
+    danfoGroup.visible = true;
 
     return {
       busRoot,
@@ -2476,8 +2474,8 @@ export class ThreeDrivingEngine {
       w.rotation.x = this.wheelRotationRad;
     });
 
-    // 3. Cockpit 3D Steering Wheel: Fixed rotation direction & hidden in FIRST_PERSON so the Dr. Driving 2D Bus Dash is unobstructed
-    const show3DCockpitWheel = params.cameraMode !== 'FIRST_PERSON';
+    // 3. Cockpit 3D Steering Wheel: Fixed rotation direction & hidden in FIRST_PERSON (unless stepped down)
+    const show3DCockpitWheel = params.cameraMode !== 'FIRST_PERSON' || isSteppedDown;
     this.steeringWheelMesh.visible = show3DCockpitWheel;
     this.speedNeedle.visible = show3DCockpitWheel;
     this.tachNeedle.visible = show3DCockpitWheel;
@@ -2626,19 +2624,28 @@ export class ThreeDrivingEngine {
     // ========================================================
     if (isSteppedDown) {
       this.camera.up.set(0, 1, 0);
+      const busX = this.busRoot.position.x;
+      const busZ = this.busRoot.position.z;
+
       if (!this.wasSteppedDown) {
-        this.driverWalkPos.set(laneOffsetMeters + 2.5, 0, 0.5);
+        // Spawn 4.6m to the side and 2.2m in front of the Danfo bus so the entire bus is framed in front of the player!
+        const sideSign = busX > 3.5 ? -1 : 1;
+        this.driverWalkPos.set(busX + sideSign * 4.6, 0, busZ + 2.2);
+        this.walkBaseYaw = Math.atan2(
+          this.driverWalkPos.x - busX,
+          this.driverWalkPos.z - busZ
+        );
       }
       this.wasSteppedDown = true;
 
-      const yaw = Math.PI / 2 + (params.cameraLookYaw || 0);
+      const yaw = this.walkBaseYaw + (params.cameraLookYaw || 0);
       const pitch = Math.max(-0.65, Math.min(0.65, params.cameraLookPitch || 0));
 
       const joyX = params.walkMoveX || 0;
       const joyZ = params.walkMoveZ || 0;
 
       if (Math.abs(joyX) > 0.04 || Math.abs(joyZ) > 0.04) {
-        const walkSpeed = 4.0;
+        const walkSpeed = 4.8;
         const fwdX = -Math.sin(yaw);
         const fwdZ = -Math.cos(yaw);
         const rightX = Math.cos(yaw);
@@ -2649,7 +2656,24 @@ export class ThreeDrivingEngine {
 
         this.driverWalkPos.x += moveX;
         this.driverWalkPos.z += moveZ;
-        this.driverWalkPos.x = Math.max(-25, Math.min(15, this.driverWalkPos.x));
+
+        // Solid collision with the parked Danfo bus so the player walks around the bus instead of inside it
+        const dxBus = this.driverWalkPos.x - busX;
+        const dzBus = this.driverWalkPos.z - busZ;
+        const minBusX = 1.65;
+        const minBusZ = 3.25;
+        if (Math.abs(dxBus) < minBusX && Math.abs(dzBus) < minBusZ) {
+          const overlapX = minBusX - Math.abs(dxBus);
+          const overlapZ = minBusZ - Math.abs(dzBus);
+          if (overlapX < overlapZ) {
+            this.driverWalkPos.x = busX + (dxBus >= 0 ? minBusX : -minBusX);
+          } else {
+            this.driverWalkPos.z = busZ + (dzBus >= 0 ? minBusZ : -minBusZ);
+          }
+        }
+
+        this.driverWalkPos.x = Math.max(-26, Math.min(16, this.driverWalkPos.x));
+        this.driverWalkPos.z = Math.max(busZ - 35, Math.min(busZ + 35, this.driverWalkPos.z));
       }
 
       const isWalking = Math.abs(joyX) > 0.08 || Math.abs(joyZ) > 0.08;
@@ -2748,8 +2772,8 @@ export class ThreeDrivingEngine {
       const headBob = physSpeedKmH > 10 ? Math.sin(Date.now() * 0.02) * 0.006 : 0;
       
       const cx = 0.0;   // Centered commanding windscreen view for Dr. Driving bus cockpit
-      const cy = 2.38;  // High Lagos Danfo bus driver vantage point
-      const cz = 2.15;  // Positioned right behind the front windshield glass
+      const cy = 2.02;  // Natural Danfo bus driver eye height looking cleanly down the road
+      const cz = 2.35;  // Positioned right at the front windshield glass
 
       const localCamPos = new THREE.Vector3(cx, cy + headBob, cz);
       localCamPos.applyQuaternion(this.busRoot.quaternion);
@@ -2765,7 +2789,7 @@ export class ThreeDrivingEngine {
 
       this.camera.rotation.order = 'YXZ';
       this.camera.rotation.y = baseYaw + this.busRoot.rotation.y + clampedLookYaw;
-      this.camera.rotation.x = pitchG + clampedLookPitch;
+      this.camera.rotation.x = -0.04 + pitchG + clampedLookPitch;
       this.camera.rotation.z = 0;
       this.camera.fov = 68;
       this.camera.updateProjectionMatrix();
@@ -3204,8 +3228,17 @@ export class ThreeDrivingEngine {
     }
 
     // Restore full viewport & render main camera scene
+    // In FIRST_PERSON driving mode, hide the 3D bus exterior mesh during the main forward render pass
+    // so the 3D roof/signboard/tinted glass NEVER blocks or darkens the road view!
+    const hide3DBusInCockpit = params.cameraMode === 'FIRST_PERSON' && !isSteppedDown;
+    if (hide3DBusInCockpit) {
+      this.busBody.visible = false;
+    } else {
+      this.busBody.visible = true;
+    }
     this.renderer.setViewport(0, 0, fullW, fullH);
     this.renderer.render(this.scene, this.camera);
+    this.busBody.visible = true;
   }
 
   /**
@@ -3238,6 +3271,15 @@ export class ThreeDrivingEngine {
       y: this.busRoot ? this.busRoot.position.y : 0,
       z: this.busRoot ? this.busRoot.position.z : 0,
     };
+  }
+
+  public getYawOffsetToBus(): number {
+    if (!this.busRoot) return 0;
+    const targetYaw = Math.atan2(
+      this.driverWalkPos.x - this.busRoot.position.x,
+      this.driverWalkPos.z - this.busRoot.position.z
+    );
+    return targetYaw - this.walkBaseYaw;
   }
 
   public dispose() {

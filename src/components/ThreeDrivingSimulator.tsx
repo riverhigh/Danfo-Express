@@ -260,8 +260,8 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
   }, [isSteppedDown, addFeedMessage]);
 
   const toggleStepDown = () => {
-    if (simRef.current.speed > 5) {
-      addFeedMessage('⚠️ Slow down to 0 KM/H before stepping down from driver seat!');
+    if (!isSteppedDown && simRef.current.speed > 12) {
+      addFeedMessage('⚠️ Slow down before stepping out of the Danfo bus!');
       return;
     }
     const nextStep = !isSteppedDown;
@@ -269,14 +269,27 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
     simRef.current.isSteppedDown = nextStep;
     soundEngine.playDoorOpenClose();
     if (nextStep) {
+      // Bring bus to a complete parked stop so it stays right beside the player
+      simRef.current.speed = 0;
+      setHudSpeed(0);
+      inputsRef.current.gas = false;
+      inputsRef.current.brake = false;
+      inputsRef.current.steerLeft = false;
+      inputsRef.current.steerRight = false;
+      setIsGasPressed(false);
+      setIsBrakePressed(false);
+      walkJoyRef.current.x = 0;
+      walkJoyRef.current.y = 0;
+      setWalkJoyVisual({ x: 0, y: 0 });
+
       if (doorState === 'CLOSED') {
         setDoorState('OPEN');
         simRef.current.doorState = 'OPEN';
         soundEngine.playDoorSlide(true);
       }
-      // Reset walk look angles
+      // Reset walk look angles so camera faces the yellow Danfo bus directly!
       lookRef.current.yaw = 0;
-      lookRef.current.pitch = 0;
+      lookRef.current.pitch = -0.04;
 
       // STRICT: ONLY open NPC dialogue popup if parked at a BUS STOP or FILLING STATION!
       const currentDist = simRef.current.distanceTraveled;
@@ -303,13 +316,15 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         const shopNpc = LAGOS_NPCS.find(n => n.category === 'STREET_HAWKER' || n.category === 'MARKET_WOMAN') || LAGOS_NPCS[1];
         setActiveNpc(shopNpc);
       } else {
-        // Highway / open road: NO POPUP DIALOG!
         setActiveNpc(null);
-        addFeedMessage('🚪 STEPPED OUT: Walking on roadside. (Park at a Bus Stop or Filling Station to interact with commuters & attendants)');
+        addFeedMessage('🚶 ON FOOT: Your Danfo bus is parked right in front of you! Use WASD / Joystick to walk around it.');
       }
     } else {
       // RE-ENTERING DRIVER SEAT: automatically ready to start & drive!
       setActiveNpc(null);
+      walkJoyRef.current.x = 0;
+      walkJoyRef.current.y = 0;
+      setWalkJoyVisual({ x: 0, y: 0 });
       setDoorState('CLOSED');
       simRef.current.doorState = 'CLOSED';
       soundEngine.playDoorSlide(false);
@@ -549,23 +564,51 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
     inputsRef.current.isDraggingWheel = false;
   };
 
-  // Keyboard controls
+  // Keyboard controls (Supports both Driving Mode and On-Foot Walk Mode!)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'e' || e.key === 'E') {
+        if (!inputsRef.current.isEngineRunning && !simRef.current.isSteppedDown) {
+          toggleEngine();
+        } else {
+          toggleStepDown();
+        }
+        return;
+      }
+
+      // ON-FOOT WALKING KEYBOARD CONTROLS (WASD / Arrow Keys)
+      if (simRef.current.isSteppedDown) {
+        if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+          walkJoyRef.current.y = -1;
+          setWalkJoyVisual((v) => ({ ...v, y: -28 }));
+        }
+        if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
+          walkJoyRef.current.y = 1;
+          setWalkJoyVisual((v) => ({ ...v, y: 28 }));
+        }
+        if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+          walkJoyRef.current.x = -1;
+          setWalkJoyVisual((v) => ({ ...v, x: -28 }));
+        }
+        if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+          walkJoyRef.current.x = 1;
+          setWalkJoyVisual((v) => ({ ...v, x: 28 }));
+        }
+        if (e.key === 'o' || e.key === 'O') toggleDoor();
+        if (e.key === 'b' || e.key === 'B') toggleBoot();
+        if (e.key === 'p' || e.key === 'P') onOpenPhone();
+        if (e.key === 'i' || e.key === 'I') onOpenInventory();
+        return;
+      }
+
       // Toggle / Start Engine Ignition
       if (e.key === 'k' || e.key === 'K' || e.key === 'x' || e.key === 'X') {
         toggleEngine();
         return;
       }
-      if (!inputsRef.current.isEngineRunning && (e.key === 'e' || e.key === 'E' || e.key === 'i' || e.key === 'I')) {
-        toggleEngine();
-        return;
-      }
       if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
         if (!inputsRef.current.isEngineRunning) {
-          soundEngine.playStarterDeadClick();
-          addFeedMessage('⚡ Engine is OFF! Tap [START ENGINE] or press [K] to start the diesel ignition.');
-          return;
+          toggleEngine();
         }
         if (inputsRef.current.gear === 'R' && simRef.current.speed < 2) {
           setGear('D');
@@ -617,7 +660,6 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       if (e.key === ' ' || e.key === 'h' || e.key === 'H') handleHorn();
       if (e.key === 'o' || e.key === 'O') toggleDoor();
       if (e.key === 'b' || e.key === 'B') toggleBoot();
-      if (e.key === 'e' || e.key === 'E') toggleStepDown();
       if (e.key === 'p' || e.key === 'P') onOpenPhone();
       if (e.key === 'i' || e.key === 'I') onOpenInventory();
       if (e.key === 'q' || e.key === 'Q') onConductorAction('CALLING');
@@ -629,6 +671,10 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
         inputsRef.current.gas = false;
         setIsGasPressed(false);
+        if (walkJoyRef.current.y < 0) {
+          walkJoyRef.current.y = 0;
+          setWalkJoyVisual((v) => ({ ...v, y: 0 }));
+        }
       }
       if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
         inputsRef.current.brake = false;
@@ -637,9 +683,25 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           inputsRef.current.gas = false;
           setIsGasPressed(false);
         }
+        if (walkJoyRef.current.y > 0) {
+          walkJoyRef.current.y = 0;
+          setWalkJoyVisual((v) => ({ ...v, y: 0 }));
+        }
       }
-      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') inputsRef.current.steerLeft = false;
-      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') inputsRef.current.steerRight = false;
+      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+        inputsRef.current.steerLeft = false;
+        if (walkJoyRef.current.x < 0) {
+          walkJoyRef.current.x = 0;
+          setWalkJoyVisual((v) => ({ ...v, x: 0 }));
+        }
+      }
+      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+        inputsRef.current.steerRight = false;
+        if (walkJoyRef.current.x > 0) {
+          walkJoyRef.current.x = 0;
+          setWalkJoyVisual((v) => ({ ...v, x: 0 }));
+        }
+      }
     };
 
     window.addEventListener('keydown', onKeyDown);
@@ -730,21 +792,22 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         sim.heat = Math.max(10, sim.heat - 4.5 * fanMult * dt);
       }
 
-      // Lateral lane offset - FIXED so Steering Left (negative angle) moves LEFT (+X on screen)
-      // and Steering Right (positive angle) moves RIGHT (-X on screen)!
-      const turnDir = inp.gear === 'R' ? -1 : 1;
-      const speedMultiplier = Math.max(5.8, (sim.speed / 28) * 9.5);
-      sim.laneOffset -= turnDir * steerFactor * speedMultiplier * dt;
-      // Allow wider right-side boundary (-26.5m) at the start (z < 48m) so player can drive out of the Oshodi Danfo Bus Park!
-      const minLaneX = sim.distanceTraveled < 48 ? -26.5 : -8.5;
-      sim.laneOffset = Math.max(minLaneX, Math.min(8.5, sim.laneOffset));
-
-      // Distance traveled: increases in D, decreases in R
-      const deltaM = (sim.speed * 1000 / 3600) * dt;
-      if (inp.gear === 'R') {
-        sim.distanceTraveled = Math.max(0, sim.distanceTraveled - deltaM);
+      // Lateral lane offset & distance only update when driving (locked when parked on foot!)
+      if (sim.isSteppedDown) {
+        sim.speed = 0;
       } else {
-        sim.distanceTraveled += deltaM;
+        const turnDir = inp.gear === 'R' ? -1 : 1;
+        const speedMultiplier = Math.max(5.8, (sim.speed / 28) * 9.5);
+        sim.laneOffset -= turnDir * steerFactor * speedMultiplier * dt;
+        const minLaneX = sim.distanceTraveled < 48 ? -26.5 : -8.5;
+        sim.laneOffset = Math.max(minLaneX, Math.min(8.5, sim.laneOffset));
+
+        const deltaM = (sim.speed * 1000 / 3600) * dt;
+        if (inp.gear === 'R') {
+          sim.distanceTraveled = Math.max(0, sim.distanceTraveled - deltaM);
+        } else {
+          sim.distanceTraveled += deltaM;
+        }
       }
 
       // 3. Gas Station Detection
@@ -968,8 +1031,8 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         }, 0);
       }
 
-      // 5. Update 3D Three.js Engine
-      if (cameraModeRef.current === 'THIRD_PERSON' && !lookRef.current.isDragging) {
+      // 5. Update 3D Three.js Engine (Only decay look yaw in 3rd-person driving, NEVER in Walk Mode!)
+      if (!sim.isSteppedDown && cameraModeRef.current === 'THIRD_PERSON' && !lookRef.current.isDragging) {
         const decay = Math.max(0, 1 - dt * 5.0);
         lookRef.current.yaw *= decay;
         lookRef.current.pitch *= decay;
@@ -1290,35 +1353,20 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           </div>
         </div>
       )}
-      {/* 🔑 PROMINENT ENGINE OFF IGNITION STARTER BANNER */}
+      {/* 🔑 COMPACT NON-INTRUSIVE ENGINE STARTER PILL (Never blocks the windshield!) */}
       {!isEngineRunning && !isSteppedDown && (
-        <div className="absolute top-24 left-1/2 -translate-x-1/2 z-50 pointer-events-auto flex flex-col items-center gap-2.5 bg-stone-950/95 border-2 border-amber-400 rounded-2xl p-4 shadow-[0_0_35px_rgba(251,191,36,0.4)] backdrop-blur-md max-w-sm w-[90vw] animate-in fade-in zoom-in-95">
-          <div className="flex items-center gap-3 w-full">
-            <div className="w-11 h-11 rounded-xl bg-amber-400/20 border border-amber-400 flex items-center justify-center text-2xl shrink-0 animate-pulse">
-              🔑
-            </div>
-            <div className="flex-1 min-w-0">
-              <h3 className="text-xs font-black font-['Bungee'] text-amber-400 tracking-wide">
-                DIESEL ENGINE IS OFF
-              </h3>
-              <p className="text-[10px] text-stone-300 font-medium leading-tight mt-0.5">
-                Crank the starter key to start up your Danfo!
-              </p>
-            </div>
-          </div>
+        <div className="absolute top-11 left-1/2 -translate-x-1/2 z-50 pointer-events-auto flex items-center gap-2 bg-stone-950/95 border-2 border-amber-400 rounded-full px-3 py-1 shadow-[0_6px_20px_rgba(0,0,0,0.85)] backdrop-blur-md">
+          <span className="text-xs animate-pulse">🔑</span>
+          <span className="text-[10px] font-mono font-black text-amber-300">
+            ENGINE OFF
+          </span>
           <button
             onClick={toggleEngine}
-            className="w-full py-2.5 bg-amber-400 hover:bg-amber-300 active:scale-95 text-stone-950 font-black text-xs font-['Bungee'] rounded-xl shadow-lg transition-transform flex items-center justify-center gap-2 border border-amber-200"
+            className="px-2.5 py-0.5 bg-amber-400 hover:bg-amber-300 active:scale-95 text-stone-950 font-black text-[10px] font-['Bungee'] rounded-full shadow flex items-center gap-1"
           >
-            <Power className="w-4 h-4 text-stone-950" />
-            START ENGINE (CRANK KEY)
+            <Power className="w-3 h-3 text-stone-950" />
+            START (K)
           </button>
-          <div className="text-[9px] font-mono text-stone-400 flex items-center gap-1.5">
-            <span>Press keyboard:</span>
-            <kbd className="px-1.5 py-0.5 bg-stone-900 text-amber-400 rounded border border-stone-700 font-bold">K</kbd>
-            <span>or</span>
-            <kbd className="px-1.5 py-0.5 bg-stone-900 text-amber-400 rounded border border-stone-700 font-bold">E</kbd>
-          </div>
         </div>
       )}
 
@@ -1440,53 +1488,39 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         return null;
       })()}
 
-      {/* 🚌 OSHODI DANFO BUS PARK DEPARTURE BANNER (At start of shift) */}
-      {!isSteppedDown && currentDist < 36 && (
-        <div className="absolute top-12 left-1/2 -translate-x-1/2 z-40 pointer-events-none flex items-center gap-2.5 bg-stone-950/90 border-2 border-amber-400 rounded-2xl px-4 py-1.5 shadow-[0_8px_25px_rgba(0,0,0,0.85)] backdrop-blur-md">
-          <span className="text-base">🚌</span>
-          <div>
-            <div className="text-[9px] font-mono font-black text-amber-400 uppercase tracking-wider">
-              OSHODI DANFO MOTOR PARK • DEPARTURE BAY 1
-            </div>
-            <div className="text-[10px] text-stone-200 font-semibold">
-              Hold <span className="text-amber-300 font-black">GAS (W)</span> & steer <span className="text-emerald-300 font-black">LEFT (A)</span> through the Park Exit Gate onto the Lagos Expressway!
-            </div>
-          </div>
+      {/* 🚌 COMPACT OSHODI DANFO BUS PARK DEPARTURE HINT (At start of shift when engine is running) */}
+      {!isSteppedDown && isEngineRunning && currentDist < 36 && (
+        <div className="absolute top-11 left-1/2 -translate-x-1/2 z-40 pointer-events-none flex items-center gap-2 bg-stone-950/85 border border-amber-400/80 rounded-full px-3 py-1 shadow-lg backdrop-blur-sm">
+          <span className="text-xs">🚌</span>
+          <span className="text-[9px] font-mono font-bold text-stone-200">
+            <strong className="text-amber-400">OSHODI BUS PARK:</strong> Hold <strong className="text-amber-300">GAS (W)</strong> & steer <strong className="text-emerald-300">LEFT (A)</strong> out the gate!
+          </span>
         </div>
       )}
 
-      {/* ═══════ LIVE REAR-VIEW SIDE MIRRORS (LEFT & RIGHT) ═══════ */}
+      {/* ═══════ LIVE REAR-VIEW SIDE MIRRORS (COMPACT, PINNED TO UPPER EDGES FOR CLEAR ROAD VIEW) ═══════ */}
       {!isSteppedDown && (
         <>
           {/* LEFT SIDE MIRROR (Accurate Live Rear View) */}
-          <div
-            className={`absolute z-30 pointer-events-none transition-all duration-300 flex items-center ${
-              cameraMode === 'FIRST_PERSON'
-                ? 'left-0 top-[18%] sm:top-[16%]'
-                : 'left-2 top-11'
-            }`}
-          >
-            {/* Mirror Mounting Bracket Arm in First-Person Cockpit */}
+          <div className="absolute left-0 top-10 z-30 pointer-events-none flex items-center">
             {cameraMode === 'FIRST_PERSON' && (
-              <div className="w-3 sm:w-5 h-7 bg-gradient-to-r from-amber-500 via-stone-800 to-stone-900 border-y-2 border-stone-700 shadow-lg" />
+              <div className="w-2 sm:w-3 h-5 bg-gradient-to-r from-amber-500 via-stone-800 to-stone-900 border-y border-stone-700" />
             )}
-            <div className="relative rounded-r-2xl rounded-l-lg bg-stone-950 p-1 sm:p-1.5 border-[3px] border-stone-700 shadow-[0_10px_28px_rgba(0,0,0,0.95)] ring-2 ring-amber-400/70 overflow-hidden">
-              <div className="relative w-[108px] h-[64px] sm:w-[148px] sm:h-[86px] rounded-lg overflow-hidden bg-stone-900 border border-stone-600/80">
+            <div className="relative rounded-r-xl rounded-l-md bg-stone-950 p-0.5 sm:p-1 border-2 border-stone-700 shadow-[0_6px_18px_rgba(0,0,0,0.9)] ring-1 ring-amber-400/70 overflow-hidden">
+              <div className="relative w-[82px] h-[46px] sm:w-[122px] sm:h-[68px] rounded-md overflow-hidden bg-stone-900 border border-stone-600/80">
                 <canvas
                   ref={leftMirrorCanvasRef}
                   width={220}
                   height={130}
                   className="w-full h-full object-cover block"
                 />
-                {/* Subtle convex mirror glare & blind-spot line */}
-                <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/[0.04] to-sky-300/[0.08] pointer-events-none" />
-                <div className="absolute top-0 bottom-0 left-[22%] w-px border-l border-dashed border-amber-300/40 pointer-events-none" />
-                <div className="absolute top-1 left-1.5 px-1 py-0.2 bg-stone-950/75 rounded text-[7px] font-mono font-black text-amber-400 tracking-wider">
-                  L-MIRROR • LIVE REAR
+                <div className="absolute top-0 bottom-0 left-[22%] w-px border-l border-dashed border-amber-300/35 pointer-events-none" />
+                <div className="absolute top-0.5 left-1 px-1 bg-stone-950/75 rounded text-[6px] sm:text-[7px] font-mono font-black text-amber-400">
+                  L-MIRROR
                 </div>
                 {turnSignal === 'LEFT' || hazardLights ? (
-                  <div className="absolute bottom-1 left-1.5 text-[9px] font-black text-amber-400 animate-pulse">
-                    ◀ BLINK
+                  <div className="absolute bottom-0.5 left-1 text-[8px] font-black text-amber-400 animate-pulse">
+                    ◀
                   </div>
                 ) : null}
               </div>
@@ -1494,363 +1528,252 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           </div>
 
           {/* RIGHT SIDE MIRROR (Accurate Live Rear View) */}
-          <div
-            className={`absolute z-30 pointer-events-none transition-all duration-300 flex items-center ${
-              cameraMode === 'FIRST_PERSON'
-                ? 'right-0 top-[18%] sm:top-[16%]'
-                : 'right-2 top-20'
-            }`}
-          >
-            <div className="relative rounded-l-2xl rounded-r-lg bg-stone-950 p-1 sm:p-1.5 border-[3px] border-stone-700 shadow-[0_10px_28px_rgba(0,0,0,0.95)] ring-2 ring-amber-400/70 overflow-hidden">
-              <div className="relative w-[108px] h-[64px] sm:w-[148px] sm:h-[86px] rounded-lg overflow-hidden bg-stone-900 border border-stone-600/80">
+          <div className="absolute right-0 top-10 z-30 pointer-events-none flex items-center">
+            <div className="relative rounded-l-xl rounded-r-md bg-stone-950 p-0.5 sm:p-1 border-2 border-stone-700 shadow-[0_6px_18px_rgba(0,0,0,0.9)] ring-1 ring-amber-400/70 overflow-hidden">
+              <div className="relative w-[82px] h-[46px] sm:w-[122px] sm:h-[68px] rounded-md overflow-hidden bg-stone-900 border border-stone-600/80">
                 <canvas
                   ref={rightMirrorCanvasRef}
                   width={220}
                   height={130}
                   className="w-full h-full object-cover block"
                 />
-                {/* Subtle convex mirror glare & blind-spot line */}
-                <div className="absolute inset-0 bg-gradient-to-tl from-transparent via-white/[0.04] to-sky-300/[0.08] pointer-events-none" />
-                <div className="absolute top-0 bottom-0 right-[22%] w-px border-r border-dashed border-amber-300/40 pointer-events-none" />
-                <div className="absolute top-1 right-1.5 px-1 py-0.2 bg-stone-950/75 rounded text-[7px] font-mono font-black text-amber-400 tracking-wider">
-                  LIVE REAR • R-MIRROR
+                <div className="absolute top-0 bottom-0 right-[22%] w-px border-r border-dashed border-amber-300/35 pointer-events-none" />
+                <div className="absolute top-0.5 right-1 px-1 bg-stone-950/75 rounded text-[6px] sm:text-[7px] font-mono font-black text-amber-400">
+                  R-MIRROR
                 </div>
                 {turnSignal === 'RIGHT' || hazardLights ? (
-                  <div className="absolute bottom-1 right-1.5 text-[9px] font-black text-amber-400 animate-pulse">
-                    BLINK ▶
+                  <div className="absolute bottom-0.5 right-1 text-[8px] font-black text-amber-400 animate-pulse">
+                    ▶
                   </div>
                 ) : null}
               </div>
             </div>
             {cameraMode === 'FIRST_PERSON' && (
-              <div className="w-3 sm:w-5 h-7 bg-gradient-to-l from-amber-500 via-stone-800 to-stone-900 border-y-2 border-stone-700 shadow-lg" />
+              <div className="w-2 sm:w-3 h-5 bg-gradient-to-l from-amber-500 via-stone-800 to-stone-900 border-y border-stone-700" />
             )}
           </div>
         </>
       )}
 
-      {/* ═══════ FIRST-PERSON DR. DRIVING STYLE COMMERCIAL BUS COCKPIT DASHBOARD ═══════ */}
+      {/* ═══════ FIRST-PERSON DR. DRIVING SLEEK LOW-PROFILE BUS COCKPIT DASHBOARD ═══════ */}
+      {/* Takes up only ~20-22% height at the bottom so 78%+ of the screen is wide-open road! */}
       {!isSteppedDown && cameraMode === 'FIRST_PERSON' && (
         <>
-          {/* Bus Windshield Frame: Left & Right Yellow Danfo A-Pillars */}
-          <div className="absolute top-9 bottom-[34%] left-0 w-3 sm:w-4 bg-gradient-to-r from-amber-500 via-amber-600 to-stone-900 border-r-2 border-stone-800 z-20 pointer-events-none shadow-2xl" />
-          <div className="absolute top-9 bottom-[34%] right-0 w-3 sm:w-4 bg-gradient-to-l from-amber-500 via-amber-600 to-stone-900 border-l-2 border-stone-800 z-20 pointer-events-none shadow-2xl" />
+          {/* Slim Yellow Danfo A-Pillars framing the edges of the wide windshield */}
+          <div className="absolute top-9 bottom-[20%] left-0 w-2 sm:w-3 bg-gradient-to-r from-amber-500 to-stone-900 border-r border-stone-800 z-20 pointer-events-none" />
+          <div className="absolute top-9 bottom-[20%] right-0 w-2 sm:w-3 bg-gradient-to-l from-amber-500 to-stone-900 border-l border-stone-800 z-20 pointer-events-none" />
 
-          {/* Full-Width Molded Bus Dashboard Panel (Dr. Driving Inspired) */}
-          <div className="absolute inset-x-0 bottom-0 h-[36%] min-h-[210px] max-h-[285px] z-40 pointer-events-auto select-none flex flex-col justify-end">
-            {/* Curved Upper Dash Glare Shield & Instrument Binnacle Arch */}
-            <div className="relative w-full h-full bg-gradient-to-b from-stone-800 via-stone-900 to-stone-950 border-t-[4px] border-stone-600/90 rounded-t-[28px] shadow-[0_-14px_35px_rgba(0,0,0,0.95)] flex items-stretch justify-between px-2 sm:px-5 pt-2 pb-2.5 overflow-visible">
+          {/* Low-Profile Molded Bus Dashboard Strip (Dr. Driving Inspired — Compact & Unobstructed) */}
+          <div
+            className={`absolute inset-x-0 bottom-0 z-40 pointer-events-auto select-none transition-all duration-200 ${
+              showLeftPanel
+                ? 'h-[21vh] min-h-[86px] max-h-[124px]'
+                : 'h-[56px]'
+            }`}
+          >
+            {/* Tiny Dash Minimize/Expand Pill on top center of Dash */}
+            <button
+              onClick={() => setShowLeftPanel((v) => !v)}
+              className="absolute -top-4 left-1/2 -translate-x-1/2 z-50 px-2.5 h-4 bg-stone-900/95 border border-stone-600 rounded-t-lg text-[8px] font-mono font-bold text-amber-400 hover:text-white flex items-center gap-1 shadow"
+              title="Toggle Compact Dash"
+            >
+              {showLeftPanel ? '▼ SLIM DASH' : '▲ FULL DASH'}
+            </button>
+
+            <div className="relative w-full h-full bg-gradient-to-b from-stone-800/95 via-stone-900/98 to-stone-950 border-t-[3px] border-stone-600/90 rounded-t-[20px] shadow-[0_-8px_24px_rgba(0,0,0,0.9)] flex items-center justify-between px-2 sm:px-4 py-1 overflow-visible">
               {/* Top Yellow-Black Danfo Trim Accent Line */}
-              <div className="absolute top-0 left-6 right-6 h-1 bg-gradient-to-r from-amber-400/80 via-stone-500/40 to-amber-400/80 rounded-full pointer-events-none" />
+              <div className="absolute top-0 left-5 right-5 h-0.5 bg-gradient-to-r from-amber-400/80 via-stone-500/40 to-amber-400/80 rounded-full pointer-events-none" />
 
-              {/* ── LEFT SECTION: INSTRUMENT BINNACLE HOOD + REDESIGNED 3-SPOKE BUS STEERING WHEEL ── */}
-              <div className="relative flex items-end gap-1.5 sm:gap-3 w-[46%] sm:w-[44%] h-full">
-                {/* Left Quick-Switch Stalk Column */}
-                <div className="flex flex-col justify-end gap-1 pb-1 shrink-0 z-30">
+              {/* ── LEFT SECTION: QUICK SWITCHES + 3-SPOKE BUS STEERING WHEEL + INTEGRATED GAUGE CLUSTER ── */}
+              <div className="relative flex items-center gap-1.5 sm:gap-2.5 h-full">
+                {/* Compact Quick-Switch Column */}
+                <div className="flex flex-col justify-center gap-0.5 shrink-0 z-30">
+                  <div className="flex gap-0.5">
+                    <button
+                      onClick={() => triggerTurnSignal('LEFT')}
+                      className={`w-6 sm:w-7 py-0.5 rounded border text-[8px] font-mono font-black ${
+                        turnSignal === 'LEFT'
+                          ? 'bg-emerald-400 text-stone-950 border-emerald-200'
+                          : 'bg-stone-900/90 border-stone-700 text-stone-300'
+                      }`}
+                    >
+                      ◀L
+                    </button>
+                    <button
+                      onClick={() => triggerTurnSignal('RIGHT')}
+                      className={`w-6 sm:w-7 py-0.5 rounded border text-[8px] font-mono font-black ${
+                        turnSignal === 'RIGHT'
+                          ? 'bg-emerald-400 text-stone-950 border-emerald-200'
+                          : 'bg-stone-900/90 border-stone-700 text-stone-300'
+                      }`}
+                    >
+                      R▶
+                    </button>
+                  </div>
+                  <div className="flex gap-0.5">
+                    <button
+                      onClick={toggleHazards}
+                      className={`w-6 sm:w-7 py-0.5 rounded border text-[8px] font-mono font-black ${
+                        hazardLights
+                          ? 'bg-rose-500 text-white border-rose-200 animate-pulse'
+                          : 'bg-rose-800/80 border-rose-900 text-rose-100'
+                      }`}
+                      title="Hazard Lights"
+                    >
+                      ⚠️
+                    </button>
+                    <button
+                      onClick={toggleDoor}
+                      className={`w-6 sm:w-7 py-0.5 rounded border text-[8px] font-mono font-bold ${
+                        doorState === 'OPEN'
+                          ? 'bg-amber-400 text-stone-950 border-amber-200'
+                          : 'bg-stone-900/90 border-stone-700 text-stone-300'
+                      }`}
+                      title="Passenger Door (O)"
+                    >
+                      🚪
+                    </button>
+                  </div>
+                </div>
+
+                {/* REDESIGNED 3-SPOKE COMMERCIAL BUS STEERING WHEEL (Sized cleanly so it never blocks the road!) */}
+                <div
+                  ref={wheelElementRef}
+                  onPointerDown={handleWheelPointerDown}
+                  onPointerMove={handleWheelPointerMove}
+                  onPointerUp={handleWheelPointerUp}
+                  onPointerCancel={handleWheelPointerUp}
+                  className="relative w-[84px] h-[84px] sm:w-[112px] sm:h-[112px] rounded-full cursor-grab active:cursor-grabbing touch-none select-none flex items-center justify-center z-30 shrink-0 -mt-1.5"
+                  style={{
+                    transform: `rotate(${wheelVisualAngle}deg)`,
+                    filter: 'drop-shadow(0 6px 12px rgba(0,0,0,0.95))',
+                  }}
+                >
+                  <svg viewBox="0 0 200 200" className="w-full h-full overflow-visible pointer-events-none">
+                    <defs>
+                      <radialGradient id="busRimGrad" cx="50%" cy="50%" r="50%">
+                        <stop offset="72%" stopColor="#1c1917" />
+                        <stop offset="86%" stopColor="#3f3f46" />
+                        <stop offset="95%" stopColor="#18181b" />
+                        <stop offset="100%" stopColor="#09090b" />
+                      </radialGradient>
+                      <linearGradient id="spokeMetal" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stopColor="#71717a" />
+                        <stop offset="50%" stopColor="#3f3f46" />
+                        <stop offset="100%" stopColor="#18181b" />
+                      </linearGradient>
+                      <linearGradient id="woodTopGrip" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stopColor="#78350f" />
+                        <stop offset="50%" stopColor="#b45309" />
+                        <stop offset="100%" stopColor="#78350f" />
+                      </linearGradient>
+                    </defs>
+                    <circle cx="100" cy="100" r="90" fill="none" stroke="rgba(0,0,0,0.55)" strokeWidth="18" />
+                    {/* Left, Right & Bottom Spokes */}
+                    <path d="M 18 102 L 72 90 L 74 114 L 18 118 Z" fill="url(#spokeMetal)" stroke="#52525b" strokeWidth="1.5" />
+                    <path d="M 182 102 L 128 90 L 126 114 L 182 118 Z" fill="url(#spokeMetal)" stroke="#52525b" strokeWidth="1.5" />
+                    <path d="M 88 124 L 112 124 L 116 184 L 84 184 Z" fill="url(#spokeMetal)" stroke="#52525b" strokeWidth="1.5" />
+                    <rect x="32" y="101" width="28" height="5" rx="2.5" fill="#a1a1aa" opacity="0.75" />
+                    <rect x="140" y="101" width="28" height="5" rx="2.5" fill="#a1a1aa" opacity="0.75" />
+                    <rect x="97" y="140" width="6" height="28" rx="3" fill="#a1a1aa" opacity="0.75" />
+                    {/* Rim & Woodgrain Top Arc */}
+                    <circle cx="100" cy="100" r="86" fill="none" stroke="url(#busRimGrad)" strokeWidth="18" />
+                    <path d="M 32 50 A 86 86 0 0 1 168 50" fill="none" stroke="url(#woodTopGrip)" strokeWidth="16" strokeLinecap="round" />
+                    <circle cx="100" cy="100" r="77" fill="none" stroke="rgba(255,255,255,0.14)" strokeWidth="1.2" strokeDasharray="6 4" />
+                    {/* Yellow Top-Center Marker */}
+                    <rect x="96" y="5" width="8" height="19" rx="2" fill="#facc15" stroke="#18181b" strokeWidth="1.5" />
+                    <circle cx="100" cy="105" r="34" fill="#18181b" stroke="#52525b" strokeWidth="3" />
+                  </svg>
+
+                  {/* Center Horn Button */}
                   <button
-                    onClick={() => triggerTurnSignal('LEFT')}
-                    className={`w-8 sm:w-9 py-1 rounded-lg border text-[9px] font-mono font-black transition-all ${
-                      turnSignal === 'LEFT'
-                        ? 'bg-emerald-400 text-stone-950 border-emerald-200 shadow-[0_0_10px_rgba(52,211,153,0.8)]'
-                        : 'bg-stone-900/90 border-stone-700 text-stone-300 hover:border-stone-500'
-                    }`}
-                    title="Left Turn Signal"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleHorn();
+                    }}
+                    className="absolute w-8 h-8 sm:w-10 sm:h-10 mt-0.5 rounded-full bg-gradient-to-b from-amber-400 to-amber-500 active:scale-95 text-stone-950 font-black text-[7px] sm:text-[8px] font-['Bungee'] flex items-center justify-center shadow border border-stone-900 pointer-events-auto"
                   >
-                    ◀ L
-                  </button>
-                  <button
-                    onClick={() => triggerTurnSignal('RIGHT')}
-                    className={`w-8 sm:w-9 py-1 rounded-lg border text-[9px] font-mono font-black transition-all ${
-                      turnSignal === 'RIGHT'
-                        ? 'bg-emerald-400 text-stone-950 border-emerald-200 shadow-[0_0_10px_rgba(52,211,153,0.8)]'
-                        : 'bg-stone-900/90 border-stone-700 text-stone-300 hover:border-stone-500'
-                    }`}
-                    title="Right Turn Signal"
-                  >
-                    R ▶
-                  </button>
-                  <button
-                    onClick={toggleWipers}
-                    className={`w-8 sm:w-9 py-1 rounded-lg border text-[9px] font-mono font-bold transition-all ${
-                      wipersActive
-                        ? 'bg-sky-400 text-stone-950 border-sky-200'
-                        : 'bg-stone-900/90 border-stone-700 text-stone-300'
-                    }`}
-                    title="Windshield Wipers"
-                  >
-                    🌧️
-                  </button>
-                  <button
-                    onClick={toggleDoor}
-                    className={`w-8 sm:w-9 py-1 rounded-lg border text-[9px] font-mono font-bold transition-all ${
-                      doorState === 'OPEN'
-                        ? 'bg-amber-400 text-stone-950 border-amber-200'
-                        : 'bg-stone-900/90 border-stone-700 text-stone-300'
-                    }`}
-                    title="Passenger Sliding Door (O)"
-                  >
-                    🚪
+                    HORN
                   </button>
                 </div>
 
-                {/* Instrument Cluster Binnacle + Bus Steering Wheel Assembly */}
-                <div className="relative flex-1 h-full flex flex-col items-center justify-end">
-                  {/* Raised Instrument Cluster Hood (Visible above & through top of Steering Wheel like Dr. Driving) */}
-                  <div className="absolute -top-7 sm:-top-8 w-[175px] sm:w-[225px] h-[82px] sm:h-[92px] bg-stone-950 border-[3px] border-stone-700 rounded-t-[44px] rounded-b-xl shadow-[inset_0_4px_16px_rgba(0,0,0,0.95),0_-4px_14px_rgba(0,0,0,0.85)] px-3 pt-1.5 pb-1 flex flex-col justify-between pointer-events-none z-10">
-                    {/* Top Row: Blinker Arrows + Analog Arc + Digital Speedometer */}
-                    <div className="flex items-center justify-between px-1">
+                {/* Integrated In-Dash Digital Instrument Cluster (Flush inside the dash, zero screen obstruction!) */}
+                {showLeftPanel && (
+                  <div className="bg-stone-950 border-2 border-stone-700 rounded-xl px-2 py-1 flex flex-col justify-between w-[102px] sm:w-[138px] h-[68px] sm:h-[86px] shadow-inner shrink-0">
+                    <div className="flex items-center justify-between">
                       <span
-                        className={`text-xs sm:text-sm font-black transition-opacity ${
-                          turnSignal === 'LEFT' || hazardLights
-                            ? 'text-emerald-400 opacity-100 drop-shadow-[0_0_8px_rgba(52,211,153,0.9)] animate-pulse'
-                            : 'text-emerald-950 opacity-40'
+                        className={`text-[10px] font-black ${
+                          turnSignal === 'LEFT' || hazardLights ? 'text-emerald-400 animate-pulse' : 'text-stone-700'
                         }`}
                       >
                         ◀
                       </span>
-                      <div className="flex items-baseline gap-1">
-                        <span className="text-lg sm:text-2xl font-black font-mono text-amber-300 tabular-nums tracking-tight drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]">
+                      <div className="flex items-baseline gap-0.5">
+                        <span className="text-sm sm:text-lg font-black font-mono text-amber-300 tabular-nums leading-none">
                           {hudSpeed}
                         </span>
-                        <span className="text-[8px] font-mono font-bold text-stone-400">KM/H</span>
+                        <span className="text-[7px] font-mono text-stone-400">KM/H</span>
                       </div>
                       <span
-                        className={`text-xs sm:text-sm font-black transition-opacity ${
-                          turnSignal === 'RIGHT' || hazardLights
-                            ? 'text-emerald-400 opacity-100 drop-shadow-[0_0_8px_rgba(52,211,153,0.9)] animate-pulse'
-                            : 'text-emerald-950 opacity-40'
+                        className={`text-[10px] font-black ${
+                          turnSignal === 'RIGHT' || hazardLights ? 'text-emerald-400 animate-pulse' : 'text-stone-700'
                         }`}
                       >
                         ▶
                       </span>
                     </div>
-
-                    {/* Middle Row: RPM Bar & Gear / Fuel / Temp Cluster */}
-                    <div className="w-full bg-stone-900/90 h-2 rounded-full overflow-hidden border border-stone-800 p-0.5">
+                    {/* RPM Bar */}
+                    <div className="w-full bg-stone-900 h-1.5 rounded-full overflow-hidden border border-stone-800">
                       <div
-                        className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-amber-400 to-rose-500 transition-all duration-100"
+                        className="h-full bg-gradient-to-r from-emerald-400 via-amber-400 to-rose-500 transition-all duration-100"
                         style={{ width: `${Math.min(100, Math.round((hudRPM / 5200) * 100))}%` }}
                       />
                     </div>
-
-                    {/* Bottom Row of Cluster: Fuel, Gear Indicator, Engine Temp */}
-                    <div className="flex items-center justify-between text-[8px] sm:text-[9px] font-mono px-1">
-                      <span className={hudFuel < 20 ? 'text-rose-400 font-black animate-pulse' : 'text-emerald-300 font-bold'}>
-                        ⛽{hudFuel}%
-                      </span>
-                      <span className="px-1.5 py-0.2 rounded bg-amber-400/20 border border-amber-400/60 text-amber-300 font-black">
-                        GEAR {gear}
-                      </span>
-                      <span className={hudHeat > 80 ? 'text-rose-400 font-black animate-pulse' : 'text-sky-300 font-bold'}>
-                        🌡️{hudHeat}°C
-                      </span>
+                    <div className="flex items-center justify-between text-[7px] sm:text-[8px] font-mono">
+                      <span className={hudFuel < 20 ? 'text-rose-400 font-black' : 'text-emerald-300'}>⛽{hudFuel}%</span>
+                      <span className="px-1 rounded bg-amber-400/20 text-amber-300 font-black">{gear}</span>
+                      <span className={hudHeat > 80 ? 'text-rose-400 font-black' : 'text-sky-300'}>🌡️{hudHeat}°</span>
                     </div>
                   </div>
-
-                  {/* REDESIGNED 3-SPOKE COMMERCIAL BUS STEERING WHEEL (Dr. Driving Inspired) */}
-                  <div
-                    ref={wheelElementRef}
-                    onPointerDown={handleWheelPointerDown}
-                    onPointerMove={handleWheelPointerMove}
-                    onPointerUp={handleWheelPointerUp}
-                    onPointerCancel={handleWheelPointerUp}
-                    className="relative w-[154px] h-[154px] sm:w-[186px] sm:h-[186px] rounded-full cursor-grab active:cursor-grabbing touch-none select-none flex items-center justify-center z-20 -mb-2"
-                    style={{
-                      transform: `rotate(${wheelVisualAngle}deg)`,
-                      filter: 'drop-shadow(0 12px 20px rgba(0,0,0,0.95))',
-                    }}
-                  >
-                    {/* SVG Commercial 3-Spoke Bus Steering Wheel */}
-                    <svg viewBox="0 0 200 200" className="w-full h-full overflow-visible pointer-events-none">
-                      <defs>
-                        <radialGradient id="busRimGrad" cx="50%" cy="50%" r="50%">
-                          <stop offset="72%" stopColor="#1c1917" />
-                          <stop offset="86%" stopColor="#3f3f46" />
-                          <stop offset="95%" stopColor="#18181b" />
-                          <stop offset="100%" stopColor="#09090b" />
-                        </radialGradient>
-                        <linearGradient id="spokeMetal" x1="0%" y1="0%" x2="100%" y2="100%">
-                          <stop offset="0%" stopColor="#71717a" />
-                          <stop offset="50%" stopColor="#3f3f46" />
-                          <stop offset="100%" stopColor="#18181b" />
-                        </linearGradient>
-                        <linearGradient id="woodTopGrip" x1="0%" y1="0%" x2="100%" y2="0%">
-                          <stop offset="0%" stopColor="#78350f" />
-                          <stop offset="50%" stopColor="#b45309" />
-                          <stop offset="100%" stopColor="#78350f" />
-                        </linearGradient>
-                      </defs>
-
-                      {/* Outer Shadow Ring */}
-                      <circle cx="100" cy="100" r="90" fill="none" stroke="rgba(0,0,0,0.65)" strokeWidth="18" />
-
-                      {/* 3 Sculpted Commercial Bus Spokes (Left, Right, Bottom) leaving top window wide open for gauges! */}
-                      {/* Left Spoke */}
-                      <path
-                        d="M 18 102 L 72 90 L 74 114 L 18 118 Z"
-                        fill="url(#spokeMetal)"
-                        stroke="#52525b"
-                        strokeWidth="1.5"
-                      />
-                      {/* Right Spoke */}
-                      <path
-                        d="M 182 102 L 128 90 L 126 114 L 182 118 Z"
-                        fill="url(#spokeMetal)"
-                        stroke="#52525b"
-                        strokeWidth="1.5"
-                      />
-                      {/* Bottom Center Spoke */}
-                      <path
-                        d="M 88 124 L 112 124 L 116 184 L 84 184 Z"
-                        fill="url(#spokeMetal)"
-                        stroke="#52525b"
-                        strokeWidth="1.5"
-                      />
-                      {/* Chrome Spoke Accent Slots */}
-                      <rect x="32" y="101" width="28" height="5" rx="2.5" fill="#a1a1aa" opacity="0.75" />
-                      <rect x="140" y="101" width="28" height="5" rx="2.5" fill="#a1a1aa" opacity="0.75" />
-                      <rect x="97" y="140" width="6" height="28" rx="3" fill="#a1a1aa" opacity="0.75" />
-
-                      {/* Main Heavy-Duty Perforated Leather Rim */}
-                      <circle
-                        cx="100"
-                        cy="100"
-                        r="86"
-                        fill="none"
-                        stroke="url(#busRimGrad)"
-                        strokeWidth="18"
-                      />
-
-                      {/* Classic Woodgrain / Amber Top Rim Arc */}
-                      <path
-                        d="M 32 50 A 86 86 0 0 1 168 50"
-                        fill="none"
-                        stroke="url(#woodTopGrip)"
-                        strokeWidth="16"
-                        strokeLinecap="round"
-                      />
-
-                      {/* Inner Rim Stitching Highlight */}
-                      <circle
-                        cx="100"
-                        cy="100"
-                        r="77"
-                        fill="none"
-                        stroke="rgba(255,255,255,0.12)"
-                        strokeWidth="1.2"
-                        strokeDasharray="6 4"
-                      />
-
-                      {/* Top-Center Yellow Alignment Stripe (Shows exact wheel angle at a glance) */}
-                      <rect x="96" y="5" width="8" height="19" rx="2" fill="#facc15" stroke="#18181b" strokeWidth="1.5" />
-
-                      {/* Center Bus Horn Pad Housing */}
-                      <circle cx="100" cy="105" r="34" fill="#18181b" stroke="#52525b" strokeWidth="3" />
-                      <circle cx="100" cy="105" r="28" fill="#27272a" stroke="#facc15" strokeWidth="1.5" strokeOpacity="0.6" />
-                    </svg>
-
-                    {/* Interactive Center Danfo Horn Button */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleHorn();
-                      }}
-                      className="absolute w-12 h-12 sm:w-14 sm:h-14 mt-1 rounded-full bg-gradient-to-b from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 active:scale-95 text-stone-950 font-black text-[8px] sm:text-[9px] font-['Bungee'] flex flex-col items-center justify-center shadow-[0_4px_12px_rgba(0,0,0,0.85)] border-2 border-stone-900 pointer-events-auto"
-                    >
-                      <span>🚌</span>
-                      <span>HORN</span>
-                    </button>
-                  </div>
-                </div>
+                )}
               </div>
 
-              {/* ── CENTER SECTION: AC LOUVERS, RED HAZARD SWITCH & DANFO INFOTAINMENT CONSOLE ── */}
-              <div className="hidden sm:flex flex-col justify-between items-center w-[24%] h-full py-1 px-2 border-x border-stone-800/80">
-                {/* Dual Bus AC Louvers + Red Hazard Button (Just like Dr. Driving!) */}
-                <div className="w-full flex items-center justify-between gap-1.5 bg-stone-950/90 px-2 py-1.5 rounded-xl border border-stone-700/80 shadow-inner">
-                  {/* Left AC Vent */}
-                  <div className="flex-1 h-7 bg-stone-900 rounded border border-stone-700 flex flex-col justify-evenly px-1">
-                    <div className="w-full h-0.5 bg-stone-600" />
-                    <div className="w-full h-0.5 bg-stone-600" />
-                    <div className="w-full h-0.5 bg-stone-600" />
-                  </div>
-                  {/* Red Hazard Switch Button */}
-                  <button
-                    onClick={toggleHazards}
-                    className={`w-8 h-7 rounded-lg font-black text-xs flex items-center justify-center border transition-all shadow-md ${
-                      hazardLights
-                        ? 'bg-rose-500 text-white border-rose-200 animate-pulse shadow-[0_0_12px_rgba(244,63,94,0.9)]'
-                        : 'bg-rose-700 hover:bg-rose-600 text-rose-100 border-rose-900'
-                    }`}
-                    title="Hazard Warning Lights"
-                  >
-                    ⚠️
-                  </button>
-                  {/* Right AC Vent */}
-                  <div className="flex-1 h-7 bg-stone-900 rounded border border-stone-700 flex flex-col justify-evenly px-1">
-                    <div className="w-full h-0.5 bg-stone-600" />
-                    <div className="w-full h-0.5 bg-stone-600" />
-                    <div className="w-full h-0.5 bg-stone-600" />
-                  </div>
-                </div>
-
-                {/* Recessed Danfo Route & Conductor Digital Display */}
-                <div className="w-full flex-1 my-1 bg-stone-950 border-2 border-stone-700/90 rounded-xl p-1.5 flex flex-col justify-between shadow-inner">
-                  <div className="flex items-center justify-between text-[8px] font-mono">
+              {/* ── CENTER SECTION: COMPACT ROUTE & CONDUCTOR CONSOLE (Hidden on tiny screens) ── */}
+              {showLeftPanel && (
+                <div className="hidden md:flex flex-col justify-between items-center w-[22%] h-[68px] sm:h-[86px] bg-stone-950/90 border border-stone-700/80 rounded-xl px-2.5 py-1 shadow-inner">
+                  <div className="w-full flex items-center justify-between text-[8px] font-mono">
                     <span className="text-amber-400 font-black truncate">
                       🚏 {currentJunction ? currentJunction.name : 'TERMINAL'}
                     </span>
-                    <span className="text-emerald-400 font-black">
-                      {Math.max(0, distToJunc)}m
-                    </span>
+                    <span className="text-emerald-400 font-black">{Math.max(0, distToJunc)}m</span>
                   </div>
-                  <div className="flex items-center justify-between text-[9px] font-mono bg-stone-900/90 px-1.5 py-0.5 rounded border border-stone-800">
-                    <span className="text-sky-300 font-bold">
-                      👥 {gameState.bus.passengers?.length || 0}/{gameState.bus.capacity}
-                    </span>
-                    <span className="text-emerald-400 font-black">
-                      ₦{gameState.conductor.collectedCash.toLocaleString()}
-                    </span>
+                  <div className="w-full flex items-center justify-between text-[8px] font-mono text-stone-300">
+                    <span>👥 {gameState.bus.passengers?.length || 0}/{gameState.bus.capacity} seats</span>
+                    <span className="text-emerald-400 font-black">₦{gameState.conductor.collectedCash.toLocaleString()}</span>
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="w-full flex items-center gap-1">
                     <button
                       onClick={handleCollectFares}
-                      className="flex-1 py-0.5 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/50 rounded text-[8px] font-mono font-black text-emerald-300 active:scale-95"
+                      className="flex-1 py-0.5 bg-emerald-500/20 border border-emerald-400/50 rounded text-[8px] font-mono font-black text-emerald-300 active:scale-95"
                     >
                       💵 FARES (C)
                     </button>
                     <button
-                      onClick={toggleEngine}
-                      className={`px-1.5 py-0.5 rounded border text-[8px] font-mono font-black ${
-                        isEngineRunning
-                          ? 'bg-stone-800 border-stone-600 text-emerald-400'
-                          : 'bg-amber-400 text-stone-950 border-amber-200 animate-pulse'
+                      onClick={toggleWipers}
+                      className={`px-1.5 py-0.5 rounded border text-[8px] font-mono ${
+                        wipersActive ? 'bg-sky-400 text-stone-950 border-sky-200' : 'bg-stone-900 border-stone-700 text-stone-300'
                       }`}
                     >
-                      🔑 {isEngineRunning ? 'ON' : 'START'}
+                      🌧️
                     </button>
                   </div>
                 </div>
-              </div>
+              )}
 
-              {/* ── RIGHT SECTION: DR. DRIVING VERTICAL GEAR SHIFTER + RIBBED BRAKE & GAS PEDALS ── */}
-              <div className="flex items-end justify-end gap-2 sm:gap-3.5 w-[52%] sm:w-[32%] h-full pr-1">
-                {/* Mobile Hazard Button (visible on small screens) */}
-                <button
-                  onClick={toggleHazards}
-                  className={`sm:hidden mb-2 w-8 h-8 rounded-lg font-black text-xs flex items-center justify-center border ${
-                    hazardLights
-                      ? 'bg-rose-500 text-white border-rose-200 animate-pulse'
-                      : 'bg-rose-700 text-rose-100 border-rose-900'
-                  }`}
-                >
-                  ⚠️
-                </button>
-
-                {/* DR. DRIVING VERTICAL GEAR SHIFTER TRACK (R - N - D - P) */}
-                <div className="relative h-[142px] sm:h-[158px] w-14 sm:w-16 bg-gradient-to-b from-stone-900 to-stone-950 border-[3px] border-stone-600 rounded-2xl p-1.5 flex flex-col justify-between shadow-[inset_0_4px_12px_rgba(0,0,0,0.95),0_6px_16px_rgba(0,0,0,0.85)]">
-                  {/* Center Vertical Shifter Slot */}
-                  <div className="absolute top-3 bottom-3 right-3 w-2 bg-stone-950 border border-stone-700 rounded-full pointer-events-none" />
+              {/* ── RIGHT SECTION: COMPACT DR. DRIVING GEAR SHIFTER + RIBBED BRAKE & GAS PEDALS ── */}
+              <div className="flex items-center justify-end gap-1.5 sm:gap-2.5 h-full">
+                {/* Compact Vertical Gear Shifter (R - N - D - P) */}
+                <div className="relative h-[70px] sm:h-[90px] w-10 sm:w-12 bg-stone-950 border-2 border-stone-600 rounded-xl p-1 flex flex-col justify-between shadow-inner">
                   {(['R', 'N', 'D', 'P'] as const).map((g) => {
                     const isActive = gear === g;
                     return (
@@ -1861,120 +1784,145 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                           inputsRef.current.gear = g;
                           if (g === 'R') soundEngine.playReverseBeep();
                         }}
-                        className={`relative z-10 w-full h-7 sm:h-8 rounded-xl font-mono font-black text-xs flex items-center justify-between px-2 transition-all ${
+                        className={`w-full h-3.5 sm:h-4.5 rounded font-mono font-black text-[8px] sm:text-[10px] flex items-center justify-center transition-all ${
                           isActive
                             ? g === 'R'
-                              ? 'bg-rose-500 text-white shadow-[0_0_12px_rgba(244,63,94,0.8)] border border-rose-200 scale-105'
+                              ? 'bg-rose-500 text-white shadow'
                               : g === 'D'
-                              ? 'bg-amber-400 text-stone-950 shadow-[0_0_12px_rgba(251,191,36,0.8)] border border-amber-200 scale-105'
-                              : 'bg-sky-400 text-stone-950 shadow-[0_0_12px_rgba(56,189,248,0.8)] border border-sky-200 scale-105'
-                            : 'text-stone-400 hover:text-white bg-stone-900/60'
+                              ? 'bg-amber-400 text-stone-950 shadow'
+                              : 'bg-sky-400 text-stone-950 shadow'
+                            : 'text-stone-400 hover:text-white'
                         }`}
                       >
-                        <span>{g}</span>
-                        {/* Shift Knob Handle on Active Gear */}
-                        <span
-                          className={`w-3.5 h-3.5 rounded-full border ${
-                            isActive
-                              ? 'bg-stone-950 border-white shadow-md'
-                              : 'bg-stone-800 border-stone-600'
-                          }`}
-                        />
+                        {g}
                       </button>
                     );
                   })}
                 </div>
 
-                {/* DR. DRIVING RIBBED RUBBER BRAKE & GAS PEDALS */}
-                <div className="flex items-end gap-2 sm:gap-2.5 h-full pb-0.5">
-                  {/* BRAKE PEDAL (Wide Ribbed Tread) */}
-                  <button
-                    onPointerDown={(e) => {
-                      try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch {}
-                      inputsRef.current.brake = true;
-                      setIsBrakePressed(true);
-                      soundEngine.playAirBrakeHiss();
-                    }}
-                    onPointerUp={(e) => {
-                      try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
-                      inputsRef.current.brake = false;
-                      setIsBrakePressed(false);
-                    }}
-                    onPointerCancel={() => {
-                      inputsRef.current.brake = false;
-                      setIsBrakePressed(false);
-                    }}
-                    className={`w-14 sm:w-16 h-[92px] sm:h-[104px] rounded-xl flex flex-col items-center justify-between py-2.5 px-1.5 select-none touch-none transition-all ${
-                      isBrakePressed
-                        ? 'bg-rose-950 border-[3px] border-rose-400 translate-y-1.5 scale-95 shadow-[0_0_20px_rgba(244,63,94,0.75)]'
-                        : 'bg-gradient-to-b from-stone-700 via-stone-800 to-stone-900 border-[3px] border-stone-500 shadow-[0_8px_16px_rgba(0,0,0,0.9)]'
-                    }`}
-                  >
-                    <div className="w-full flex flex-col gap-1">
-                      <div className="w-full h-1.5 bg-stone-950/80 rounded-full" />
-                      <div className="w-full h-1.5 bg-stone-950/80 rounded-full" />
-                      <div className="w-full h-1.5 bg-stone-950/80 rounded-full" />
-                    </div>
-                    <span className={`text-[10px] font-mono font-black tracking-wider ${isBrakePressed ? 'text-rose-300' : 'text-rose-400'}`}>
-                      BRAKE
-                    </span>
-                    <div className="w-full flex flex-col gap-1">
-                      <div className="w-full h-1.5 bg-stone-950/80 rounded-full" />
-                      <div className="w-full h-1.5 bg-stone-950/80 rounded-full" />
-                    </div>
-                  </button>
+                {/* BRAKE PEDAL */}
+                <button
+                  onPointerDown={(e) => {
+                    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch {}
+                    inputsRef.current.brake = true;
+                    setIsBrakePressed(true);
+                    soundEngine.playAirBrakeHiss();
+                  }}
+                  onPointerUp={(e) => {
+                    try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
+                    inputsRef.current.brake = false;
+                    setIsBrakePressed(false);
+                  }}
+                  onPointerCancel={() => {
+                    inputsRef.current.brake = false;
+                    setIsBrakePressed(false);
+                  }}
+                  className={`w-12 sm:w-14 h-[60px] sm:h-[78px] rounded-xl flex flex-col items-center justify-between py-1.5 px-1 select-none touch-none transition-all ${
+                    isBrakePressed
+                      ? 'bg-rose-950 border-2 border-rose-400 translate-y-1 scale-95 shadow-[0_0_14px_rgba(244,63,94,0.7)]'
+                      : 'bg-gradient-to-b from-stone-700 via-stone-800 to-stone-900 border-2 border-stone-500 shadow-lg'
+                  }`}
+                >
+                  <div className="w-full h-1 bg-stone-950/80 rounded-full" />
+                  <span className={`text-[8px] sm:text-[9px] font-mono font-black ${isBrakePressed ? 'text-rose-300' : 'text-rose-400'}`}>
+                    BRAKE
+                  </span>
+                  <div className="w-full h-1 bg-stone-950/80 rounded-full" />
+                </button>
 
-                  {/* GAS / ACCELERATOR PEDAL (Tall Vertical Ribbed Tread like Dr. Driving) */}
-                  <button
-                    onPointerDown={(e) => {
-                      try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch {}
-                      if (!inputsRef.current.isEngineRunning) {
-                        toggleEngine();
-                      }
-                      inputsRef.current.gas = true;
-                      setIsGasPressed(true);
-                    }}
-                    onPointerUp={(e) => {
-                      try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
-                      inputsRef.current.gas = false;
-                      setIsGasPressed(false);
-                    }}
-                    onPointerCancel={() => {
-                      inputsRef.current.gas = false;
-                      setIsGasPressed(false);
-                    }}
-                    className={`w-14 sm:w-16 h-[132px] sm:h-[148px] rounded-xl flex flex-col items-center justify-between py-3 px-2 select-none touch-none transition-all ${
-                      isGasPressed
-                        ? 'bg-amber-400 text-stone-950 border-[3px] border-amber-200 translate-y-1.5 scale-95 shadow-[0_0_24px_rgba(251,191,36,0.85)]'
-                        : 'bg-gradient-to-b from-stone-700 via-stone-800 to-stone-900 border-[3px] border-amber-400/80 shadow-[0_8px_16px_rgba(0,0,0,0.9)]'
-                    }`}
-                  >
-                    <div className="w-full flex justify-between gap-1 h-8">
-                      <div className={`flex-1 rounded-full ${isGasPressed ? 'bg-stone-900/40' : 'bg-stone-950/80'}`} />
-                      <div className={`flex-1 rounded-full ${isGasPressed ? 'bg-stone-900/40' : 'bg-stone-950/80'}`} />
-                      <div className={`flex-1 rounded-full ${isGasPressed ? 'bg-stone-900/40' : 'bg-stone-950/80'}`} />
-                    </div>
-                    <span className={`text-[11px] font-mono font-black tracking-wider ${isGasPressed ? 'text-stone-950' : 'text-amber-400'}`}>
-                      GAS
-                    </span>
-                    <div className="w-full flex justify-between gap-1 h-8">
-                      <div className={`flex-1 rounded-full ${isGasPressed ? 'bg-stone-900/40' : 'bg-stone-950/80'}`} />
-                      <div className={`flex-1 rounded-full ${isGasPressed ? 'bg-stone-900/40' : 'bg-stone-950/80'}`} />
-                      <div className={`flex-1 rounded-full ${isGasPressed ? 'bg-stone-900/40' : 'bg-stone-950/80'}`} />
-                    </div>
-                  </button>
-                </div>
+                {/* GAS / ACCELERATOR PEDAL */}
+                <button
+                  onPointerDown={(e) => {
+                    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch {}
+                    if (!inputsRef.current.isEngineRunning) {
+                      toggleEngine();
+                    }
+                    inputsRef.current.gas = true;
+                    setIsGasPressed(true);
+                  }}
+                  onPointerUp={(e) => {
+                    try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
+                    inputsRef.current.gas = false;
+                    setIsGasPressed(false);
+                  }}
+                  onPointerCancel={() => {
+                    inputsRef.current.gas = false;
+                    setIsGasPressed(false);
+                  }}
+                  className={`w-12 sm:w-14 h-[70px] sm:h-[90px] rounded-xl flex flex-col items-center justify-between py-1.5 px-1.5 select-none touch-none transition-all ${
+                    isGasPressed
+                      ? 'bg-amber-400 text-stone-950 border-2 border-amber-200 translate-y-1 scale-95 shadow-[0_0_18px_rgba(251,191,36,0.85)]'
+                      : 'bg-gradient-to-b from-stone-700 via-stone-800 to-stone-900 border-2 border-amber-400/80 shadow-lg'
+                  }`}
+                >
+                  <div className="w-full h-1.5 bg-stone-950/60 rounded-full" />
+                  <span className={`text-[9px] sm:text-[10px] font-mono font-black ${isGasPressed ? 'text-stone-950' : 'text-amber-400'}`}>
+                    GAS
+                  </span>
+                  <div className="w-full h-1.5 bg-stone-950/60 rounded-full" />
+                </button>
               </div>
             </div>
           </div>
         </>
       )}
 
-      {/* ═══════ EXTERNAL CAMERA MODES (3RD PERSON / BIRD EYE / 360) OR ON-FOOT CONTROLS ═══════ */}
+      {/* ═══════ EXTERNAL CAMERA MODES (3RD PERSON / BIRD EYE / 360) OR ON-FOOT WALK MODE ═══════ */}
       {(isSteppedDown || cameraMode !== 'FIRST_PERSON') && (
         <>
+          {/* ON-FOOT VEHICLE & STREET INTERACTION BAR (When Stepped Down) */}
+          {isSteppedDown && (
+            <div className="absolute top-11 left-1/2 -translate-x-1/2 z-50 pointer-events-auto flex items-center gap-1.5 bg-stone-950/95 border-2 border-amber-400 rounded-full px-3 py-1 shadow-2xl backdrop-blur-md">
+              <span className="text-[9px] font-mono font-black text-amber-400 hidden sm:inline">🚶 ON FOOT:</span>
+              <button
+                onClick={() => {
+                  if (engineRef.current) {
+                    lookRef.current.yaw = engineRef.current.getYawOffsetToBus();
+                    lookRef.current.pitch = -0.04;
+                  } else {
+                    lookRef.current.yaw = 0;
+                    lookRef.current.pitch = -0.04;
+                  }
+                  addFeedMessage('🎯 Facing your parked yellow Danfo bus!');
+                }}
+                className="px-2 py-0.5 bg-stone-800 hover:bg-stone-700 text-amber-300 border border-amber-400/50 rounded-full text-[9px] font-mono font-bold active:scale-95"
+              >
+                🎯 FACE BUS
+              </button>
+              <button
+                onClick={toggleDoor}
+                className={`px-2 py-0.5 rounded-full text-[9px] font-mono font-bold border active:scale-95 ${
+                  doorState === 'OPEN'
+                    ? 'bg-amber-400 text-stone-950 border-amber-200'
+                    : 'bg-stone-800 text-stone-200 border-stone-600'
+                }`}
+              >
+                🚪 DOOR: {doorState}
+              </button>
+              <button
+                onClick={toggleBoot}
+                className={`px-2 py-0.5 rounded-full text-[9px] font-mono font-bold border active:scale-95 ${
+                  bootState === 'OPEN'
+                    ? 'bg-emerald-400 text-stone-950 border-emerald-200'
+                    : 'bg-stone-800 text-stone-200 border-stone-600'
+                }`}
+              >
+                🧳 BOOT: {bootState}
+              </button>
+              <button
+                onClick={() => {
+                  const randomNpc = LAGOS_NPCS[Math.floor(Math.random() * LAGOS_NPCS.length)];
+                  setActiveNpc(randomNpc);
+                }}
+                className="px-2 py-0.5 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-400/50 rounded-full text-[9px] font-mono font-bold active:scale-95"
+              >
+                🗣️ TALK NPC
+              </button>
+            </div>
+          )}
+
           {/* BOTTOM-LEFT: Redesigned 3-Spoke Wheel or Walk Joystick */}
-          <div className="absolute bottom-4 left-2 z-50 pointer-events-auto flex flex-col items-start">
+          <div className="absolute bottom-3 left-2 z-50 pointer-events-auto flex flex-col items-start">
             <button
               onClick={() => setShowLeftPanel((v) => !v)}
               className="mb-1 w-8 h-5 bg-stone-900/80 border border-stone-700/50 rounded text-stone-400 text-[8px] flex items-center justify-center"
@@ -1988,10 +1936,10 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
             >
               {!isSteppedDown ? (
                 <>
-                  <div className="flex flex-col gap-1.5" style={{ transform: 'scale(0.9)', transformOrigin: 'bottom left' }}>
+                  <div className="flex flex-col gap-1" style={{ transform: 'scale(0.85)', transformOrigin: 'bottom left' }}>
                     <button
                       onClick={() => triggerTurnSignal('LEFT')}
-                      className={`w-10 p-1.5 rounded border text-[9px] font-bold text-center ${
+                      className={`w-9 p-1 rounded border text-[9px] font-bold text-center ${
                         turnSignal === 'LEFT' ? 'bg-amber-400 text-stone-950 border-amber-300' : 'bg-stone-900/80 border-stone-700 text-stone-300'
                       }`}
                     >
@@ -1999,7 +1947,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                     </button>
                     <button
                       onClick={() => triggerTurnSignal('RIGHT')}
-                      className={`w-10 p-1.5 rounded border text-[9px] font-bold text-center ${
+                      className={`w-9 p-1 rounded border text-[9px] font-bold text-center ${
                         turnSignal === 'RIGHT' ? 'bg-amber-400 text-stone-950 border-amber-300' : 'bg-stone-900/80 border-stone-700 text-stone-300'
                       }`}
                     >
@@ -2007,7 +1955,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                     </button>
                     <button
                       onClick={toggleHazards}
-                      className={`w-10 p-1.5 rounded border text-[9px] font-bold text-center ${
+                      className={`w-9 p-1 rounded border text-[9px] font-bold text-center ${
                         hazardLights ? 'bg-amber-500 text-stone-950 animate-pulse' : 'bg-stone-900/80 border-stone-700 text-stone-300'
                       }`}
                     >
@@ -2015,7 +1963,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                     </button>
                     <button
                       onClick={toggleWipers}
-                      className={`w-10 p-1.5 rounded border text-[9px] font-bold text-center ${
+                      className={`w-9 p-1 rounded border text-[9px] font-bold text-center ${
                         wipersActive ? 'bg-sky-500 text-stone-950' : 'bg-stone-900/80 border-stone-700 text-stone-300'
                       }`}
                     >
@@ -2028,10 +1976,10 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                     onPointerMove={handleWheelPointerMove}
                     onPointerUp={handleWheelPointerUp}
                     onPointerCancel={handleWheelPointerUp}
-                    className="relative w-36 h-36 sm:w-40 sm:h-40 rounded-full cursor-grab active:cursor-grabbing touch-none select-none flex items-center justify-center"
+                    className="relative w-28 h-28 sm:w-36 sm:h-36 rounded-full cursor-grab active:cursor-grabbing touch-none select-none flex items-center justify-center"
                     style={{
                       transform: `rotate(${wheelVisualAngle}deg)`,
-                      filter: 'drop-shadow(0 10px 18px rgba(0,0,0,0.9))',
+                      filter: 'drop-shadow(0 8px 14px rgba(0,0,0,0.9))',
                     }}
                   >
                     <svg viewBox="0 0 200 200" className="w-full h-full overflow-visible pointer-events-none">
@@ -2048,7 +1996,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                         e.stopPropagation();
                         handleHorn();
                       }}
-                      className="absolute w-11 h-11 mt-1 bg-amber-400 hover:bg-amber-300 active:bg-amber-200 text-stone-950 rounded-full font-black text-[9px] font-['Bungee'] flex items-center justify-center shadow-lg border border-stone-900 transition-transform active:scale-95"
+                      className="absolute w-10 h-10 mt-1 bg-amber-400 hover:bg-amber-300 active:bg-amber-200 text-stone-950 rounded-full font-black text-[8px] font-['Bungee'] flex items-center justify-center shadow-lg border border-stone-900 transition-transform active:scale-95"
                     >
                       HORN
                     </button>
@@ -2061,14 +2009,14 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                     onPointerMove={handleWalkJoyPointerMove}
                     onPointerUp={handleWalkJoyPointerUp}
                     onPointerCancel={handleWalkJoyPointerUp}
-                    className="relative w-32 h-32 rounded-full bg-stone-950/90 backdrop-blur-md border-2 border-amber-400/80 shadow-2xl touch-none select-none flex items-center justify-center cursor-grab active:cursor-grabbing"
+                    className="relative w-28 h-28 rounded-full bg-stone-950/90 backdrop-blur-md border-2 border-amber-400/80 shadow-2xl touch-none select-none flex items-center justify-center cursor-grab active:cursor-grabbing"
                   >
                     <div className="absolute top-1 text-[8px] font-black text-amber-400/80 font-mono">▲ W</div>
                     <div className="absolute bottom-1 text-[8px] font-black text-amber-400/80 font-mono">▼ S</div>
                     <div className="absolute left-1.5 text-[8px] font-black text-amber-400/80 font-mono">◀ A</div>
                     <div className="absolute right-1.5 text-[8px] font-black text-amber-400/80 font-mono">D ▶</div>
                     <div
-                      className="w-14 h-14 rounded-full bg-gradient-to-b from-amber-300 to-amber-500 text-stone-950 font-black text-[10px] shadow-xl border-2 border-amber-200 flex items-center justify-center pointer-events-none transition-transform duration-75"
+                      className="w-12 h-12 rounded-full bg-gradient-to-b from-amber-300 to-amber-500 text-stone-950 font-black text-[9px] shadow-xl border-2 border-amber-200 flex items-center justify-center pointer-events-none transition-transform duration-75"
                       style={{
                         transform: `translate(${walkJoyVisual.x}px, ${walkJoyVisual.y}px)`,
                       }}
@@ -2077,15 +2025,15 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                     </div>
                   </div>
                   <div className="mt-1 text-[8px] font-mono font-bold text-amber-400 bg-stone-950/90 px-2 py-0.5 rounded-full border border-amber-500/40">
-                    DRAG TO WALK
+                    WASD / DRAG TO WALK
                   </div>
                 </div>
               )}
             </div>
           </div>
 
-          {/* BOTTOM-RIGHT: Pedals & Gear */}
-          <div className="absolute bottom-4 right-2 z-50 pointer-events-auto flex flex-col items-end">
+          {/* BOTTOM-RIGHT: Pedals & Gear or Get Back In Bus */}
+          <div className="absolute bottom-3 right-2 z-50 pointer-events-auto flex flex-col items-end">
             <button
               onClick={() => setShowRightPanel((v) => !v)}
               className="mb-1 w-8 h-5 bg-stone-900/80 border border-stone-700/50 rounded text-stone-400 text-[8px] flex items-center justify-center"
@@ -2107,7 +2055,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                           setGear(g);
                           inputsRef.current.gear = g;
                         }}
-                        className={`w-7 h-7 rounded-lg font-mono font-black text-[10px] transition-all flex items-center justify-center my-0.5 ${
+                        className={`w-7 h-6 rounded-lg font-mono font-black text-[10px] transition-all flex items-center justify-center my-0.5 ${
                           gear === g
                             ? 'bg-amber-400 text-stone-950 shadow-md ring-1 ring-amber-300 scale-105'
                             : 'text-stone-400 hover:text-white'
@@ -2134,7 +2082,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                         inputsRef.current.brake = false;
                         setIsBrakePressed(false);
                       }}
-                      className={`w-14 h-20 bg-stone-900/95 rounded-xl flex flex-col items-center justify-center shadow-xl transition-all select-none touch-none ${
+                      className={`w-13 h-18 bg-stone-900/95 rounded-xl flex flex-col items-center justify-center shadow-xl transition-all select-none touch-none px-3 py-3 ${
                         isBrakePressed
                           ? 'bg-rose-950 border-2 border-rose-500 scale-95 shadow-[0_0_15px_rgba(244,63,94,0.6)]'
                           : 'border border-stone-600 active:border-rose-500'
@@ -2146,6 +2094,9 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                     <button
                       onPointerDown={(e) => {
                         try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch {}
+                        if (!inputsRef.current.isEngineRunning) {
+                          toggleEngine();
+                        }
                         inputsRef.current.gas = true;
                         setIsGasPressed(true);
                       }}
@@ -2158,7 +2109,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                         inputsRef.current.gas = false;
                         setIsGasPressed(false);
                       }}
-                      className={`w-14 h-28 rounded-xl flex flex-col items-center justify-center shadow-xl transition-all select-none touch-none ${
+                      className={`w-13 h-24 rounded-xl flex flex-col items-center justify-center shadow-xl transition-all select-none touch-none px-3 py-4 ${
                         isGasPressed
                           ? 'bg-amber-400 text-stone-950 border-2 border-amber-300 scale-95 shadow-[0_0_20px_rgba(251,191,36,0.6)]'
                           : 'bg-stone-900/95 border border-stone-600 active:border-amber-500'
@@ -2172,9 +2123,10 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
               ) : (
                 <button
                   onClick={toggleStepDown}
-                  className="px-6 py-4 bg-amber-400 text-stone-950 font-black rounded-xl shadow-2xl active:scale-95 animate-bounce mb-8"
+                  className="px-5 py-3 bg-amber-400 hover:bg-amber-300 text-stone-950 font-black text-xs font-['Bungee'] rounded-2xl shadow-2xl border-2 border-amber-200 active:scale-95 flex items-center gap-2 mb-4"
                 >
-                  GET IN BUS
+                  <span>🚌</span>
+                  <span>GET IN BUS (E)</span>
                 </button>
               )}
             </div>
@@ -2182,19 +2134,17 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         </>
       )}
 
-      {/* ═══════ ACTION FEED (Positioned cleanly above dashboard in First-Person) ═══════ */}
+      {/* ═══════ ACTION FEED (Positioned cleanly above low-profile dashboard) ═══════ */}
       <div
         className={`absolute left-1/2 -translate-x-1/2 z-30 pointer-events-none flex flex-col gap-0.5 items-center transition-all ${
-          !isSteppedDown && cameraMode === 'FIRST_PERSON' ? 'bottom-[37%]' : 'bottom-3'
+          !isSteppedDown && cameraMode === 'FIRST_PERSON' ? 'bottom-[23vh]' : 'bottom-3'
         }`}
         style={{ maxWidth: '52vw' }}
       >
-        {actionFeed.slice(0, 2).map((msg, i) => (
+        {actionFeed.slice(0, 1).map((msg, i) => (
           <div
             key={i}
-            className={`text-[9px] px-2.5 py-0.5 rounded-full bg-stone-950/85 border border-stone-800/80 backdrop-blur font-mono truncate max-w-full ${
-              i === 0 ? 'text-amber-300 font-bold' : 'text-stone-400 opacity-75'
-            }`}
+            className="text-[9px] px-2.5 py-0.5 rounded-full bg-stone-950/80 border border-stone-800/80 backdrop-blur font-mono truncate max-w-full text-amber-300 font-bold"
           >
             {msg}
           </div>
