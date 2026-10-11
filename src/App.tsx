@@ -35,6 +35,7 @@ import { NeedsPanel } from './components/NeedsPanel';
 import { AjoApp, KoloSystem } from './components/SavingsSystems';
 import { SplashLoadingScreen } from './components/SplashLoadingScreen';
 import { PwaInstallBanner } from './components/PwaInstallBanner';
+import { PlayerHome2D } from './components/PlayerHome2D';
 import {
   Trophy,
   Volume2,
@@ -89,6 +90,7 @@ export default function App() {
   const [isDealershipOpen, setIsDealershipOpen] = useState<boolean>(false);
   const [isKoloOpen, setIsKoloOpen] = useState<boolean>(false);
   const [isAjoOpen, setIsAjoOpen] = useState<boolean>(false);
+  const [isHome2DOpen, setIsHome2DOpen] = useState<boolean>(false);
   const [showCharacterCreation, setShowCharacterCreation] = useState<boolean>(
     !saveData.playerName || saveData.playerName === 'Driver'
   );
@@ -418,6 +420,53 @@ export default function App() {
     return <SplashLoadingScreen onFinishLoading={() => setShowSplash(false)} />;
   }
 
+  if (isHome2DOpen) {
+    return (
+      <>
+        <PlayerHome2D
+          gameState={{ ...gameState, walletNaira, streetCred }}
+          onUpdateWalletAndCred={(walletDelta, credDelta = 0, staminaSet) => {
+            const nextWallet = Math.max(0, walletNaira + walletDelta);
+            const nextCred = Math.max(0, streetCred + credDelta);
+            setWalletNaira(nextWallet);
+            setStreetCred(nextCred);
+            setGameState((prev) => ({
+              ...prev,
+              walletNaira: nextWallet,
+              streetCred: nextCred,
+              needs: staminaSet
+                ? { ...prev.needs, energy: staminaSet, hunger: Math.max(prev.needs.hunger, 85) }
+                : prev.needs,
+            }));
+          }}
+          onGoToDrive={() => {
+            setIsHome2DOpen(false);
+            if (gameState.screen !== 'SHIFT_ACTIVE') {
+              handleStartShift();
+            }
+          }}
+          onOpenPhone={() => setIsPhoneOpen(true)}
+          onBackToMenu={() => {
+            setIsHome2DOpen(false);
+            setGameState((prev) => ({ ...prev, screen: 'MENU' }));
+          }}
+        />
+        <PhoneModal
+          isOpen={isPhoneOpen}
+          onClose={() => setIsPhoneOpen(false)}
+          gameState={gameState}
+          setGameState={setGameState}
+          addFeedMessage={addFeedMessage}
+          onStartShift={() => {
+            setIsPhoneOpen(false);
+            setIsHome2DOpen(false);
+            handleStartShift();
+          }}
+        />
+      </>
+    );
+  }
+
   return (
     <div className="w-screen h-screen bg-stone-950 text-stone-100 flex flex-col overflow-hidden font-['Plus_Jakarta_Sans',sans-serif]">
       {/* TOP DANFO HAZARD STRIPE ACCENT (Only in Menu/Results) */}
@@ -463,6 +512,15 @@ export default function App() {
 
         {/* Global Wallet, PWA Install, Dealership, Phone, Inventory, Map & Sound */}
         <div className="flex items-center gap-1.5 sm:gap-2 font-mono">
+          <button
+            onClick={() => setIsHome2DOpen(true)}
+            className="px-2.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-stone-950 text-[10px] sm:text-xs font-black flex items-center gap-1 shadow-md transition-transform active:scale-95 cursor-pointer"
+            title="Go Home to Your 2D Room"
+          >
+            <Home className="w-3.5 h-3.5" />
+            <span>GO HOME</span>
+          </button>
+
           <button
             onClick={() => setShowPwaModal((v) => !v)}
             className="px-2.5 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-stone-950 text-[10px] sm:text-xs font-black flex items-center gap-1 shadow-md transition-transform active:scale-95 cursor-pointer"
@@ -994,11 +1052,18 @@ export default function App() {
 
                   <div className="pt-2 flex flex-wrap gap-3">
                     <button
+                      onClick={() => setIsHome2DOpen(true)}
+                      className="flex-1 py-3 px-4 bg-emerald-500 hover:bg-emerald-400 text-stone-950 font-black font-['Bungee'] text-xs rounded-xl shadow-lg flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <Home className="w-4 h-4" />
+                      <span>🏠 GO HOME (ENTER 2D ROOM)</span>
+                    </button>
+                    <button
                       onClick={() => setIsPhoneOpen(true)}
                       className="flex-1 py-3 px-4 bg-amber-400 hover:bg-amber-300 text-stone-950 font-black font-mono text-xs rounded-xl shadow-lg flex items-center justify-center gap-2 cursor-pointer"
                     >
                       <Smartphone className="w-4 h-4" />
-                      <span>OPEN PHONE TO PAY RENT & NEPA BILLS</span>
+                      <span>PAY RENT & NEPA BILLS</span>
                     </button>
                     <button
                       onClick={() => setIsInventoryOpen(true)}
@@ -1029,6 +1094,7 @@ export default function App() {
             onOpenPhone={() => setIsPhoneOpen(true)}
             onOpenInventory={() => setIsInventoryOpen(true)}
             onOpenMap={() => setIsMapOpen(true)}
+            onGoHome={() => setIsHome2DOpen(true)}
             onUpdateSave={updateSave}
             actionFeed={actionFeed}
             addFeedMessage={addFeedMessage}
@@ -1102,19 +1168,26 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="flex gap-3">
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() => setIsHome2DOpen(true)}
+                  className="flex-1 py-3 bg-emerald-500 hover:bg-emerald-400 text-stone-950 font-black font-['Bungee'] rounded-xl text-sm transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Home className="w-4 h-4" />
+                  <span>GO HOME (2D ROOM)</span>
+                </button>
                 <button
                   onClick={() => setGameState((prev) => ({ ...prev, screen: 'MENU' }))}
                   className="flex-1 py-3 bg-stone-800 hover:bg-stone-700 text-stone-200 font-bold rounded-xl text-sm transition-colors flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <RotateCcw className="w-4 h-4" />
-                  <span>Return to Motor Park</span>
+                  <span>Motor Park</span>
                 </button>
                 <button
                   onClick={handleStartShift}
                   className="flex-1 py-3 bg-amber-400 hover:bg-amber-300 text-stone-950 font-black font-['Bungee'] rounded-xl text-sm tracking-wider transition-colors flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  <span>DRIVE NEXT SHIFT</span>
+                  <span>NEXT SHIFT</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>

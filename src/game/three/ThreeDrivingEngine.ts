@@ -85,6 +85,36 @@ export class ThreeDrivingEngine {
     stationZ: number;
     pricePerLiter: number;
   }> = [];
+  private mechanicCompoundZones: Array<{
+    id: string;
+    name: string;
+    specialty: string;
+    box: THREE.Box3;
+    compoundZ: number;
+  }> = [];
+  private oshodiBrtStationZones: Array<{
+    id: string;
+    name: string;
+    subtitle: string;
+    box: THREE.Box3;
+    stationZ: number;
+    activeBusCount: number;
+  }> = [];
+  private brtStationShuttleBuses: Array<{
+    group: THREE.Group;
+    minZ: number;
+    maxZ: number;
+    stopZ: number;
+    laneX: number;
+    speed: number;
+    waitTimer: number;
+  }> = [];
+  private brtStationCommuterSwarms: Array<{
+    group: THREE.Group;
+    baseX: number;
+    baseZ: number;
+    phase: number;
+  }> = [];
   private renderer: THREE.WebGLRenderer;
 
   // Cannon-es Physics World & Raycast Vehicle
@@ -286,8 +316,10 @@ export class ThreeDrivingEngine {
     this.driverCharacterGroup.visible = false;
     this.scene.add(this.driverCharacterGroup);
 
-    // 7. Gas Stations along Highway (with THREE.Box3 Refueling Zones)
+    // 7. Gas Stations, Mechanic Compounds & Oshodi NPC BRT Terminals along Highway
     this.setupGasStations();
+    this.setupMechanicCompounds();
+    this.setupOshodiBRTStations();
 
     // 8. Overhead Highway Billboards (Flutterwave, OPay, Chowdeck, Custom Ads)
     this.setupBillboards();
@@ -336,9 +368,13 @@ export class ThreeDrivingEngine {
     let minX = -8.8;
     let maxX = 8.8;
 
-    // 1. Starting Oshodi Bus Park (z < 48 on Right -X side)
-    if (z < 48) {
-      minX = -26.5;
+    // 1. Starting Oshodi Bus Park + Oshodi BRT Terminal 1 (z < 145 on Right -X side)
+    if (z < 145) {
+      minX = -27.5;
+    }
+    // 1b. Oshodi Interchange BRT Mega Terminal 2 (z = 1775..1885 on Right -X side)
+    if (z >= 1775 && z <= 1885) {
+      minX = Math.min(minX, -27.5);
     }
     // 2. Gas Station #1 Pull-Off Side Lane (Conoil Express at z = 210 on Right -X side)
     if (z >= 182 && z <= 238) {
@@ -368,6 +404,18 @@ export class ThreeDrivingEngine {
     if (z >= 2305 && z <= 2895) {
       maxX = Math.max(maxX, 24.5);
     }
+    // 9. Mechanic Drive-In Compound #1 (Baba Suwe Mechanic Yard at z = 95 on Left +X side)
+    if (z >= 66 && z <= 124) {
+      maxX = Math.max(maxX, 25.5);
+    }
+    // 10. Mechanic Drive-In Compound #2 (Ladipo Auto Mechanic Village at z = 1160 on Right -X side)
+    if (z >= 1130 && z <= 1190) {
+      minX = Math.min(minX, -25.5);
+    }
+    // 11. Mechanic Drive-In Compound #3 (Costain / Surulere Mechanic Compound at z = 2120 on Left +X side)
+    if (z >= 2090 && z <= 2150) {
+      maxX = Math.max(maxX, 25.5);
+    }
 
     return { minX, maxX };
   }
@@ -395,6 +443,62 @@ export class ThreeDrivingEngine {
           brand: zone.brand,
           stationZ: zone.stationZ,
           pricePerLiter: zone.pricePerLiter,
+        };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Checks if the player's 3D Danfo bus bounding box intersects any Drive-In Mechanic Compound Zone
+   */
+  public getIntersectingMechanicCompoundZone(): {
+    id: string;
+    name: string;
+    specialty: string;
+    compoundZ: number;
+  } | null {
+    if (!this.busRoot) return null;
+    const busBox = new THREE.Box3().setFromCenterAndSize(
+      this.busRoot.position,
+      new THREE.Vector3(2.4, 2.6, 5.4)
+    );
+    for (const zone of this.mechanicCompoundZones) {
+      if (zone.box.intersectsBox(busBox)) {
+        return {
+          id: zone.id,
+          name: zone.name,
+          specialty: zone.specialty,
+          compoundZ: zone.compoundZ,
+        };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Checks if the player's 3D Danfo bus bounding box intersects an Oshodi NPC BRT Station Zone
+   */
+  public getIntersectingOshodiBRTStation(): {
+    id: string;
+    name: string;
+    subtitle: string;
+    stationZ: number;
+    activeBusCount: number;
+  } | null {
+    if (!this.busRoot) return null;
+    const busBox = new THREE.Box3().setFromCenterAndSize(
+      this.busRoot.position,
+      new THREE.Vector3(2.4, 2.6, 5.4)
+    );
+    for (const zone of this.oshodiBrtStationZones) {
+      if (zone.box.intersectsBox(busBox)) {
+        return {
+          id: zone.id,
+          name: zone.name,
+          subtitle: zone.subtitle,
+          stationZ: zone.stationZ,
+          activeBusCount: zone.activeBusCount,
         };
       }
     }
@@ -1614,6 +1718,523 @@ export class ThreeDrivingEngine {
   }
 
   /**
+   * Builds 3D Walled Mechanic Drive-In Compounds along the highway where players can pull off
+   * the road through an entrance gate archway onto a hydraulic service ramp for instant repairs & upgrades!
+   */
+  private setupMechanicCompounds() {
+    this.mechanicCompoundZones = [];
+    const compoundSpecs = [
+      {
+        id: 'mech-0',
+        name: 'Baba Suwe Drive-In Mechanic Compound',
+        specialty: 'Engine Overhaul • Radiator • Bull-Bar & Sound System',
+        z: 95,
+        x: 16.5, // Left side (+X) just after exiting Oshodi Motor Park
+      },
+      {
+        id: 'mech-1',
+        name: 'Ladipo Auto Parts & Mechanic Village',
+        specialty: 'Complete Chassis Repair • Turbo • Custom Upgrades',
+        z: 1160,
+        x: -16.5, // Right side (-X) near Mushin / Ladipo
+      },
+      {
+        id: 'mech-2',
+        name: 'Surulere / Costain Express Mechanic Yard',
+        specialty: 'Heavy Duty Shocks • Brake Servicing • Body Work',
+        z: 2120,
+        x: 16.5, // Left side (+X)
+      },
+    ];
+
+    const concreteMat = new THREE.MeshStandardMaterial({ color: 0x292524, roughness: 0.9 });
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.75 });
+    const darkTrimMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.8 });
+    const rampSteelMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, metalness: 0.6, roughness: 0.35 });
+    const roofTinMat = new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.5, roughness: 0.6 });
+    const tyreMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
+
+    compoundSpecs.forEach((mc) => {
+      const group = new THREE.Group();
+      group.position.set(mc.x, 0, mc.z);
+      const isLeft = mc.x > 0; // +X is left of highway, -X is right of highway
+      const roadEdgeSign = isLeft ? -1 : 1; // Direction back toward the main highway
+
+      // 1. Wide Concrete Compound Yard & Drive-In Apron connecting to the highway
+      const yardFloor = new THREE.Mesh(new THREE.PlaneGeometry(18, 48), concreteMat);
+      yardFloor.rotation.x = -Math.PI / 2;
+      yardFloor.position.set(0, 0.025, 0);
+      group.add(yardFloor);
+
+      // Glowing Cyan/Amber Drive-In Service Pit Floor Marker
+      const serviceBayPad = new THREE.Mesh(
+        new THREE.PlaneGeometry(7.5, 20),
+        new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.32 })
+      );
+      serviceBayPad.rotation.x = -Math.PI / 2;
+      serviceBayPad.position.set(roadEdgeSign * 1.5, 0.06, 0);
+      group.add(serviceBayPad);
+
+      // Satellite Mini-Map Layer-1 Blue Mechanic Beacon
+      const miniMapMechPad = new THREE.Mesh(
+        new THREE.PlaneGeometry(12, 24),
+        new THREE.MeshBasicMaterial({ color: 0x38bdf8 })
+      );
+      miniMapMechPad.rotation.x = -Math.PI / 2;
+      miniMapMechPad.position.set(0, 6.4, 0);
+      miniMapMechPad.layers.set(1);
+      group.add(miniMapMechPad);
+
+      // 2. Perimeter Compound Walls (Back Wall + North/South Side Walls, leaving wide highway entrance open)
+      const backWall = new THREE.Mesh(new THREE.BoxGeometry(0.6, 2.6, 46), wallMat);
+      backWall.position.set(-roadEdgeSign * 8.2, 1.3, 0);
+      group.add(backWall);
+
+      const backWallTop = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.35, 46.2), darkTrimMat);
+      backWallTop.position.set(-roadEdgeSign * 8.2, 2.7, 0);
+      group.add(backWallTop);
+
+      [-22.5, 22.5].forEach((wz) => {
+        const sideWall = new THREE.Mesh(new THREE.BoxGeometry(15, 2.4, 0.6), wallMat);
+        sideWall.position.set(-roadEdgeSign * 1.0, 1.2, wz);
+        group.add(sideWall);
+      });
+
+      // 3. Entrance Gate Pillars & Overhead "MECHANIC DRIVE-IN COMPOUND" Signboard Gantry facing the road
+      [-12, 12].forEach((gz) => {
+        const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.9, 5.4, 0.9), wallMat);
+        pillar.position.set(roadEdgeSign * 6.2, 2.7, gz);
+        group.add(pillar);
+        const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.95, 1.0, 0.95), darkTrimMat);
+        stripe.position.set(roadEdgeSign * 6.2, 1.2, gz);
+        group.add(stripe);
+      });
+
+      const gateTex = createSignboardTexture(
+        `🔧 ${mc.name.toUpperCase()}`,
+        'DRIVE IN FOR REPAIRS • OVERHAUL • UPGRADES',
+        '#0369a1'
+      );
+      const gateSign = new THREE.Mesh(
+        new THREE.BoxGeometry(0.55, 1.9, 25.5),
+        new THREE.MeshStandardMaterial({ map: gateTex, roughness: 0.3 })
+      );
+      gateSign.position.set(roadEdgeSign * 6.2, 5.1, 0);
+      group.add(gateSign);
+
+      // Perpendicular Roadside Pointer Signboard so drivers approaching from down the highway see it clearly
+      const approachSign = new THREE.Mesh(
+        new THREE.BoxGeometry(9.5, 1.7, 0.35),
+        new THREE.MeshStandardMaterial({ map: gateTex, roughness: 0.3 })
+      );
+      approachSign.position.set(roadEdgeSign * 2.5, 4.8, -19);
+      group.add(approachSign);
+
+      // 4. Corrugated Iron Mechanic Workshop Shed & Hydraulic Wheel Alignment Ramp
+      const shedRoof = new THREE.Mesh(new THREE.BoxGeometry(8.5, 0.4, 24), roofTinMat);
+      shedRoof.position.set(-roadEdgeSign * 3.5, 4.9, 0);
+      group.add(shedRoof);
+
+      [-1.1, 1.1].forEach((rx) => {
+        const rampTrack = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.18, 10.5), rampSteelMat);
+        rampTrack.position.set(roadEdgeSign * 1.5 + rx, 0.09, 0);
+        group.add(rampTrack);
+      });
+
+      // Stacked Spare Tyres & Red Tool Chests inside the Compound
+      [-8, -4, 5, 9].forEach((tz, idx) => {
+        for (let h = 0; h < 3; h++) {
+          const tyre = new THREE.Mesh(new THREE.CylinderGeometry(0.48, 0.48, 0.28, 12), tyreMat);
+          tyre.position.set(-roadEdgeSign * 5.8, 0.16 + h * 0.29, tz);
+          group.add(tyre);
+        }
+        if (idx % 2 === 0) {
+          const toolBox = new THREE.Mesh(
+            new THREE.BoxGeometry(1.1, 1.1, 1.8),
+            new THREE.MeshStandardMaterial({ color: 0xdc2626, metalness: 0.4 })
+          );
+          toolBox.position.set(-roadEdgeSign * 6.2, 0.55, tz + 2);
+          group.add(toolBox);
+        }
+      });
+
+      // Parked Danfo Under Repair inside back corner of compound
+      const projectBus = this.createProceduralDanfo(0xfacc15, 'WORK IN PROGRESS');
+      projectBus.position.set(-roadEdgeSign * 4.2, 0.08, 13.5);
+      projectBus.rotation.y = roadEdgeSign * 0.35;
+      group.add(projectBus);
+
+      // Mechanic NPC in Blue Coveralls & Yellow Hardhat waving the player in
+      const mechNpc = new THREE.Group();
+      const mHead = new THREE.Mesh(
+        new THREE.SphereGeometry(0.15, 10, 10),
+        new THREE.MeshStandardMaterial({ color: 0x4a2c18 })
+      );
+      mHead.position.y = 1.62;
+      mechNpc.add(mHead);
+      const mHat = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.17, 0.18, 0.1, 12),
+        new THREE.MeshStandardMaterial({ color: 0xfacc15 })
+      );
+      mHat.position.y = 1.72;
+      mechNpc.add(mHat);
+      const mBody = new THREE.Mesh(
+        new THREE.BoxGeometry(0.4, 0.85, 0.26),
+        new THREE.MeshStandardMaterial({ color: 0x0284c7 })
+      );
+      mBody.position.y = 1.12;
+      mechNpc.add(mBody);
+      mechNpc.position.set(-roadEdgeSign * 2.2, 0, 5.5);
+      group.add(mechNpc);
+
+      this.scene.add(group);
+
+      // 5. Static 3D Bounding Box (THREE.Box3) for Mechanic Drive-In Compound detection
+      const minX = isLeft ? 4.2 : -25.5;
+      const maxX = isLeft ? 25.5 : -4.2;
+      const zoneBox = new THREE.Box3(
+        new THREE.Vector3(minX, -1.0, mc.z - 21),
+        new THREE.Vector3(maxX, 6.0, mc.z + 21)
+      );
+      this.mechanicCompoundZones.push({
+        id: mc.id,
+        name: mc.name,
+        specialty: mc.specialty,
+        box: zoneBox,
+        compoundZ: mc.z,
+      });
+    });
+  }
+
+  /**
+   * Builds the 🚌 OSHODI NPC BRT MEGA TERMINALS & STATIONS with Dedicated Blue Bus Rapid Transit Lanes,
+   * Curved LAMATA Steel-and-Glass Terminal Canopies, Cowry Card Electronic Turnstile Gates,
+   * Digital Departure Boards, Queuing NPC Commuters, and MANY Blue Long BRT Buses (both docked & moving)!
+   */
+  private setupOshodiBRTStations() {
+    this.oshodiBrtStationZones = [];
+    this.brtStationShuttleBuses = [];
+    this.brtStationCommuterSwarms = [];
+
+    const brtTerminals = [
+      {
+        id: 'oshodi-brt-1',
+        name: 'OSHODI BRT TERMINAL 1 (LAMATA BLUE BUS HUB)',
+        subtitle: '8 BLUE LONG BUSES ACTIVE • OSHODI ➔ IKEJA • YABA • TBS / CMS',
+        centerZ: 96, // Right outside Oshodi Starting Park (z = 52..140) on Right (-X) side!
+        lengthZ: 88,
+      },
+      {
+        id: 'oshodi-brt-2',
+        name: 'OSHODI TRANSPORT INTERCHANGE (BRT TERMINAL 2)',
+        subtitle: 'HIGH-CAPACITY BLUE BUS TERMINAL • ABULE-EGBA • IKORODU • CMS',
+        centerZ: 1830, // At Oshodi Interchange (z = 1786..1874) on Right (-X) side!
+        lengthZ: 88,
+      },
+    ];
+
+    const brtLaneBlueMat = new THREE.MeshStandardMaterial({ color: 0x0369a1, roughness: 0.72, metalness: 0.08 });
+    const tarmacMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.85 });
+    const platformConcreteMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.75 });
+    const tactileYellowMat = new THREE.MeshBasicMaterial({ color: 0xfacc15 });
+    const whiteStripeMat = new THREE.MeshBasicMaterial({ color: 0xf8fafc });
+    const canopyBlueMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.3, metalness: 0.45 });
+    const canopyWhiteMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.35, metalness: 0.3 });
+    const steelPillarMat = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.25, metalness: 0.85 });
+    const glassConcourseMat = new THREE.MeshStandardMaterial({
+      color: 0x38bdf8,
+      roughness: 0.1,
+      metalness: 0.3,
+      transparent: true,
+      opacity: 0.42,
+      side: THREE.DoubleSide,
+    });
+    const redCurbMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.6 });
+    const whiteCurbMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.6 });
+
+    const brtRouteAssignments = [
+      ['BRT-101 • OSHODI ➔ TBS / CMS', 'LAMATA EXPRESS • BAY 01'],
+      ['BRT-102 • OSHODI ➔ ABULE-EGBA', 'PRIMERO BLUE BUS • BAY 02'],
+      ['BRT-103 • OSHODI ➔ IKORODU', 'HIGH-CAPACITY • BAY 03'],
+      ['BRT-104 • OSHODI ➔ IKEJA / BERGER', 'ALAUSA CORRIDOR • BAY 04'],
+      ['BRT-105 • OSHODI ➔ LEKKI / AJAH', 'ISLAND EXPRESS • STAGING'],
+      ['BRT-106 • OSHODI ➔ YABA / OYINGBO', 'MAINLAND LINK • STAGING'],
+    ];
+
+    brtTerminals.forEach((term, tIdx) => {
+      const group = new THREE.Group();
+      group.position.set(0, 0, term.centerZ);
+      const halfL = term.lengthZ / 2;
+
+      // 1. Dedicated Blue-Painted BRT Busway Corridor & Multi-Bay Terminal Tarmac (x = -9.5 to -31.5)
+      const terminalTarmac = new THREE.Mesh(new THREE.PlaneGeometry(23, term.lengthZ + 8), tarmacMat);
+      terminalTarmac.rotation.x = -Math.PI / 2;
+      terminalTarmac.position.set(-20.5, 0.02, 0);
+      group.add(terminalTarmac);
+
+      // Signature LAMATA Blue BRT Dedicated Lane Surface (x = -12.0 and x = -16.2)
+      const brtDedicatedLane1 = new THREE.Mesh(new THREE.PlaneGeometry(3.8, term.lengthZ + 4), brtLaneBlueMat);
+      brtDedicatedLane1.rotation.x = -Math.PI / 2;
+      brtDedicatedLane1.position.set(-12.0, 0.035, 0);
+      group.add(brtDedicatedLane1);
+
+      const brtDedicatedLane2 = new THREE.Mesh(new THREE.PlaneGeometry(4.0, term.lengthZ), brtLaneBlueMat);
+      brtDedicatedLane2.rotation.x = -Math.PI / 2;
+      brtDedicatedLane2.position.set(-16.2, 0.035, 0);
+      group.add(brtDedicatedLane2);
+
+      // Satellite Mini-Map Layer-1 Bright Cyan-Blue BRT Station Marker
+      const miniMapBrtPad = new THREE.Mesh(
+        new THREE.PlaneGeometry(18, term.lengthZ),
+        new THREE.MeshBasicMaterial({ color: 0x0284c7 })
+      );
+      miniMapBrtPad.rotation.x = -Math.PI / 2;
+      miniMapBrtPad.position.set(-19.5, 6.5, 0);
+      miniMapBrtPad.layers.set(1);
+      group.add(miniMapBrtPad);
+
+      // White Dashed BRT Lane Divider & Yellow Boarding Bay Sawtooth Boxes
+      for (let dz = -halfL + 6; dz <= halfL - 6; dz += 8) {
+        const dash = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 4.2), whiteStripeMat);
+        dash.rotation.x = -Math.PI / 2;
+        dash.position.set(-14.1, 0.05, dz);
+        group.add(dash);
+      }
+
+      // Red & White BRT Corridor Segregation Curb Blocks along road edge (x = -9.6, with entry/exit openings!)
+      for (let cz = -halfL + 14; cz <= halfL - 14; cz += 4.5) {
+        const isRed = Math.abs(Math.round(cz)) % 2 === 0;
+        const curbBlock = new THREE.Mesh(
+          new THREE.BoxGeometry(0.45, 0.32, 3.2),
+          isRed ? redCurbMat : whiteCurbMat
+        );
+        curbBlock.position.set(-9.6, 0.16, cz);
+        group.add(curbBlock);
+      }
+
+      // 2. Raised Concrete Passenger Boarding Platform (x = -20.5, width = 3.8m, height = 0.36m)
+      const platform = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.36, term.lengthZ - 6), platformConcreteMat);
+      platform.position.set(-20.4, 0.18, 0);
+      group.add(platform);
+
+      // Yellow Tactile Safety Curb Strip along Both Edges of the Boarding Platform
+      [-18.6, -22.2].forEach((tx) => {
+        const tactile = new THREE.Mesh(new THREE.PlaneGeometry(0.28, term.lengthZ - 6), tactileYellowMat);
+        tactile.rotation.x = -Math.PI / 2;
+        tactile.position.set(tx, 0.37, 0);
+        group.add(tactile);
+      });
+
+      // Outer Parallel BRT Staging / Layby Lane (x = -25.2) for Extra Long Blue Buses
+      const outerStagingLane = new THREE.Mesh(new THREE.PlaneGeometry(4.2, term.lengthZ - 4), brtLaneBlueMat);
+      outerStagingLane.rotation.x = -Math.PI / 2;
+      outerStagingLane.position.set(-25.2, 0.035, 0);
+      group.add(outerStagingLane);
+
+      // 3. Iconic High-Arch Blue & White LAMATA Terminal Canopy Roof spanning Platform & Bus Bays
+      const mainCanopy = new THREE.Mesh(new THREE.BoxGeometry(14.5, 0.42, term.lengthZ - 4), canopyBlueMat);
+      mainCanopy.position.set(-19.8, 5.8, 0);
+      group.add(mainCanopy);
+
+      const upperCrownCanopy = new THREE.Mesh(new THREE.BoxGeometry(9.5, 0.35, term.lengthZ - 8), canopyWhiteMat);
+      upperCrownCanopy.position.set(-19.8, 6.15, 0);
+      group.add(upperCrownCanopy);
+
+      // Architectural V-Shaped Structural Steel Columns & Glass Waiting Concourse Panels
+      for (let pz = -halfL + 10; pz <= halfL - 10; pz += 13) {
+        const colLeft = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 5.7, 12), steelPillarMat);
+        colLeft.position.set(-19.4, 2.9, pz);
+        colLeft.rotation.z = 0.08;
+        group.add(colLeft);
+
+        const colRight = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 5.7, 12), steelPillarMat);
+        colRight.position.set(-21.2, 2.9, pz);
+        colRight.rotation.z = -0.08;
+        group.add(colRight);
+
+        // Glass Concourse Windscreen Partition
+        const glassWall = new THREE.Mesh(new THREE.BoxGeometry(0.1, 2.5, 8.5), glassConcourseMat);
+        glassWall.position.set(-20.4, 1.6, pz);
+        group.add(glassWall);
+      }
+
+      // 4. Giant Illuminated Overhead Terminal Signboards (Highway-Facing & Entrance/Exit Gantries)
+      const mainTerminalSignTex = createSignboardTexture(
+        `🚌 ${term.name}`,
+        term.subtitle,
+        '#0284c7'
+      );
+      const fasciaSign = new THREE.Mesh(
+        new THREE.BoxGeometry(0.35, 1.65, term.lengthZ - 10),
+        new THREE.MeshStandardMaterial({ map: mainTerminalSignTex, roughness: 0.25 })
+      );
+      fasciaSign.position.set(-12.5, 6.1, 0);
+      group.add(fasciaSign);
+
+      // Front & Rear Approach Archway Signs over the Dedicated Blue BRT Lane
+      [-halfL + 3, halfL - 3].forEach((az, aIdx) => {
+        const archTex = createSignboardTexture(
+          aIdx === 0 ? '🚌 ENTERING OSHODI BRT STATION' : '🚌 OSHODI BRT BUSWAY CORRIDOR',
+          'DEDICATED BLUE LONG BUS TERMINAL • COWRY CARD BAYS 01–06',
+          '#0369a1'
+        );
+        const archSign = new THREE.Mesh(
+          new THREE.BoxGeometry(11.5, 2.1, 0.35),
+          new THREE.MeshStandardMaterial({ map: archTex, roughness: 0.25 })
+        );
+        archSign.position.set(-14.5, 5.6, az);
+        group.add(archSign);
+
+        [-19.8, -9.5].forEach((px) => {
+          const post = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.26, 5.8, 12), steelPillarMat);
+          post.position.set(px, 2.9, az);
+          group.add(post);
+        });
+      });
+
+      // Digital LED Next-Bus Countdown Boards hanging beneath the Terminal Canopy
+      [-24, 0, 24].forEach((bz, bIdx) => {
+        const pidsTex = createSignboardTexture(
+          `BAY 0${bIdx * 2 + 1}: TBS/CMS (BOARDING)  |  BAY 0${bIdx * 2 + 2}: IKORODU (1 MIN)`,
+          'TAP COWRY CARD AT TURNSTILE • QUEUE BEHIND YELLOW LINE',
+          '#0f172a'
+        );
+        const pidsBoard = new THREE.Mesh(
+          new THREE.BoxGeometry(3.2, 0.95, 0.18),
+          new THREE.MeshStandardMaterial({ map: pidsTex, roughness: 0.2 })
+        );
+        pidsBoard.position.set(-18.8, 4.35, bz);
+        group.add(pidsBoard);
+      });
+
+      // 5. Cowry Card Electronic Turnstile Gates & LAMATA Ticket Kiosk on the Platform
+      const turnstileMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.85, roughness: 0.2 });
+      const cowryGlowMat = new THREE.MeshBasicMaterial({ color: 0x22c55e });
+      for (let tz = -32; tz <= 32; tz += 16) {
+        [-19.2, -19.8, -20.4].forEach((tx) => {
+          const gateBox = new THREE.Mesh(new THREE.BoxGeometry(0.22, 1.05, 0.95), turnstileMat);
+          gateBox.position.set(tx, 0.88, tz);
+          group.add(gateBox);
+
+          const validator = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.06, 12), cowryGlowMat);
+          validator.position.set(tx, 1.44, tz + 0.32);
+          group.add(validator);
+        });
+      }
+
+      // LAMATA Customer Service & Cowry Card Top-Up Booth at Rear of Terminal
+      const ticketBooth = new THREE.Mesh(new THREE.BoxGeometry(3.4, 3.2, 18), canopyBlueMat);
+      ticketBooth.position.set(-29.2, 1.6, 0);
+      group.add(ticketBooth);
+      const boothSignTex = createSignboardTexture('COWRY CARD TOP-UP & TICKETS', 'LAMATA OSHODI BRT TERMINAL OFFICE', '#0284c7');
+      const boothSign = new THREE.Mesh(
+        new THREE.BoxGeometry(0.2, 1.2, 16),
+        new THREE.MeshStandardMaterial({ map: boothSignTex })
+      );
+      boothSign.position.set(-27.4, 3.5, 0);
+      group.add(boothSign);
+
+      // 6. MANY BLUE LONG BRT BUSES DOCKED IN TERMINAL BAYS & STAGING LANES!
+      // 4 Long Blue BRT Buses docked along Boarding Bays 01–04 (x = -16.2, doors open toward platform!)
+      const dockedBayZs = [-30, -10, 10, 30];
+      dockedBayZs.forEach((bayZ, bIdx) => {
+        const [routeTitle, routeSub] = brtRouteAssignments[(bIdx + tIdx * 2) % brtRouteAssignments.length];
+        const brtBus = this.createProceduralBRTLongBus(routeTitle, routeSub, true);
+        brtBus.position.set(-16.2, 0.04, bayZ);
+        // Slight sawtooth boarding angle for realistic BRT bay docking
+        brtBus.rotation.y = bIdx % 2 === 0 ? -0.04 : 0.02;
+        group.add(brtBus);
+      });
+
+      // 2 Additional Long Blue BRT Buses parked in the Outer Parallel Staging Layby (x = -25.2)
+      [-20, 18].forEach((stageZ, sIdx) => {
+        const [routeTitle, routeSub] = brtRouteAssignments[(4 + sIdx) % brtRouteAssignments.length];
+        const stagedBus = this.createProceduralBRTLongBus(routeTitle, routeSub, false);
+        stagedBus.position.set(-25.2, 0.04, stageZ);
+        group.add(stagedBus);
+      });
+
+      // 7. Animated NPC Shuttle Blue Long BRT Buses actively cruising & docking in the BRT Corridor (x = -12.0)
+      const shuttleCount = tIdx === 0 ? 2 : 1;
+      for (let s = 0; s < shuttleCount; s++) {
+        const shuttleRoute = s === 0
+          ? 'BRT-107 • OSHODI ➔ TBS EXPRESS'
+          : 'BRT-108 • OSHODI ➔ IKEJA / MARYLAND';
+        const shuttleBus = this.createProceduralBRTLongBus(shuttleRoute, 'LIVE SHUTTLE • ACTIVE', false);
+        const startZ = term.centerZ - 32 + s * 38;
+        shuttleBus.position.set(-12.0, 0.04, startZ);
+        this.scene.add(shuttleBus);
+        this.brtStationShuttleBuses.push({
+          group: shuttleBus,
+          minZ: term.centerZ - 44,
+          maxZ: term.centerZ + 44,
+          stopZ: term.centerZ - 8 + s * 22,
+          laneX: -12.0,
+          speed: 7.5 + s * 1.2,
+          waitTimer: s * 2.5,
+        });
+      }
+
+      // 8. Queuing NPC BRT Commuters & Sky-Blue Uniformed LAMATA Officials on the Platform
+      const shirtPalette = [0x0284c7, 0xfacc15, 0x10b981, 0xef4444, 0x8b5cf6, 0xf97316, 0xec4899, 0x14b8a6];
+      const skinMat = new THREE.MeshStandardMaterial({ color: 0x4a2c18, roughness: 0.7 });
+      const pantsMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.8 });
+
+      for (let c = 0; c < 18; c++) {
+        const npc = new THREE.Group();
+        const isMarshal = c % 6 === 0;
+        const torsoMat = new THREE.MeshStandardMaterial({
+          color: isMarshal ? 0x38bdf8 : shirtPalette[c % shirtPalette.length],
+          roughness: 0.5,
+        });
+
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 10), skinMat);
+        head.position.y = 1.56;
+        npc.add(head);
+
+        const torso = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.56, 0.24), torsoMat);
+        torso.position.y = 1.14;
+        npc.add(torso);
+
+        [-0.1, 0.1].forEach((lx) => {
+          const leg = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.75, 0.16), pantsMat);
+          leg.position.set(lx, 0.45, 0);
+          npc.add(leg);
+        });
+
+        const cx = -19.0 - (c % 3) * 0.85;
+        const cz = -34 + c * 3.9;
+        npc.position.set(cx, 0.36, cz);
+        npc.rotation.y = Math.PI / 2; // Facing the docked blue long buses!
+        group.add(npc);
+
+        this.brtStationCommuterSwarms.push({
+          group: npc,
+          baseX: cx,
+          baseZ: cz,
+          phase: c * 0.7,
+        });
+      }
+
+      this.scene.add(group);
+
+      // 9. Register 3D Bounding Box for Oshodi BRT Station HUD Detection
+      const stationBox = new THREE.Box3(
+        new THREE.Vector3(-30.0, -1.0, term.centerZ - halfL),
+        new THREE.Vector3(-8.5, 7.0, term.centerZ + halfL)
+      );
+      this.oshodiBrtStationZones.push({
+        id: term.id,
+        name: term.name,
+        subtitle: term.subtitle,
+        box: stationBox,
+        stationZ: term.centerZ,
+        activeBusCount: 8,
+      });
+    });
+  }
+
+  /**
    * Builds 3D Highway Overhead Gantries & Large Billboards for Brands & Custom Owner Ads
    */
   private setupBillboards() {
@@ -2684,68 +3305,177 @@ export class ThreeDrivingEngine {
     return keke;
   }
 
-  // 2. BRT LONG BUS (LAGOS BLUE HIGH-CAPACITY COMMUTER BUS)
-  public createProceduralBRTLongBus(): THREE.Group {
+  // 2. BRT LONG BUS (LAGOS LAMATA / PRIMERO BLUE HIGH-CAPACITY 12.2M COMMUTER BUS)
+  public createProceduralBRTLongBus(
+    routeText: string = 'BRT 101 • OSHODI ➔ TBS / CMS',
+    fleetSub: string = 'LAMATA HIGH-CAPACITY BLUE BUS • COWRY CARD',
+    doorsOpen: boolean = false
+  ): THREE.Group {
     const bus = new THREE.Group();
-    const brtBlueMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.25, metalness: 0.3 });
-    const whiteRoofMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.4 });
-    const glassMat = new THREE.MeshStandardMaterial({ color: 0x081528, roughness: 0.05, transparent: true, opacity: 0.7 });
-    const tireMat = new THREE.MeshStandardMaterial({ color: 0x1f2124, roughness: 0.8 });
-    const chromeMat = new THREE.MeshStandardMaterial({ color: 0xd1d5db, roughness: 0.15, metalness: 0.85 });
-    const ledSignMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
-    const headlightMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const brtBlueMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.2, metalness: 0.28 });
+    const deepBlueSkirtMat = new THREE.MeshStandardMaterial({ color: 0x0369a1, roughness: 0.3, metalness: 0.25 });
+    const whiteRoofMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.3, metalness: 0.15 });
+    const redStripeMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.35 });
+    const yellowSafetyMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.3 });
+    const darkTrimMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.5 });
+    const glassMat = new THREE.MeshStandardMaterial({
+      color: 0x081528,
+      roughness: 0.05,
+      metalness: 0.25,
+      transparent: true,
+      opacity: 0.64,
+      side: THREE.DoubleSide,
+    });
+    const tireMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.85 });
+    const chromeMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.12, metalness: 0.9 });
+    const headlightMat = new THREE.MeshBasicMaterial({ color: 0xfffbeb });
+    const amberBlinkMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b });
     const taillightMat = new THREE.MeshBasicMaterial({ color: 0xff1e1e });
+    const cabinGlowMat = new THREE.MeshBasicMaterial({ color: 0xe0f2fe });
 
-    const busW = 2.6;
-    const busL = 11.5;
-    const busH = 2.4;
+    const busW = 2.62;
+    const busL = 12.2;
+    const busH = 2.52;
     const tireR = 0.52;
 
-    // Lower Main Blue Body
-    const body = new THREE.Mesh(new THREE.BoxGeometry(busW, busH * 0.55, busL), brtBlueMat);
-    body.position.set(0, tireR + (busH * 0.55) / 2 + 0.1, 0);
+    // 1. Lower Deep-Blue Rocker Skirt & Heavy Coach Bumpers
+    const skirt = new THREE.Mesh(new THREE.BoxGeometry(busW + 0.02, 0.38, busL + 0.04), deepBlueSkirtMat);
+    skirt.position.set(0, tireR + 0.22, 0);
+    bus.add(skirt);
+
+    // Main Royal Sky-Blue Coach Body
+    const body = new THREE.Mesh(new THREE.BoxGeometry(busW, busH * 0.56, busL), brtBlueMat);
+    body.position.set(0, tireR + (busH * 0.56) / 2 + 0.28, 0);
     bus.add(body);
 
-    // White High Roof
-    const roof = new THREE.Mesh(new THREE.BoxGeometry(busW * 0.98, 0.25, busL * 0.98), whiteRoofMat);
-    roof.position.set(0, tireR + busH + 0.15, 0);
+    // Crisp White Upper Window Beltline & High Roof Crown
+    const upperBelt = new THREE.Mesh(new THREE.BoxGeometry(busW + 0.03, 0.12, busL + 0.02), whiteRoofMat);
+    upperBelt.position.set(0, tireR + 1.38, 0);
+    bus.add(upperBelt);
+
+    const redRibbon = new THREE.Mesh(new THREE.BoxGeometry(busW + 0.035, 0.06, busL + 0.02), redStripeMat);
+    redRibbon.position.set(0, tireR + 1.28, 0);
+    bus.add(redRibbon);
+
+    // Upper Blue Window Frame Pillars & White Roof
+    const upperHeader = new THREE.Mesh(new THREE.BoxGeometry(busW, 0.34, busL), brtBlueMat);
+    upperHeader.position.set(0, tireR + busH - 0.02, 0);
+    bus.add(upperHeader);
+
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(busW * 0.96, 0.24, busL * 0.98), whiteRoofMat);
+    roof.position.set(0, tireR + busH + 0.22, 0);
     bus.add(roof);
 
-    // AC Unit Pods on Roof
-    [-2.2, 2.2].forEach((pz) => {
-      const ac = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.22, 1.6), whiteRoofMat);
-      ac.position.set(0, tireR + busH + 0.34, pz);
-      bus.add(ac);
+    // 2. Triple Heavy-Duty ThermoKing Rooftop Air-Conditioning Pods
+    [-3.6, 0, 3.6].forEach((pz) => {
+      const acPod = new THREE.Mesh(new THREE.BoxGeometry(1.55, 0.26, 1.85), whiteRoofMat);
+      acPod.position.set(0, tireR + busH + 0.42, pz);
+      bus.add(acPod);
+      const acGrille = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.06, 1.4), darkTrimMat);
+      acGrille.position.set(0, tireR + busH + 0.56, pz);
+      bus.add(acGrille);
     });
 
-    // Panoramic Side Windows (Full length)
+    // 3. Illuminated Side Route & LAMATA Branding Boards along Both Sides
+    const sideBannerTex = createSignboardTexture(routeText, fleetSub, '#0369a1');
+    [-busW / 2 - 0.02, busW / 2 + 0.02].forEach((sx) => {
+      const sideSign = new THREE.Mesh(
+        new THREE.BoxGeometry(0.03, 0.28, 7.6),
+        new THREE.MeshStandardMaterial({ map: sideBannerTex, roughness: 0.25 })
+      );
+      sideSign.position.set(sx, tireR + 1.02, 0);
+      bus.add(sideSign);
+    });
+
+    // 4. Panoramic Tinted Side Windows + Vertical Black Mullions + Interior Commuter Silhouettes
     [-busW / 2 - 0.01, busW / 2 + 0.01].forEach((px) => {
-      const windowStrip = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.85, busL * 0.92), glassMat);
-      windowStrip.position.set(px, tireR + busH * 0.65, 0);
+      const windowStrip = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.92, busL * 0.93), glassMat);
+      windowStrip.position.set(px, tireR + 1.88, 0);
       bus.add(windowStrip);
+
+      // Vertical Black Window Pillars
+      for (let wz = -5.2; wz <= 5.2; wz += 1.48) {
+        const mullion = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.96, 0.1), darkTrimMat);
+        mullion.position.set(px, tireR + 1.88, wz);
+        bus.add(mullion);
+      }
     });
 
-    // Massive Front Windshield
-    const windshield = new THREE.Mesh(new THREE.BoxGeometry(busW * 0.94, 1.25, 0.06), glassMat);
-    windshield.position.set(0, tireR + busH * 0.58, busL / 2 + 0.02);
-    windshield.rotation.x = -0.14;
+    // Interior Ceiling LED Light Strip & Seated Commuter Silhouettes inside the Long Bus
+    const ceilingLight = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.05, busL * 0.85), cabinGlowMat);
+    ceilingLight.position.set(0, tireR + 2.28, 0);
+    bus.add(ceilingLight);
+
+    const paxMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.7 });
+    for (let sz = -4.5; sz <= 4.0; sz += 1.25) {
+      [-0.78, 0.78].forEach((sx) => {
+        const seatHead = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 8), paxMat);
+        seatHead.position.set(sx, tireR + 1.82, sz);
+        bus.add(seatHead);
+      });
+    }
+
+    // 5. Double-Folding Pneumatic Boarding Doors (Front & Mid-Coach)
+    [3.8, -0.4].forEach((dz) => {
+      const doorX = -busW / 2 - (doorsOpen ? 0.16 : 0.02);
+      const doorFrame = new THREE.Mesh(
+        new THREE.BoxGeometry(0.06, 1.85, doorsOpen ? 0.45 : 1.15),
+        yellowSafetyMat
+      );
+      doorFrame.position.set(doorX, tireR + 1.22, doorsOpen ? dz - 0.38 : dz);
+      bus.add(doorFrame);
+
+      if (doorsOpen) {
+        // Illuminated Boarding Step-Well when docked at Oshodi BRT Station!
+        const stepGlow = new THREE.Mesh(new THREE.BoxGeometry(0.25, 1.75, 1.05), cabinGlowMat);
+        stepGlow.position.set(-busW / 2 + 0.06, tireR + 1.2, dz);
+        bus.add(stepGlow);
+      }
+    });
+
+    // 6. Panoramic Curved Front Windshield, Oversized Coach Wing Mirrors & Digital LED Matrix Board
+    const windshield = new THREE.Mesh(new THREE.BoxGeometry(busW * 0.94, 1.28, 0.06), glassMat);
+    windshield.position.set(0, tireR + 1.62, busL / 2 + 0.02);
+    windshield.rotation.x = -0.1;
     bus.add(windshield);
 
-    // Front Illuminated LED Route Sign ("BRT EXPRESS")
-    const ledSign = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.3, 0.06), ledSignMat);
-    ledSign.position.set(0, tireR + busH + 0.02, busL / 2 + 0.01);
+    // Front Digital LED Route Matrix Sign ("BRT 101 • OSHODI ➔ TBS / CMS")
+    const frontLedTex = createSignboardTexture(routeText, 'LAMATA BRT • AIR CONDITIONED', '#0f172a');
+    const ledSign = new THREE.Mesh(
+      new THREE.BoxGeometry(2.15, 0.36, 0.08),
+      new THREE.MeshStandardMaterial({ map: frontLedTex, roughness: 0.2 })
+    );
+    ledSign.position.set(0, tireR + busH - 0.02, busL / 2 + 0.03);
     bus.add(ledSign);
 
-    // 6 Large Wheels (2 front, 4 dual-rear axle)
-    const wheelGeo = new THREE.CylinderGeometry(tireR, tireR, 0.32, 18);
+    // Oversized Bug-Eye Transit Coach Mirrors on Front A-Pillars
+    [-busW / 2 - 0.18, busW / 2 + 0.18].forEach((mx) => {
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.05, 0.35), darkTrimMat);
+      arm.position.set(mx * 0.92, tireR + 2.05, busL / 2 + 0.15);
+      const pod = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.34, 0.16), brtBlueMat);
+      pod.position.set(mx, tireR + 1.92, busL / 2 + 0.28);
+      bus.add(arm, pod);
+    });
+
+    // Front Chrome LAMATA Grille & Nigerian Commercial Number Plate
+    const frontGrille = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.36, 0.06), darkTrimMat);
+    frontGrille.position.set(0, tireR + 0.56, busL / 2 + 0.03);
+    bus.add(frontGrille);
+
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.18, 0.04), yellowSafetyMat);
+    plate.position.set(0, tireR + 0.24, busL / 2 + 0.04);
+    bus.add(plate);
+
+    // 7. 6 Heavy-Duty Coach Tires with Chrome Multi-Lug Hubs (Front Steer + Dual Rear Tandem Axles)
+    const wheelGeo = new THREE.CylinderGeometry(tireR, tireR, 0.34, 18);
     wheelGeo.rotateZ(Math.PI / 2);
-    const hubGeo = new THREE.CylinderGeometry(tireR * 0.45, tireR * 0.45, 0.34, 12);
+    const hubGeo = new THREE.CylinderGeometry(tireR * 0.48, tireR * 0.48, 0.36, 14);
     hubGeo.rotateZ(Math.PI / 2);
 
     const wheelZs = [
-      busL / 2 - 1.8,   // Front axle
-      -busL / 2 + 3.2,  // Rear axle 1
-      -busL / 2 + 1.8,  // Rear axle 2
+      busL / 2 - 2.05,  // Front axle
+      -busL / 2 + 3.45, // Rear drive axle
+      -busL / 2 + 1.95, // Rear tag axle
     ];
 
     wheelZs.forEach((wz) => {
@@ -2758,14 +3488,18 @@ export class ThreeDrivingEngine {
       });
     });
 
-    // Headlights
-    [-0.95, 0.95].forEach((lx) => {
-      const hl = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.16, 0.05), headlightMat);
-      hl.position.set(lx, tireR + 0.4, busL / 2 + 0.03);
+    // 8. Quad LED Projector Headlights, Amber Hazards & Vertical Rear LED Taillight Towers
+    [-0.98, 0.98].forEach((lx) => {
+      const hl = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.18, 0.06), headlightMat);
+      hl.position.set(lx, tireR + 0.48, busL / 2 + 0.04);
       bus.add(hl);
 
-      const tl = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.35, 0.05), taillightMat);
-      tl.position.set(lx, tireR + 0.65, -busL / 2 - 0.03);
+      const blink = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.14, 0.06), amberBlinkMat);
+      blink.position.set(lx * 1.14, tireR + 0.68, busL / 2 + 0.04);
+      bus.add(blink);
+
+      const tl = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.58, 0.06), taillightMat);
+      tl.position.set(lx, tireR + 0.78, -busL / 2 - 0.03);
       bus.add(tl);
     });
 
@@ -3225,12 +3959,12 @@ export class ThreeDrivingEngine {
 
     // Well-spaced across the 4 lanes (-5.8, -2.0, 2.0, 5.8) starting at z >= 65 (past the Motor Park exit)
     const trafficFleetConfig = [
-      // Lane -5.8 (Right Outer Commuter Lane: ~10.5 - 11.5 m/s)
-      { type: 'KEKE', lane: -5.8, z: 65, speed: 10.5, name: 'Maruwa Boy', slogan: 'GOD DEY' },
+      // Lane -5.8 (Right Outer Commuter & BRT Lane: ~10.5 - 11.5 m/s)
+      { type: 'BRT', lane: -5.8, z: 68, speed: 10.8, name: 'BRT Oshodi-TBS 01', slogan: 'BRT 101 • OSHODI ➔ TBS / CMS' },
       { type: 'DANFO', lane: -5.8, z: 135, speed: 11.2, name: 'Jagaban Express', slogan: 'No King as God' },
-      { type: 'BRT', lane: -5.8, z: 215, speed: 11.0, name: 'BRT Ketu Express' },
+      { type: 'BRT', lane: -5.8, z: 215, speed: 11.0, name: 'BRT Ketu Express', slogan: 'BRT 102 • OSHODI ➔ IKORODU' },
       { type: 'KEKE', lane: -5.8, z: 295, speed: 10.8, name: 'Obalende Trike', slogan: 'NO CONDITION PERMANENT' },
-      { type: 'SUV', lane: -5.8, z: 375, speed: 11.5, color: 0xd4af37, name: 'Champagne Prado TX' },
+      { type: 'BRT', lane: -5.8, z: 375, speed: 11.4, name: 'BRT Abule-Egba', slogan: 'BRT 103 • OSHODI ➔ ABULE-EGBA' },
       { type: 'POLICE', lane: -5.8, z: 455, speed: 11.4, name: 'Alausa Task Force' },
 
       // Lane -2.0 (Right Fast Inner Lane: ~14.5 - 15.8 m/s)
@@ -3245,13 +3979,13 @@ export class ThreeDrivingEngine {
       { type: 'SUV', lane: 2.0, z: 70, speed: 15.5, color: 0x09090b, name: 'Black Prado V8' },
       { type: 'DANFO', lane: 2.0, z: 145, speed: 15.0, name: 'Alhaji Agbaje', slogan: 'Face Your Front' },
       { type: 'LUXURY_CAR', lane: 2.0, z: 220, speed: 16.0, color: 0xd4af37, name: 'Champagne Gold Lexus ES' },
-      { type: 'BRT', lane: 2.0, z: 300, speed: 14.8, name: 'BRT CMS Terminal' },
+      { type: 'BRT', lane: 2.0, z: 300, speed: 14.8, name: 'BRT CMS Terminal', slogan: 'BRT 104 • OSHODI ➔ LEKKI / AJAH' },
       { type: 'DISPATCH_BIKE', lane: 2.0, z: 380, speed: 15.8, boxColor: 0xea580c, brand: 'CHOWDECK' },
       { type: 'LUXURY_CAR', lane: 2.0, z: 460, speed: 16.2, color: 0x064e3b, name: 'Emerald Benz E-Class' },
 
       // Lane 5.8 (Left Outer Commuter Lane: ~11.5 - 12.8 m/s)
-      { type: 'KEKE', lane: 5.8, z: 90, speed: 11.5, name: 'Oshodi Keke', slogan: 'NO TELESCOPE' },
-      { type: 'BRT', lane: 5.8, z: 170, speed: 11.8, name: 'BRT TBS Line 1' },
+      { type: 'BRT', lane: 5.8, z: 92, speed: 11.5, name: 'BRT Oshodi-Yaba', slogan: 'BRT 105 • OSHODI ➔ YABA / CMS' },
+      { type: 'BRT', lane: 5.8, z: 170, speed: 11.8, name: 'BRT TBS Line 1', slogan: 'BRT 106 • OSHODI ➔ IKEJA ALONG' },
       { type: 'DANFO', lane: 5.8, z: 255, speed: 12.2, name: 'Rasaki Turbo', slogan: 'Destiny Child' },
       { type: 'SUV', lane: 5.8, z: 335, speed: 12.5, color: 0xf8fafc, name: 'Pearl White G-Wagon' },
       { type: 'DISPATCH_BIKE', lane: 5.8, z: 410, speed: 12.4, boxColor: 0xdc2626, brand: 'MAX.NG' },
@@ -3283,7 +4017,7 @@ export class ThreeDrivingEngine {
       if (veh.type === 'KEKE') {
         modelMesh = this.createProceduralKeke(veh.slogan);
       } else if (veh.type === 'BRT') {
-        modelMesh = this.createProceduralBRTLongBus();
+        modelMesh = this.createProceduralBRTLongBus(veh.slogan || 'BRT • OSHODI ➔ CMS EXPRESS');
       } else if (veh.type === 'SUV') {
         modelMesh = this.createProceduralLuxurySUV((veh as any).color || 0x09090b);
       } else if (veh.type === 'LUXURY_CAR') {
@@ -3912,14 +4646,36 @@ export class ThreeDrivingEngine {
         seg.position.z -= 720;
       }
       const sz = seg.position.z;
-      // Keep street buildings visible everywhere down the expressway (only open segment 0 for the starting Oshodi Bus Park yard!)
+      // Keep street buildings visible everywhere down the expressway (open right side at Oshodi Park & Oshodi BRT Terminals!)
       if (seg.userData && seg.userData.rightSideProps) {
-        const isAtStartingBusPark = sz >= -35 && sz <= 35;
-        seg.userData.rightSideProps.visible = !isAtStartingBusPark;
+        const isAtOshodiParkOrBrt1 = sz >= -35 && sz <= 145;
+        const isAtOshodiBrt2 = sz >= 1770 && sz <= 1890;
+        seg.userData.rightSideProps.visible = !isAtOshodiParkOrBrt1 && !isAtOshodiBrt2;
       }
       if (seg.userData && seg.userData.leftSideProps) {
         seg.userData.leftSideProps.visible = true;
       }
+    });
+
+    // 12b. Animate Oshodi BRT Station Shuttle Blue Long Buses & Queuing Commuter NPCs
+    this.brtStationShuttleBuses.forEach((shuttle) => {
+      if (shuttle.waitTimer > 0) {
+        shuttle.waitTimer -= dt;
+      } else {
+        shuttle.group.position.z += shuttle.speed * dt;
+        if (Math.abs(shuttle.group.position.z - shuttle.stopZ) < 0.45) {
+          shuttle.group.position.z = shuttle.stopZ + 0.5;
+          shuttle.waitTimer = 3.2; // Pause at Oshodi BRT bay to board passengers!
+        }
+        if (shuttle.group.position.z > shuttle.maxZ) {
+          shuttle.group.position.z = shuttle.minZ;
+        }
+      }
+    });
+
+    const brtAnimTime = Date.now() * 0.003;
+    this.brtStationCommuterSwarms.forEach((c) => {
+      c.group.position.x = c.baseX + Math.sin(brtAnimTime + c.phase) * 0.18;
     });
 
     // 13. Junction Bus Stops Positioning & Commuter Boarding Animation (Both Sides & Waybill Beacon)
