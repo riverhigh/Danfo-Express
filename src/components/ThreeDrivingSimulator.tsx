@@ -36,7 +36,8 @@ import {
   Radio,
   Sparkles,
   Wrench,
-  Home
+  Home,
+  Building2
 } from 'lucide-react';
 
 interface ThreeDrivingSimulatorProps {
@@ -164,12 +165,12 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
   } | null>(null);
 
   const [walkInteractTarget, setWalkInteractTarget] = useState<{
-    type: 'GAS' | 'MECHANIC' | 'BUS';
+    type: 'GAS' | 'MECHANIC' | 'BUS' | 'BANK' | 'POS_LADY';
     name: string;
     data?: any;
   } | null>(null);
   const walkInteractTargetRef = useRef<{
-    type: 'GAS' | 'MECHANIC' | 'BUS';
+    type: 'GAS' | 'MECHANIC' | 'BUS' | 'BANK' | 'POS_LADY';
     name: string;
     data?: any;
   } | null>(null);
@@ -882,7 +883,13 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       if (e.key === 'e' || e.key === 'E') {
         if (simRef.current.isSteppedDown) {
           const target = walkInteractTargetRef.current;
-          if (target?.type === 'GAS') {
+          if (target?.type === 'BANK') {
+            onOpenPosOrBank?.('BANK_HALL');
+            return;
+          } else if (target?.type === 'POS_LADY') {
+            onOpenPosOrBank?.('POS_KIOSK');
+            return;
+          } else if (target?.type === 'GAS') {
             setIsGasModalOpen(true);
             return;
           } else if (target?.type === 'MECHANIC') {
@@ -1280,10 +1287,26 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         setParkedBay(null);
       }
 
-      // Proximity check in Walk Mode for NPCs and parked Danfo bus
+      // Proximity check in Walk Mode for Bank, POS Umbrella Lady, Gas, Mechanic and parked Danfo bus
       if (sim.isSteppedDown && engineRef.current) {
         const entities = engineRef.current.getNearbyServiceEntities();
-        if (entities.nearbyGasAttendant && entities.nearbyGasAttendant.dist < 3.8) {
+        if (entities.nearbyBank && (entities.nearbyBank.dist < 8.5 || entities.nearbyBank.insideHall)) {
+          const newTarget = {
+            type: 'BANK' as const,
+            name: entities.nearbyBank.name,
+            data: entities.nearbyBank,
+          };
+          walkInteractTargetRef.current = newTarget;
+          setWalkInteractTarget(newTarget);
+        } else if (entities.nearbyPosLady && entities.nearbyPosLady.dist < 4.5) {
+          const newTarget = {
+            type: 'POS_LADY' as const,
+            name: entities.nearbyPosLady.name,
+            data: entities.nearbyPosLady,
+          };
+          walkInteractTargetRef.current = newTarget;
+          setWalkInteractTarget(newTarget);
+        } else if (entities.nearbyGasAttendant && entities.nearbyGasAttendant.dist < 3.8) {
           const newTarget = {
             type: 'GAS' as const,
             name: entities.nearbyGasAttendant.brand,
@@ -2015,7 +2038,25 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
 
       {/* 💬 ON-FOOT SERVICE INTERACTION PROMPT */}
       {isSteppedDown && walkInteractTarget && (
-        <div className="absolute bottom-28 left-1/2 -translate-x-1/2 z-50 pointer-events-auto animate-in fade-in zoom-in-95 duration-150">
+        <div className="absolute bottom-28 left-1/2 -translate-x-1/2 z-50 pointer-events-auto animate-in fade-in zoom-in-95 duration-150 flex flex-col items-center gap-2">
+          {walkInteractTarget.type === 'BANK' && (
+            <button
+              onClick={() => onOpenPosOrBank?.('BANK_HALL')}
+              className="px-6 py-3 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 active:scale-95 text-white font-black text-xs font-['Bungee'] rounded-2xl shadow-[0_8px_30px_rgba(37,99,235,0.7)] border-2 border-amber-300 flex items-center gap-2.5 animate-bounce tracking-wide"
+            >
+              <span>🏛️ ENTER BANKING COUNTER QUEUE (TICKET B-044)</span>
+              <span className="px-2 py-0.5 rounded bg-black/40 text-[10px] font-mono text-amber-300">[E]</span>
+            </button>
+          )}
+          {walkInteractTarget.type === 'POS_LADY' && (
+            <button
+              onClick={() => onOpenPosOrBank?.('POS_KIOSK')}
+              className="px-6 py-3 bg-gradient-to-r from-emerald-500 via-teal-600 to-emerald-600 hover:from-emerald-400 hover:to-teal-500 active:scale-95 text-stone-950 font-black text-xs font-['Bungee'] rounded-2xl shadow-[0_8px_30px_rgba(16,185,129,0.7)] border-2 border-emerald-300 flex items-center gap-2.5 animate-bounce tracking-wide"
+            >
+              <span>💳 TALK TO {walkInteractTarget.name.toUpperCase()} (POS CASH OUT ₦)</span>
+              <span className="px-2 py-0.5 rounded bg-black/40 text-[10px] font-mono text-white">[E]</span>
+            </button>
+          )}
           {walkInteractTarget.type === 'GAS' && (
             <button
               onClick={() => setIsGasModalOpen(true)}
@@ -2333,6 +2374,15 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                 Next: {nearJ.nextStopName} {dropOffsCount > 0 ? `· 🎯 ${dropOffsCount} drop` : ''}
               </div>
             </div>
+            {['bustop-02-ikeja-along', 'bustop-06-maryland', 'bustop-10-oshodi', 'bustop-18-ojuelegba'].includes(nearJ.uid) && (
+              <button
+                onClick={() => onOpenPosOrBank?.('POS_KIOSK')}
+                className="px-2 py-1 font-black text-[8px] font-['Bungee'] rounded-lg transition-transform active:scale-95 shadow shrink-0 bg-emerald-500 hover:bg-emerald-400 text-stone-950 flex items-center gap-1"
+                title="Aunty POS Agent (Max ₦100,000)"
+              >
+                <span>💳 POS (₦100k)</span>
+              </button>
+            )}
             <button
               onClick={toggleDoor}
               className={`px-2 py-1 font-black text-[8px] font-['Bungee'] rounded-lg transition-transform active:scale-95 shadow shrink-0 ${
@@ -2342,6 +2392,32 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
               }`}
             >
               {doorState === 'CLOSED' ? 'DOOR (O)' : 'CLOSE'}
+            </button>
+          </div>
+        );
+      })()}
+
+      {/* 🏛️ EKO ZENITH BANK PULL-OVER NOTIFICATION (At z = 950m) */}
+      {(() => {
+        const nearBank = Math.abs(currentDist - 950) <= 32 && !isSteppedDown;
+        if (!nearBank) return null;
+        return (
+          <div className="absolute top-11 right-3 z-40 bg-stone-950/92 border border-blue-400/80 rounded-xl px-3 py-1.5 shadow-xl flex items-center gap-2.5 pointer-events-auto max-w-sm backdrop-blur-md">
+            <Building2 className="w-4 h-4 text-blue-400 animate-pulse shrink-0" />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-mono font-black text-blue-300 truncate">🏛️ EKO ZENITH BANK</span>
+                <span className="text-[8px] font-mono text-amber-400 shrink-0">(Branch)</span>
+              </div>
+              <div className="text-[8px] text-stone-300 font-mono truncate">
+                Customer Danfo Parking · Step out [F] or enter
+              </div>
+            </div>
+            <button
+              onClick={() => onOpenPosOrBank?.('BANK_HALL')}
+              className="px-2 py-1 font-black text-[8px] font-['Bungee'] rounded-lg transition-transform active:scale-95 shadow shrink-0 bg-blue-600 hover:bg-blue-500 text-white"
+            >
+              ENTER BANK
             </button>
           </div>
         );

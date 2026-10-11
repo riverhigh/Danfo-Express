@@ -410,3 +410,129 @@ export function createNairaNoteTexture(): THREE.CanvasTexture {
   cachedNairaTex = tex;
   return tex;
 }
+
+const bankSignTextureCache = new Map<string, THREE.CanvasTexture>();
+
+export function createBankCorporateTexture(
+  bankName: string = 'EKO ZENITH BANK',
+  subText: string = 'COMMERCIAL BANKING • BULK CASH • DUAL TELLER'
+): THREE.CanvasTexture {
+  const cacheKey = `${bankName}::${subText}`;
+  const existing = bankSignTextureCache.get(cacheKey);
+  if (existing) return existing;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 192;
+  const ctx = canvas.getContext('2d')!;
+
+  // Deep corporate navy blue gradient
+  const grad = ctx.createLinearGradient(0, 0, 512, 192);
+  grad.addColorStop(0, '#091e42');
+  grad.addColorStop(0.5, '#0c2d6b');
+  grad.addColorStop(1, '#081735');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 512, 192);
+
+  // Elegant gold trim border
+  ctx.strokeStyle = '#facc15';
+  ctx.lineWidth = 6;
+  ctx.strokeRect(8, 8, 496, 176);
+
+  // Inner subtle border
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(16, 16, 480, 160);
+
+  // Bank Emblem / Building Icon
+  ctx.fillStyle = '#facc15';
+  ctx.font = '900 28px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('🏛️ ' + bankName.toUpperCase(), 256, 70);
+
+  // Subtitle
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 18px sans-serif';
+  ctx.fillText(subText.toUpperCase(), 256, 115);
+
+  // Tagline
+  ctx.fillStyle = '#93c5fd';
+  ctx.font = '600 14px sans-serif';
+  ctx.fillText('WALK-IN TELLER WITHDRAWAL (>₦100,000) • SAFE & SECURE', 256, 150);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  bankSignTextureCache.set(cacheKey, tex);
+  return tex;
+}
+
+export function createBankQueueDisplayTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 384;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d')!;
+
+  // Dark LED display panel
+  ctx.fillStyle = '#05070c';
+  ctx.fillRect(0, 0, 384, 128);
+
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = 4;
+  ctx.strokeRect(4, 4, 376, 120);
+
+  // Digital LED glow for Ticket announcement
+  ctx.fillStyle = '#f59e0b';
+  ctx.font = '900 24px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('NOW SERVING: B-041 @ COUNTER 2', 192, 48);
+
+  ctx.fillStyle = '#10b981';
+  ctx.font = 'bold 16px monospace';
+  ctx.fillText('NEXT IN QUEUE: B-042 • B-043 • B-044', 192, 85);
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '11px sans-serif';
+  ctx.fillText('PLEASE WAIT FOR CHIME BEFORE APPROACHING TELLER', 192, 112);
+
+  return new THREE.CanvasTexture(canvas);
+}
+
+export function createPosUmbrellaSignTexture(
+  agentName: string = 'AUNTY BUKKY',
+  themeColor: string = '#16a34a'
+): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 384;
+  canvas.height = 192;
+  const ctx = canvas.getContext('2d')!;
+
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, 384, 192);
+
+  // Header band
+  ctx.fillStyle = themeColor;
+  ctx.fillRect(0, 0, 384, 52);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '900 22px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(`💳 ${agentName.toUpperCase()} POS`, 192, 36);
+
+  // Main text
+  ctx.fillStyle = '#0f172a';
+  ctx.font = '900 26px sans-serif';
+  ctx.fillText('CASH OUT HERE ₦', 192, 95);
+
+  ctx.fillStyle = '#059669';
+  ctx.font = 'bold 18px sans-serif';
+  ctx.fillText('WITHDRAWAL • TRANSFER • AIRTIME', 192, 132);
+
+  ctx.fillStyle = '#dc2626';
+  ctx.font = '800 14px sans-serif';
+  ctx.fillText('MAX: ₦100,000 PER TRANSACTION • 24/7', 192, 168);
+
+  ctx.strokeStyle = themeColor;
+  ctx.lineWidth = 6;
+  ctx.strokeRect(3, 3, 378, 186);
+
+  return new THREE.CanvasTexture(canvas);
+}

@@ -630,7 +630,7 @@ export class RoadManager {
 
       // 4c. Roadside "Abeg" Kiosk Shops with Rusted Corrugated Zinc Roofs & Wooden Market Tables with Colored Tarps
       const shopLabels = [
-        ['ABEG POS & AIRTIME', 'CASH OUT • DATA • RECHARGE'],
+        ['ALABA TECH & SOUND', 'WOOFERS • CHARGERS • FLASH DRIVE'],
         ['MAMA RISI BUKKA', 'HOT AMALA • GBEGIRI • ASSORTED'],
         ['IYA BASIRA PROVISIONS', 'COLD MINERALS • BREAD • INDOMIE'],
         ['CHUKWUDI PHONE CHARGE', 'GEN DEY ON • ACCESSORIES'],

@@ -11,7 +11,10 @@ import {
   createSignboardTexture,
   createBusStopSignTexture,
   createDashboardClusterTexture,
-  createNairaNoteTexture 
+  createNairaNoteTexture,
+  createBankCorporateTexture,
+  createBankQueueDisplayTexture,
+  createPosUmbrellaSignTexture
 } from './textures';
 import { getCustomBillboards, createBillboardTexture, BillboardAd } from '../billboards';
 import { RoadManager, StreetNavigationTelemetry } from './RoadManager';
@@ -175,12 +178,16 @@ export class ThreeDrivingEngine {
     this.npcModels = [];
   }
 
-    private roadSegments: THREE.Group[] = [];
+  private roadSegments: THREE.Group[] = [];
   private junctionMeshes: { group: THREE.Group; junction: JunctionStop; passengers: THREE.Group[] }[] = [];
   private gasStationMeshes: THREE.Group[] = [];
   private billboardMeshes: { group: THREE.Group; ad: BillboardAd }[] = [];
   private shopMeshes: THREE.Group[] = [];
   private trafficMeshes: THREE.Group[] = [];
+  // 🏛️ Commercial Bank Walk-In Branch & 💳 Junction POS Umbrella Ladies
+  private bankBranchZone: { id: string; name: string; box: THREE.Box3; bankX: number; bankZ: number } | null = null;
+  private posUmbrellaLadies: Array<{ id: string; name: string; junctionName: string; x: number; z: number; group: THREE.Group }> = [];
+  private bankQueueCustomers: THREE.Group[] = [];
   private exhaustParticles: THREE.Points;
   private exhaustPositions: Float32Array;
   private rainParticles: THREE.Points | null = null;
@@ -313,6 +320,8 @@ export class ThreeDrivingEngine {
     this.setupGasStations();
     this.setupMechanicCompounds();
     this.setupOshodiBRTStations();
+    this.setupCommercialBankBranch();
+    this.setupPosUmbrellaLadies();
 
     // 8. Overhead Highway Billboards (Flutterwave, OPay, Chowdeck, Custom Ads)
     this.setupBillboards();
@@ -409,8 +418,12 @@ export class ThreeDrivingEngine {
     if (z >= 2095 && z <= 2145) {
       maxX = Math.max(maxX, 21.5);
     }
+    // 12. Eko Zenith Commercial Bank Customer Parking Bay (z = 920..980 on Left +X side)
+    if (z >= 920 && z <= 980) {
+      maxX = Math.max(maxX, 21.5);
+    }
 
-    // 12. Modular RoadManager T-Junctions, 4-Way Intersections, Roundabouts & Active Market Side Streets
+    // 13. Modular RoadManager T-Junctions, 4-Way Intersections, Roundabouts & Active Market Side Streets
     if (this.roadManager) {
       const tileBounds = this.roadManager.getCorridorBoundsAtZ(z);
       if (tileBounds.canTurnRight) {
@@ -2425,6 +2438,576 @@ export class ThreeDrivingEngine {
         box: stationBox,
         stationZ: term.centerZ,
         activeBusCount: 8,
+      });
+    });
+  }
+
+  /**
+   * 🏛️ Builds the Walk-In Commercial Bank Branch (Eko Zenith Bank) at z = 950m
+   * Featuring a dedicated Danfo customer parking apron, 24/7 outdoor ATM gallery,
+   * armed MOPOL security guard, grand double glass entrance, and a FULL WALK-IN BANKING HALL
+   * with brass queue stanchions, waiting queue of 3D customers, digital LED queue display board,
+   * customer waiting chairs, bulletproof glass teller counters, cash counting machines, and teller!
+   */
+  private setupCommercialBankBranch() {
+    const bankZ = 950;
+    const bankX = 16.5; // Left +X side of expressway
+    const group = new THREE.Group();
+    group.position.set(bankX, 0, bankZ);
+
+    // Shared styling materials
+    const marbleFloorMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.22, metalness: 0.12 });
+    const asphaltApronMat = new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.85 });
+    const navyFacadeMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.45, metalness: 0.2 });
+    const royalBlueTrimMat = new THREE.MeshStandardMaterial({ color: 0x1e3a8a, roughness: 0.35, metalness: 0.4 });
+    const goldMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.25, metalness: 0.85 });
+    const darkWoodMat = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.55 });
+    const glassMat = new THREE.MeshStandardMaterial({
+      color: 0x93c5fd,
+      roughness: 0.1,
+      metalness: 0.35,
+      transparent: true,
+      opacity: 0.4,
+      side: THREE.DoubleSide,
+    });
+    const brassMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, roughness: 0.2, metalness: 0.9 });
+    const redVelvetMat = new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.65 });
+    const yellowStripeMat = new THREE.MeshBasicMaterial({ color: 0xfacc15 });
+    const skinMat = new THREE.MeshStandardMaterial({ color: 0x452210, roughness: 0.72 });
+    const blackPantsMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.8 });
+
+    // 1. Wide Paved Bank Customer Parking Apron connecting highway to entrance
+    const parkingApron = new THREE.Mesh(new THREE.PlaneGeometry(22, 48), asphaltApronMat);
+    parkingApron.rotation.x = -Math.PI / 2;
+    parkingApron.position.set(0, 0.025, 0);
+    group.add(parkingApron);
+
+    // Yellow Painted Danfo Parking Bays & Marking
+    for (let pz = -16; pz <= 16; pz += 10.5) {
+      const bayOutline = new THREE.Mesh(new THREE.PlaneGeometry(6.8, 0.22), yellowStripeMat);
+      bayOutline.rotation.x = -Math.PI / 2;
+      bayOutline.position.set(-4.5, 0.035, pz);
+      group.add(bayOutline);
+    }
+
+    // Roadside Parking Signboard facing incoming drivers
+    const gantryTex = createSignboardTexture(
+      '🏛️ EKO ZENITH BANK (COMMERCIAL BRANCH)',
+      'CUSTOMER PARKING APRON • WITHDRAWALS >₦100,000 • DEPOSIT',
+      '#0f172a'
+    );
+    const gantrySign = new THREE.Mesh(
+      new THREE.BoxGeometry(0.4, 2.0, 22),
+      new THREE.MeshStandardMaterial({ map: gantryTex, roughness: 0.35 })
+    );
+    gantrySign.position.set(-6.5, 5.2, 0);
+    group.add(gantrySign);
+
+    [-11, 11].forEach((gz) => {
+      const gantryPole = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.2, 0.22, 5.4, 8),
+        royalBlueTrimMat
+      );
+      gantryPole.position.set(-6.5, 2.7, gz);
+      group.add(gantryPole);
+    });
+
+    // 2. Bank Building Exterior Shell (Width: 18m, Depth: 16m, Height: 6.8m)
+    // Building Back Wall (Solid barrier)
+    const backWall = new THREE.Mesh(new THREE.BoxGeometry(0.8, 6.8, 38), navyFacadeMat);
+    backWall.position.set(7.8, 3.4, 0);
+    group.add(backWall);
+
+    // North & South Exterior Walls
+    [-19, 19].forEach((wz) => {
+      const sideWall = new THREE.Mesh(new THREE.BoxGeometry(16, 6.8, 0.8), navyFacadeMat);
+      sideWall.position.set(0, 3.4, wz);
+      group.add(sideWall);
+
+      const roofTrim = new THREE.Mesh(new THREE.BoxGeometry(16.5, 0.45, 0.95), royalBlueTrimMat);
+      roofTrim.position.set(0, 6.8, wz);
+      group.add(roofTrim);
+    });
+
+    // Front Wall Left & Right Wings (Leaving wide open entrance portal in center)
+    [-13, 13].forEach((wz) => {
+      const frontWing = new THREE.Mesh(new THREE.BoxGeometry(0.8, 6.8, 12), navyFacadeMat);
+      frontWing.position.set(-7.8, 3.4, wz);
+      group.add(frontWing);
+
+      // Glass Windows on front wings
+      const windowMesh = new THREE.Mesh(new THREE.BoxGeometry(0.1, 4.2, 9.6), glassMat);
+      windowMesh.position.set(-7.9, 3.5, wz);
+      group.add(windowMesh);
+    });
+
+    // Grand Entrance Overhead Canopy & Corporate Signboard
+    const entranceCanopy = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.35, 14.5), royalBlueTrimMat);
+    entranceCanopy.position.set(-7.8, 4.8, 0);
+    group.add(entranceCanopy);
+
+    const mainSignMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(0.4, 1.8, 13.8),
+      new THREE.MeshStandardMaterial({
+        map: createBankCorporateTexture('EKO ZENITH BANK', 'COMMERCIAL BRANCH • TELLER TRANSFERS'),
+        roughness: 0.3,
+      })
+    );
+    mainSignMesh.position.set(-8.05, 5.8, 0);
+    group.add(mainSignMesh);
+
+    // 3. Outdoor 24/7 ATM Gallery & Armed MOPOL Security Guard
+    [-9.5, -7.5].forEach((az) => {
+      // ATM Kiosk embedded in front wall wing
+      const atmBody = new THREE.Mesh(new THREE.BoxGeometry(0.7, 2.2, 1.3), royalBlueTrimMat);
+      atmBody.position.set(-7.6, 1.1, az);
+      group.add(atmBody);
+
+      const atmScreen = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.9, 0.65),
+        new THREE.MeshBasicMaterial({ color: 0x38bdf8 })
+      );
+      atmScreen.rotation.y = -Math.PI / 2;
+      atmScreen.position.set(-8.0, 1.35, az);
+      group.add(atmScreen);
+
+      const atmHeader = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.1, 0.32),
+        new THREE.MeshBasicMaterial({ color: 0x22c55e })
+      );
+      atmHeader.rotation.y = -Math.PI / 2;
+      atmHeader.position.set(-8.0, 1.95, az);
+      group.add(atmHeader);
+    });
+
+    // Armed MOPOL / Security Guard outside the entrance
+    const guardGroup = new THREE.Group();
+    guardGroup.position.set(-7.2, 0, 4.8);
+    const guardTorso = new THREE.Mesh(
+      new THREE.BoxGeometry(0.42, 0.62, 0.26),
+      new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.5 }) // Navy Tactical Vest
+    );
+    guardTorso.position.y = 1.18;
+    const guardHead = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 10), skinMat);
+    guardHead.position.y = 1.62;
+    const guardBeret = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.16, 0.17, 0.1, 10),
+      new THREE.MeshStandardMaterial({ color: 0x1e3a8a })
+    );
+    guardBeret.position.set(0.02, 1.74, 0);
+    guardBeret.rotation.z = -0.15;
+    [-0.1, 0.1].forEach((lx) => {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.8, 0.16), blackPantsMat);
+      leg.position.set(lx, 0.46, 0);
+      guardGroup.add(leg);
+    });
+    guardGroup.add(guardTorso, guardHead, guardBeret);
+    group.add(guardGroup);
+
+    // 4. 🏛️ WALK-IN BANKING HALL INTERIOR (Flooring, Mantrap, Queue, Chairs, Teller)
+    // High-Polished Marble Banking Floor
+    const hallFloor = new THREE.Mesh(new THREE.PlaneGeometry(15, 36), marbleFloorMat);
+    hallFloor.rotation.x = -Math.PI / 2;
+    hallFloor.position.set(0.2, 0.04, 0);
+    group.add(hallFloor);
+
+    // Security Mantrap Revolving Checkpoint Booth at the entrance portal
+    const mantrapMesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.4, 1.4, 3.6, 16, 1, true),
+      new THREE.MeshStandardMaterial({
+        color: 0x94a3b8,
+        metalness: 0.7,
+        roughness: 0.25,
+        transparent: true,
+        opacity: 0.5,
+        side: THREE.DoubleSide,
+      })
+    );
+    mantrapMesh.position.set(-6.2, 1.8, 0);
+    group.add(mantrapMesh);
+
+    // 5. 👥 THE QUEUE OF PEOPLE (Brass stanchions, velvet ropes, 4 queueing 3D customers)
+    // Brass Stanchion Poles & Red Velvet Ropes forming the queue lane
+    const stanchionZCoords = [-5.5, -2.8, 0, 2.8, 5.5];
+    stanchionZCoords.forEach((sz) => {
+      [-1.8, 1.8].forEach((sx) => {
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.05, 8), brassMat);
+        post.position.set(sx, 0.53, sz);
+        const topBall = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 8), goldMat);
+        topBall.position.set(sx, 1.1, sz);
+        const base = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.06, 12), brassMat);
+        base.position.set(sx, 0.06, sz);
+        group.add(post, topBall, base);
+      });
+
+      // Red Velvet Rope connection
+      const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 2.7, 8), redVelvetMat);
+      rope.rotation.x = Math.PI / 2;
+      rope.position.set(1.8, 0.88, sz);
+      group.add(rope);
+    });
+
+    // 4 Waiting 3D Commuter / Customer Models in the Queue
+    const queueCustomers = [
+      {
+        name: 'Alhaji Musa (Spare Parts Dealer)',
+        role: 'Alhaji',
+        outfitColor: 0xf8fafc, // Flowing White Agbada
+        capColor: 0xfacc15,
+        z: 4.2,
+        x: 0,
+        hasFolder: true,
+      },
+      {
+        name: 'Madam Ngozi (Balogun Trader)',
+        role: 'Trader',
+        outfitColor: 0x1d4ed8, // Royal Blue Ankara Gown
+        capColor: 0x3b82f6, // Gele
+        z: 1.6,
+        x: 0,
+        hasBag: true,
+      },
+      {
+        name: 'Chinedu (Auto Importer)',
+        role: 'Importer',
+        outfitColor: 0xdc2626, // Red Polo
+        capColor: 0x0f172a,
+        z: -1.2,
+        x: 0,
+        hasCashBag: true,
+      },
+      {
+        name: 'Femi (Corporate Professional)',
+        role: 'Corporate',
+        outfitColor: 0x334155, // Charcoal Suit
+        capColor: 0x0f172a,
+        z: -3.8,
+        x: 0,
+        hasLanyard: true,
+      },
+    ];
+
+    this.bankQueueCustomers = [];
+    queueCustomers.forEach((c) => {
+      const customer = new THREE.Group();
+      customer.position.set(c.x, 0, c.z);
+      customer.rotation.y = -Math.PI / 2; // Facing forward toward the Bank Teller counter!
+
+      // Torso / Outfit
+      const torso = new THREE.Mesh(
+        new THREE.BoxGeometry(0.42, 0.64, 0.26),
+        new THREE.MeshStandardMaterial({ color: c.outfitColor, roughness: 0.65 })
+      );
+      torso.position.y = 1.16;
+      customer.add(torso);
+
+      // Head & Traditional Cap / Gele
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 10), skinMat);
+      head.position.y = 1.58;
+      customer.add(head);
+
+      const cap = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.15, 0.16, 0.12, 10),
+        new THREE.MeshStandardMaterial({ color: c.capColor, roughness: 0.5 })
+      );
+      cap.position.y = 1.7;
+      customer.add(cap);
+
+      // Legs
+      [-0.1, 0.1].forEach((lx) => {
+        const leg = new THREE.Mesh(
+          new THREE.BoxGeometry(0.15, 0.78, 0.16),
+          c.role === 'Alhaji' ? new THREE.MeshStandardMaterial({ color: 0xf8fafc }) : blackPantsMat
+        );
+        leg.position.set(lx, 0.44, 0);
+        customer.add(leg);
+      });
+
+      // Accessory item (Document Folder, Handbag, Bulk Cash Sack)
+      if (c.hasFolder || c.hasCashBag || c.hasBag) {
+        const item = new THREE.Mesh(
+          new THREE.BoxGeometry(0.12, 0.32, 0.28),
+          new THREE.MeshStandardMaterial({ color: c.hasCashBag ? 0x15803d : 0x78350f })
+        );
+        item.position.set(0.26, 1.05, 0.1);
+        customer.add(item);
+      }
+
+      group.add(customer);
+      this.bankQueueCustomers.push(customer);
+    });
+
+    // Customer Waiting Chairs along the interior North wall
+    for (let cz = 8; cz <= 14; cz += 1.8) {
+      const chairSeat = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.08, 0.7), royalBlueTrimMat);
+      chairSeat.position.set(-2.5, 0.45, cz);
+      const chairBack = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.6, 0.7), royalBlueTrimMat);
+      chairBack.position.set(-2.8, 0.75, cz);
+      const chairLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.45, 6), brassMat);
+      chairLeg.position.set(-2.5, 0.22, cz);
+      group.add(chairSeat, chairBack, chairLeg);
+    }
+
+    // 6. Overhead Electronic LED Queue Display Board
+    const displayBoard = new THREE.Mesh(
+      new THREE.BoxGeometry(0.15, 1.1, 4.4),
+      new THREE.MeshBasicMaterial({ map: createBankQueueDisplayTexture() })
+    );
+    displayBoard.position.set(3.4, 3.4, 0);
+    group.add(displayBoard);
+
+    // 7. Polished Bank Teller Counter with Bulletproof Glass, Cash Counter & Seated Teller
+    const tellerCounter = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.15, 12), darkWoodMat);
+    tellerCounter.position.set(4.8, 0.58, 0);
+    group.add(tellerCounter);
+
+    const counterTopMarble = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.08, 12.2), marbleFloorMat);
+    counterTopMarble.position.set(4.8, 1.18, 0);
+    group.add(counterTopMarble);
+
+    // Bulletproof Glass Screen partition with speaker grilles and pass trays
+    const bulletproofGlass = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.4, 11.5), glassMat);
+    bulletproofGlass.position.set(4.2, 1.9, 0);
+    group.add(bulletproofGlass);
+
+    // Stacked Bundles of ₦1,000 Naira Notes on Counter
+    const nairaStack = new THREE.Mesh(
+      new THREE.BoxGeometry(0.35, 0.18, 0.6),
+      new THREE.MeshStandardMaterial({ map: createNairaNoteTexture(), roughness: 0.4 })
+    );
+    nairaStack.position.set(4.6, 1.28, 0);
+    group.add(nairaStack);
+
+    // Bank Teller (Teller Tunde) seated behind Counter 2
+    const tellerGroup = new THREE.Group();
+    tellerGroup.position.set(5.8, 0, 0);
+    tellerGroup.rotation.y = Math.PI / 2; // Facing customer queue
+    const tellerTorso = new THREE.Mesh(
+      new THREE.BoxGeometry(0.4, 0.58, 0.24),
+      new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.5 }) // White shirt
+    );
+    tellerTorso.position.y = 1.12;
+    const tellerTie = new THREE.Mesh(
+      new THREE.BoxGeometry(0.08, 0.32, 0.04),
+      new THREE.MeshStandardMaterial({ color: 0x1e3a8a }) // Navy tie
+    );
+    tellerTie.position.set(0, 1.12, 0.13);
+    const tellerHead = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 10), skinMat);
+    tellerHead.position.y = 1.54;
+    tellerGroup.add(tellerTorso, tellerTie, tellerHead);
+    group.add(tellerGroup);
+
+    // 8. Mini-Map Layer-1 Blue/Gold Bank Beacon
+    const miniMapBankBeacon = new THREE.Mesh(
+      new THREE.PlaneGeometry(16, 28),
+      new THREE.MeshBasicMaterial({ color: 0x1d4ed8 })
+    );
+    miniMapBankBeacon.rotation.x = -Math.PI / 2;
+    miniMapBankBeacon.position.set(0, 6.8, 0);
+    miniMapBankBeacon.layers.set(1);
+    group.add(miniMapBankBeacon);
+
+    this.scene.add(group);
+
+    // Register 3D Bounding Box for zone detection
+    const bankBox = new THREE.Box3(
+      new THREE.Vector3(bankX - 8.5, -1.0, bankZ - 24),
+      new THREE.Vector3(bankX + 9.5, 7.5, bankZ + 24)
+    );
+    this.bankBranchZone = {
+      id: 'bank-branch-ikeja',
+      name: 'Eko Zenith Commercial Bank',
+      box: bankBox,
+      bankX,
+      bankZ,
+    };
+  }
+
+  /**
+   * 💳 Builds the authentic Nigerian POS Umbrella Ladies stationed at key iconic junctions!
+   * Features a large colorful telecom/fintech parasol umbrella, classic plastic chair,
+   * seated "Umbrella Lady" (Aunty POS) with vibrant Ankara & Gele headwrap,
+   * wooden desk with POS card machine, receipt roll, cash ledger, and money box!
+   */
+  private setupPosUmbrellaLadies() {
+    this.posUmbrellaLadies = [];
+
+    const posLocations = [
+      {
+        id: 'pos-ikeja',
+        name: 'Aunty Folake',
+        junctionName: 'Ikeja Along Bus Stop',
+        z: 720,
+        x: 12.0, // Right roadside sidewalk
+        umbrellaColor: 0x16a34a, // OPay Green
+        fringeColor: 0xf8fafc, // White
+        themeHex: '#16a34a',
+      },
+      {
+        id: 'pos-maryland',
+        name: 'Mama Chidinma',
+        junctionName: 'Maryland Bus Stop',
+        z: 2020,
+        x: -12.0, // Left roadside sidewalk
+        umbrellaColor: 0xfacc15, // MTN Yellow
+        fringeColor: 0x0284c7, // Blue
+        themeHex: '#facc15',
+      },
+      {
+        id: 'pos-oshodi',
+        name: 'Aunty Blessing',
+        junctionName: 'Oshodi Underbridge',
+        z: 2900,
+        x: 12.0, // Right roadside
+        umbrellaColor: 0xdc2626, // Airtel Red
+        fringeColor: 0xf8fafc, // White
+        themeHex: '#dc2626',
+      },
+      {
+        id: 'pos-ojuelegba',
+        name: 'Iya Moria',
+        junctionName: 'Ojuelegba Underbridge',
+        z: 3360,
+        x: -12.0, // Left roadside
+        umbrellaColor: 0x059669, // Lagos Green
+        fringeColor: 0xfacc15, // Yellow
+        themeHex: '#059669',
+      },
+    ];
+
+    const skinMat = new THREE.MeshStandardMaterial({ color: 0x482413, roughness: 0.75 });
+    const woodTableMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.65 });
+    const plasticChairMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.4 });
+    const posDeviceMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.35 });
+    const moneyMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.5 });
+
+    posLocations.forEach((pos) => {
+      const group = new THREE.Group();
+      group.position.set(pos.x, 0, pos.z);
+      const isRight = pos.x > 0;
+      group.rotation.y = isRight ? -Math.PI / 2 : Math.PI / 2; // Facing oncoming Danfo bus!
+
+      // 1. Large 2.4m Parasol Umbrella with metal pole, conical canopy & scalloped fringe
+      const pole = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.035, 0.038, 2.35, 8),
+        new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.6, roughness: 0.3 })
+      );
+      pole.position.set(0, 1.18, 0);
+      group.add(pole);
+
+      const canopyMat = new THREE.MeshStandardMaterial({
+        color: pos.umbrellaColor,
+        roughness: 0.6,
+        side: THREE.DoubleSide,
+      });
+      const canopy = new THREE.Mesh(new THREE.ConeGeometry(1.25, 0.65, 12, 1, true), canopyMat);
+      canopy.position.set(0, 2.35, 0);
+      group.add(canopy);
+
+      const fringeMat = new THREE.MeshBasicMaterial({ color: pos.fringeColor, side: THREE.DoubleSide });
+      const fringe = new THREE.Mesh(new THREE.CylinderGeometry(1.26, 1.26, 0.14, 12, 1, true), fringeMat);
+      fringe.position.set(0, 2.05, 0);
+      group.add(fringe);
+
+      // 2. Plastic Chair & Seated "Umbrella Lady" (Aunty POS)
+      const chairSeat = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.08, 0.55), plasticChairMat);
+      chairSeat.position.set(0, 0.42, 0.3);
+      const chairBack = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.55, 0.08), plasticChairMat);
+      chairBack.position.set(0, 0.72, 0.55);
+      group.add(chairSeat, chairBack);
+
+      const ladyGroup = new THREE.Group();
+      ladyGroup.position.set(0, 0, 0.3);
+
+      // Blouse / Torso in patterned Ankara
+      const torso = new THREE.Mesh(
+        new THREE.BoxGeometry(0.38, 0.52, 0.24),
+        new THREE.MeshStandardMaterial({ color: pos.umbrellaColor, roughness: 0.6 })
+      );
+      torso.position.y = 0.85;
+
+      // Gele Headwrap & Head
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 10), skinMat);
+      head.position.y = 1.25;
+
+      const gele = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.18, 0.15, 0.14, 10),
+        new THREE.MeshStandardMaterial({ color: pos.umbrellaColor, roughness: 0.45 })
+      );
+      gele.position.set(0, 1.36, 0);
+      gele.rotation.z = 0.08;
+
+      // Wrapper Skirt over seated lap
+      const wrapperSkirt = new THREE.Mesh(
+        new THREE.BoxGeometry(0.44, 0.38, 0.48),
+        new THREE.MeshStandardMaterial({ color: pos.fringeColor, roughness: 0.7 })
+      );
+      wrapperSkirt.position.set(0, 0.38, -0.05);
+
+      ladyGroup.add(torso, head, gele, wrapperSkirt);
+      group.add(ladyGroup);
+
+      // 3. Wooden POS Desk Table in front of her
+      const tableTop = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.08, 0.65), woodTableMat);
+      tableTop.position.set(0, 0.74, -0.25);
+      const tableLegs = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.7, 0.45), woodTableMat);
+      tableLegs.position.set(0, 0.35, -0.25);
+      group.add(tableTop, tableLegs);
+
+      // Handheld POS Terminal Device with glowing display
+      const posDevice = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.05, 0.26), posDeviceMat);
+      posDevice.position.set(-0.22, 0.81, -0.25);
+      const posScreen = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.12, 0.1),
+        new THREE.MeshBasicMaterial({ color: 0x22c55e })
+      );
+      posScreen.rotation.x = -Math.PI / 2;
+      posScreen.position.set(-0.22, 0.84, -0.28);
+      group.add(posDevice, posScreen);
+
+      // Money Cash Box & Naira Notes
+      const cashBox = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.12, 0.2), moneyMat);
+      cashBox.position.set(0.25, 0.82, -0.25);
+      group.add(cashBox);
+
+      // Tablefront Signboard: "POS CASH OUT HERE ₦"
+      const signMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(1.05, 0.45, 0.05),
+        new THREE.MeshStandardMaterial({
+          map: createPosUmbrellaSignTexture(pos.name, pos.themeHex),
+          roughness: 0.4,
+        })
+      );
+      signMesh.position.set(0, 0.45, -0.58);
+      group.add(signMesh);
+
+      // Floating Overhead 3D Badge: "💳 AUNTY POS (₦100k MAX)"
+      const badgeTex = createSignboardTexture(`💳 ${pos.name.toUpperCase()} POS`, 'CASH OUT (MAX ₦100,000)', pos.themeHex);
+      const badgeMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(0.06, 0.55, 1.8),
+        new THREE.MeshStandardMaterial({ map: badgeTex, roughness: 0.3 })
+      );
+      badgeMesh.position.set(0, 2.7, 0);
+      group.add(badgeMesh);
+
+      // Mini-Map Layer-1 Green Marker
+      const miniMapBeacon = new THREE.Mesh(
+        new THREE.PlaneGeometry(6, 6),
+        new THREE.MeshBasicMaterial({ color: 0x10b981 })
+      );
+      miniMapBeacon.rotation.x = -Math.PI / 2;
+      miniMapBeacon.position.set(0, 5.0, 0);
+      miniMapBeacon.layers.set(1);
+      group.add(miniMapBeacon);
+
+      this.scene.add(group);
+      this.posUmbrellaLadies.push({
+        id: pos.id,
+        name: pos.name,
+        junctionName: pos.junctionName,
+        x: pos.x,
+        z: pos.z,
+        group,
       });
     });
   }
@@ -5976,6 +6559,8 @@ export class ThreeDrivingEngine {
   public getNearbyServiceEntities(): {
     nearbyGasAttendant: { id: string; name: string; brand: string; x: number; z: number; dist: number } | null;
     nearbyMechanic: { id: string; name: string; specialty: string; x: number; z: number; dist: number } | null;
+    nearbyBank: { id: string; name: string; branch: string; x: number; z: number; dist: number; insideHall: boolean } | null;
+    nearbyPosLady: { id: string; name: string; junctionName: string; x: number; z: number; dist: number } | null;
     busDistance: number;
   } {
     const p = this.driverWalkPos;
@@ -6015,11 +6600,71 @@ export class ThreeDrivingEngine {
       }
     }
 
+    // 🏛️ Commercial Bank Walk-In Branch check
+    let nearbyBank: { id: string; name: string; branch: string; x: number; z: number; dist: number; insideHall: boolean } | null = null;
+    if (this.bankBranchZone) {
+      const bX = this.bankBranchZone.bankX;
+      const bZ = this.bankBranchZone.bankZ;
+      const dist = Math.hypot(p.x - bX, p.z - bZ);
+      const isInside = p.x >= 10.0 && p.x <= 24.0 && p.z >= 932 && p.z <= 968;
+      if (dist < 32 || isInside) {
+        nearbyBank = {
+          id: this.bankBranchZone.id,
+          name: this.bankBranchZone.name,
+          branch: 'Ikeja Commercial Branch',
+          x: bX,
+          z: bZ,
+          dist,
+          insideHall: isInside || dist < 12.0,
+        };
+      }
+    }
+
+    // 💳 POS Umbrella Lady check
+    let nearbyPos: { id: string; name: string; junctionName: string; x: number; z: number; dist: number } | null = null;
+    for (const lady of this.posUmbrellaLadies) {
+      const dist = Math.hypot(p.x - lady.x, p.z - lady.z);
+      if (dist < 7.0) {
+        nearbyPos = {
+          id: lady.id,
+          name: lady.name,
+          junctionName: lady.junctionName,
+          x: lady.x,
+          z: lady.z,
+          dist,
+        };
+        break;
+      }
+    }
+
     return {
       nearbyGasAttendant: nearbyGas,
       nearbyMechanic: nearbyMech,
+      nearbyBank: nearbyBank,
+      nearbyPosLady: nearbyPos,
       busDistance: busDist,
     };
+  }
+
+  public getIntersectingBankZone(): { id: string; name: string } | null {
+    if (!this.bankBranchZone || !this.busRoot) return null;
+    const busPos = this.busRoot.position;
+    if (this.bankBranchZone.box.containsPoint(busPos)) {
+      return { id: this.bankBranchZone.id, name: this.bankBranchZone.name };
+    }
+    return null;
+  }
+
+  public getIntersectingPosZone(): { id: string; name: string; junctionName: string } | null {
+    if (!this.busRoot) return null;
+    const busPos = this.busRoot.position;
+    for (const lady of this.posUmbrellaLadies) {
+      const dist = Math.hypot(busPos.x - lady.x, busPos.z - lady.z);
+      if (dist < 18.0) {
+        return { id: lady.id, name: lady.name, junctionName: lady.junctionName };
+      }
+    }
+    return null;
   }
 
   public getYawOffsetToBus(): number {
