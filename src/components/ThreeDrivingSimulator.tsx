@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import * as THREE from 'three';
 import { ThreeDrivingEngine } from '../game/three/ThreeDrivingEngine';
 import { StreetNavigationTelemetry } from '../game/three/RoadManager';
 import { GameState, CameraViewMode, GearPosition, DoorState, JunctionStop, GasStationBay, RoadsideShop, Passenger, PassengerArchetype, DeliveryJob } from '../types/game';
@@ -6,6 +7,8 @@ import { soundEngine } from '../audio/soundEngine';
 import { MiniMap } from './MiniMap';
 import { LAGOS_NPCS, LagosNpc } from '../game/npcData';
 import { NpcInteractionModal } from './NpcInteractionModal';
+import { GasStationServiceModal } from './GasStationServiceModal';
+import { MechanicServiceModal } from './MechanicServiceModal';
 import { PASSENGER_NAMES, SAMPLE_DELIVERY_JOBS } from '../game/config';
 import { 
   Fuel, 
@@ -130,6 +133,36 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       setCashToast(null);
     }, 2800);
   };
+
+  // Physical Drive-In Parking Bay & On-Foot Walk Service States
+  const [parkedBay, setParkedBay] = useState<{
+    type: 'GAS' | 'MECHANIC';
+    id: string;
+    name: string;
+    brand?: string;
+    specialty?: string;
+  } | null>(null);
+  const parkedBayRef = useRef<{
+    type: 'GAS' | 'MECHANIC';
+    id: string;
+    name: string;
+    brand?: string;
+    specialty?: string;
+  } | null>(null);
+
+  const [walkInteractTarget, setWalkInteractTarget] = useState<{
+    type: 'GAS' | 'MECHANIC' | 'BUS';
+    name: string;
+    data?: any;
+  } | null>(null);
+  const walkInteractTargetRef = useRef<{
+    type: 'GAS' | 'MECHANIC' | 'BUS';
+    name: string;
+    data?: any;
+  } | null>(null);
+
+  const [isGasModalOpen, setIsGasModalOpen] = useState<boolean>(false);
+  const [isMechanicModalOpen, setIsMechanicModalOpen] = useState<boolean>(false);
 
   // Gas Station, Mechanic Drive-In Compound & Roadside Shop Drive-In States
   const [activeGasStation, setActiveGasStation] = useState<GasStationBay | null>(null);
@@ -454,21 +487,13 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         (s) => Math.abs(s.distanceMarkerMeters - currentDist) <= 22
       );
 
-      if (nearJunction) {
-        addFeedMessage(`🚪 STEPPED OUT AT ${nearJunction.name.toUpperCase()}: Commuters waiting at the stop!`);
-        const relevantNpc = LAGOS_NPCS.find(n => n.category === 'COMMUTER' || n.category === 'MARKET_WOMAN' || n.category === 'AREA_BOY') || LAGOS_NPCS[0];
-        setActiveNpc(relevantNpc);
-      } else if (nearGas) {
-        addFeedMessage(`🚪 STEPPED OUT AT ${nearGas.name.toUpperCase()}: Fuel attendant ready!`);
-        const gasNpc = LAGOS_NPCS.find(n => n.category === 'MECHANIC') || LAGOS_NPCS[2];
-        setActiveNpc(gasNpc);
-      } else if (nearShop) {
-        addFeedMessage(`🚪 STEPPED OUT AT ${nearShop.name.toUpperCase()}: Roadside shop keeper!`);
-        const shopNpc = LAGOS_NPCS.find(n => n.category === 'STREET_HAWKER' || n.category === 'MARKET_WOMAN') || LAGOS_NPCS[1];
-        setActiveNpc(shopNpc);
+      setActiveNpc(null);
+      if (nearGas) {
+        addFeedMessage(`🚶 ON FOOT AT ${nearGas.name.toUpperCase()}: Walk over to the fuel pumps to see the attendant!`);
+      } else if (nearJunction) {
+        addFeedMessage(`🚶 ON FOOT AT ${nearJunction.name.toUpperCase()}: Walk over to the shelter to talk to commuters!`);
       } else {
-        setActiveNpc(null);
-        addFeedMessage('🚶 ON FOOT: Walking outside your Danfo bus! Use WASD or the Walk Pad to move around.');
+        addFeedMessage('🚶 ON FOOT: Stepped out into compound! Use WASD or joystick to walk up to NPCs or back to your bus.');
       }
     } else {
       // RE-ENTERING DRIVER SEAT: automatically ready to start & drive!
@@ -745,10 +770,14 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
     let deltaAngle = ptrAngle - wheelDragRef.current.startPointerAngle;
     while (deltaAngle > 180) deltaAngle -= 360;
     while (deltaAngle < -180) deltaAngle += 360;
-    const clamped = Math.max(-90, Math.min(90, wheelDragRef.current.startSteeringAngle + deltaAngle));
+    const clamped = Math.max(-135, Math.min(135, wheelDragRef.current.startSteeringAngle + deltaAngle));
     simRef.current.steeringAngle = clamped;
     if (wheelElementRef.current) {
       wheelElementRef.current.style.transform = `rotate(${clamped.toFixed(1)}deg)`;
+    }
+    const altWheel = document.getElementById('alt-steering-wheel');
+    if (altWheel) {
+      altWheel.style.transform = `rotate(${clamped.toFixed(1)}deg)`;
     }
   };
 
@@ -759,9 +788,25 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
   // Keyboard controls (Supports Driving Mode, Zuuks Engine Toggle 'E'/'K', Overtake Boost 'Shift', and Walk Mode 'F')
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      // Key 'E' toggles Engine when inside a Gas Station Zone or when Engine is OFF; otherwise toggles Walk Mode (or 'F' always toggles Walk Mode)
+      // Key 'E' interacts with nearby NPCs when in Walk Mode, or toggles Engine / Walk Mode when driving
       if (e.key === 'e' || e.key === 'E') {
-        if (activeGasStationRef.current || (!inputsRef.current.isEngineRunning && !simRef.current.isSteppedDown)) {
+        if (simRef.current.isSteppedDown) {
+          const target = walkInteractTargetRef.current;
+          if (target?.type === 'GAS') {
+            setIsGasModalOpen(true);
+            return;
+          } else if (target?.type === 'MECHANIC') {
+            setIsMechanicModalOpen(true);
+            return;
+          } else if (target?.type === 'BUS') {
+            toggleStepDown();
+            return;
+          }
+          toggleStepDown();
+          return;
+        }
+
+        if (!inputsRef.current.isEngineRunning && !simRef.current.isSteppedDown) {
           toggleEngine();
         } else {
           toggleStepDown();
@@ -951,19 +996,25 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
 
       const sim = simRef.current;
       const inp = inputsRef.current;
+      const currentGameState = gameStateRef.current;
 
-      // 1. Progressive Damped Steering Wheel Input & Snappy Self-Centering Spring (Zero 60FPS React Re-render Stutter!)
+      // 1. Progressive Damped Steering Wheel Input & Natural Self-Centering Spring
+      const steerSpeed = sim.speed > 55 ? 190 : (sim.speed < 18 ? 275 : 230);
       if (inp.steerLeft) {
-        sim.steeringAngle = Math.max(-90, sim.steeringAngle - 310 * dt);
+        sim.steeringAngle = Math.max(-120, sim.steeringAngle - steerSpeed * dt);
       } else if (inp.steerRight) {
-        sim.steeringAngle = Math.min(90, sim.steeringAngle + 310 * dt);
+        sim.steeringAngle = Math.min(120, sim.steeringAngle + steerSpeed * dt);
       } else if (!inp.isDraggingWheel && !inp.gyroEnabled) {
-        sim.steeringAngle = sim.steeringAngle * Math.pow(0.002, dt);
-        if (Math.abs(sim.steeringAngle) < 0.35) sim.steeringAngle = 0;
+        sim.steeringAngle = THREE.MathUtils.damp(sim.steeringAngle, 0, 8.0, dt);
+        if (Math.abs(sim.steeringAngle) < 0.2) sim.steeringAngle = 0;
       }
       // Update Steering Wheel DOM directly at 60 FPS without triggering full React component re-renders
       if (wheelElementRef.current) {
         wheelElementRef.current.style.transform = `rotate(${sim.steeringAngle.toFixed(1)}deg)`;
+      }
+      const altWheel = document.getElementById('alt-steering-wheel');
+      if (altWheel) {
+        altWheel.style.transform = `rotate(${sim.steeringAngle.toFixed(1)}deg)`;
       }
       const steerFactor = sim.steeringAngle / 90;
 
@@ -1031,9 +1082,12 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         const speedMps = (sim.speed * 1000) / 3600;
         const isReversing = inp.gear === 'R';
 
-        if (Math.abs(steerFactor) > 0.015) {
-          // Snappy cornering bite proportional to steering input (steer right turns right in forward and guides rear in reverse)
-          const targetHeadingYaw = steerFactor * 0.44 * (isReversing ? -0.65 : 1.0);
+        if (Math.abs(steerFactor) > 0.012) {
+          // NATURAL DRIVING STEERING (Left turns to Left +X, Right turns to Right -X):
+          // In Three.js world space looking down +Z: Left side of road is +X, Right side is -X.
+          // When turning left: sim.steeringAngle < 0, steerFactor < 0.
+          // Target heading yaw points towards Left (+X), so targetHeadingYaw must be POSITIVE.
+          const targetHeadingYaw = -steerFactor * 0.44 * (isReversing ? -0.7 : 1.0);
           sim.headingYaw += (targetHeadingYaw - sim.headingYaw) * Math.min(1.0, 14.5 * dt);
         } else {
           // Centered steering: cancel out lateral heading drift immediately
@@ -1043,8 +1097,8 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         sim.headingYaw = Math.max(-0.46, Math.min(0.46, sim.headingYaw));
 
         if (isReversing) {
-          // In reverse: turning wheel right smoothly steers the vehicle to the right (+X) without inversion
-          const reverseLatSpeed = steerFactor * 3.6 * Math.min(1.0, sim.speed / 14);
+          // In reverse: turning wheel right smoothly steers the rear to the right (-X)
+          const reverseLatSpeed = -steerFactor * 3.6 * Math.min(1.0, sim.speed / 14);
           sim.laneOffset += reverseLatSpeed * dt;
         } else {
           sim.laneOffset += Math.sin(sim.headingYaw) * speedMps * dt;
@@ -1085,77 +1139,74 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         }
       }
 
-      // 3. ZUUKS-STYLE GAS STATION LOGIC (THREE.Box3 Zone Intersection + Velocity === 0 + isEngineOn === false)
-      const currentGameState = gameStateRef.current;
+      // 3. PHYSICAL DRIVE-IN PARKING BAY DETECTION (Strict 3D Bounding Box + Stopped & Parked)
       const boxGasZone = engineRef.current ? engineRef.current.getIntersectingGasStationZone() : null;
-      const gasBays = currentGameState.gasStations || [];
-      const matchedGasBay = boxGasZone
-        ? gasBays.find((g) => g.id === boxGasZone.id) || {
+      const boxMechZone = engineRef.current ? engineRef.current.getIntersectingMechanicCompoundZone() : null;
+      const isCompletelyParked = sim.speed < 0.8 && (inp.gear === 'P' || inp.brake || !inp.isEngineRunning);
+
+      if (boxGasZone && isCompletelyParked && !sim.isSteppedDown) {
+        if (!parkedBayRef.current || parkedBayRef.current.id !== boxGasZone.id) {
+          const newBay = {
+            type: 'GAS' as const,
             id: boxGasZone.id,
             name: boxGasZone.name,
             brand: boxGasZone.brand,
-            distanceMarkerMeters: boxGasZone.stationZ,
-            fuelPricePerLiter: 500,
-            isInBay: true,
-          }
-        : gasBays.find(
-            (g) =>
-              Math.abs(g.distanceMarkerMeters - sim.distanceTraveled) < 19 &&
-              Math.abs(sim.laneOffset) > 4.2
-          ) || null;
-
-      if (matchedGasBay) {
-        if (!activeGasStationRef.current || activeGasStationRef.current.id !== matchedGasBay.id) {
-          activeGasStationRef.current = matchedGasBay;
-          setActiveGasStation(matchedGasBay);
-          refuelStatsRef.current = { liters: 0, cost: 0 };
-          pendingRefuelCostRef.current = 0;
-          setRefuelLitersPumped(0);
-          setRefuelCostNaira(0);
+          };
+          parkedBayRef.current = newBay;
+          setParkedBay(newBay);
+          addFeedMessage(`⛽ PARKED AT ${boxGasZone.name.toUpperCase()}: Step out in Walk Mode (F / E) to see the fuel attendant!`);
         }
-
-        // ZUUKS INTERSECTION RULE:
-        // 1. Bus is inside Gas Station Zone AND velocity is completely 0 (speed < 0.5)
-        // 2. Check if isEngineRunning === false
-        // 3. Slowly increment state.fuel while deducting state.money at ₦500 per Liter!
-        if (sim.speed < 0.5 && !inp.isEngineRunning) {
-          setIsRefueling((prev) => (prev ? prev : true));
-          if (sim.fuel < 100) {
-            const litersDelta = 3.2 * dt; // 3.2 Liters per second smooth pumping
-            const costDelta = litersDelta * 500; // ₦500 per Liter
-            const fuelPercentDelta = litersDelta * 2.0; // 50L tank = 100%
-            sim.fuel = Math.min(100, sim.fuel + fuelPercentDelta);
-            refuelStatsRef.current.liters += litersDelta;
-            refuelStatsRef.current.cost += costDelta;
-            pendingRefuelCostRef.current += costDelta;
-
-            if (Math.random() < 0.12) {
-              soundEngine.playCoin();
-            }
-          }
-        } else {
-          setIsRefueling((prev) => (prev ? false : prev));
+      } else if (boxMechZone && isCompletelyParked && !sim.isSteppedDown) {
+        if (!parkedBayRef.current || parkedBayRef.current.id !== boxMechZone.id) {
+          const newBay = {
+            type: 'MECHANIC' as const,
+            id: boxMechZone.id,
+            name: boxMechZone.name,
+            specialty: boxMechZone.specialty,
+          };
+          parkedBayRef.current = newBay;
+          setParkedBay(newBay);
+          addFeedMessage(`🔧 PARKED AT ${boxMechZone.name.toUpperCase()}: Step out in Walk Mode (F / E) to talk to the mechanic!`);
         }
-      } else {
-        if (activeGasStationRef.current) {
-          activeGasStationRef.current = null;
-          setActiveGasStation(null);
-          setIsRefueling(false);
-        }
+      } else if (parkedBayRef.current && (!isCompletelyParked || (!boxGasZone && !boxMechZone))) {
+        parkedBayRef.current = null;
+        setParkedBay(null);
       }
 
-      // 3B. MECHANIC DRIVE-IN COMPOUND DETECTION (THREE.Box3 Zone Intersection)
-      const boxMechZone = engineRef.current ? engineRef.current.getIntersectingMechanicCompoundZone() : null;
-      if (boxMechZone) {
-        if (!activeMechanicCompoundRef.current || activeMechanicCompoundRef.current.id !== boxMechZone.id) {
-          activeMechanicCompoundRef.current = boxMechZone;
-          setActiveMechanicCompound(boxMechZone);
-          soundEngine.playHorn(false);
-          addFeedMessage(`🔧 ENTERED ${boxMechZone.name.toUpperCase()}: Pull onto the blue ramp & stop for repairs or upgrades!`);
+      // Proximity check in Walk Mode for NPCs and parked Danfo bus
+      if (sim.isSteppedDown && engineRef.current) {
+        const entities = engineRef.current.getNearbyServiceEntities();
+        if (entities.nearbyGasAttendant && entities.nearbyGasAttendant.dist < 3.8) {
+          const newTarget = {
+            type: 'GAS' as const,
+            name: entities.nearbyGasAttendant.brand,
+            data: entities.nearbyGasAttendant,
+          };
+          walkInteractTargetRef.current = newTarget;
+          setWalkInteractTarget(newTarget);
+        } else if (entities.nearbyMechanic && entities.nearbyMechanic.dist < 4.0) {
+          const newTarget = {
+            type: 'MECHANIC' as const,
+            name: entities.nearbyMechanic.name,
+            data: entities.nearbyMechanic,
+          };
+          walkInteractTargetRef.current = newTarget;
+          setWalkInteractTarget(newTarget);
+        } else if (entities.busDistance < 4.5) {
+          const newTarget = {
+            type: 'BUS' as const,
+            name: 'Danfo Bus',
+            data: null,
+          };
+          walkInteractTargetRef.current = newTarget;
+          setWalkInteractTarget(newTarget);
+        } else if (walkInteractTargetRef.current) {
+          walkInteractTargetRef.current = null;
+          setWalkInteractTarget(null);
         }
-      } else if (activeMechanicCompoundRef.current) {
-        activeMechanicCompoundRef.current = null;
-        setActiveMechanicCompound(null);
+      } else if (walkInteractTargetRef.current) {
+        walkInteractTargetRef.current = null;
+        setWalkInteractTarget(null);
       }
 
       // 3C. OSHODI NPC BRT STATION DETECTION (THREE.Box3 Zone Intersection)
@@ -1815,231 +1866,149 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         </div>
       )}
 
-      {/* ⛽ ZUUKS-STYLE GAS STATION LOGIC & 2D HTML REFUELING SCREEN */}
-      {activeGasStation && (
-        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-50 pointer-events-auto w-[92vw] max-w-md">
-          {hudSpeed > 0 ? (
-            <div className="bg-stone-950/95 border-2 border-amber-400 rounded-2xl px-4 py-2.5 shadow-2xl flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <Fuel className="w-5 h-5 text-amber-400 animate-bounce shrink-0" />
-                <div>
-                  <div className="text-[10px] font-mono font-black text-amber-400">
-                    ⛽ ENTERING {activeGasStation.name.toUpperCase()}
-                  </div>
-                  <div className="text-[11px] text-stone-200 font-semibold">
-                    Brake to a complete stop (0 km/h) beside the pump to refuel!
-                  </div>
-                </div>
-              </div>
-              <span className="text-xs font-mono font-black text-amber-300">{hudSpeed} km/h</span>
+      {/* 🅿️ SLEEK PARKED IN SERVICE BAY PROMPT */}
+      {parkedBay && !isSteppedDown && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-40 pointer-events-auto max-w-sm w-[90vw] bg-stone-950/95 border-2 border-amber-400 rounded-2xl p-3 shadow-2xl backdrop-blur-md flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-xl shrink-0">
+              {parkedBay.type === 'GAS' ? '⛽' : '🔧'}
             </div>
-          ) : isEngineRunning ? (
-            /* STEP 1: Stopped inside Gas Station Zone, but Engine is still ON */
-            <div className="bg-stone-950/95 border-2 border-rose-500 rounded-2xl p-3.5 shadow-2xl flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <Power className="w-6 h-6 text-rose-400 animate-pulse shrink-0" />
-                <div>
-                  <div className="text-[10px] font-mono font-black text-rose-400">
-                    ⛽ ALIGNED AT PUMP • {activeGasStation.name.toUpperCase()}
-                  </div>
-                  <div className="text-xs text-white font-bold">
-                    Turn OFF your engine (Key E or K) to begin refueling!
-                  </div>
-                  <div className="text-[10px] text-stone-400 font-mono">
-                    Zuuks Safety Rule: Pump will not dispense while engine is running.
-                  </div>
-                </div>
+            <div>
+              <div className="text-[10px] font-mono font-black text-amber-400 uppercase tracking-wide truncate max-w-[180px]">
+                🅿️ PARKED • {parkedBay.name}
               </div>
-              <button
-                onClick={toggleEngine}
-                className="px-3.5 py-2 bg-rose-500 hover:bg-rose-400 active:scale-95 text-white font-black text-[10px] font-['Bungee'] rounded-xl shadow-lg shrink-0"
-              >
-                🔑 CUT ENGINE (E)
-              </button>
-            </div>
-          ) : (
-            /* STEP 2: Engine is OFF & Velocity is 0 -> 2D HTML ZUUKS REFUELING SCREEN ('Refueling... ₦500 per Liter') */
-            <div className="bg-stone-950/98 border-2 border-emerald-400 rounded-2xl p-4 shadow-[0_12px_36px_rgba(0,0,0,0.95)] flex flex-col gap-2.5 backdrop-blur-md">
-              <div className="flex items-center justify-between border-b border-stone-800 pb-2">
-                <div className="flex items-center gap-2">
-                  <Fuel className="w-5 h-5 text-emerald-400 animate-pulse" />
-                  <div>
-                    <div className="text-xs font-black font-['Bungee'] text-emerald-400 tracking-wide">
-                      {hudFuel >= 100 ? '✅ TANK FULL (100%)' : '⛽ REFUELING... ₦500 PER LITER'}
-                    </div>
-                    <div className="text-[10px] font-mono text-stone-400">
-                      {activeGasStation.name} • Engine OFF • Automatic Pump Active
-                    </div>
-                  </div>
-                </div>
-                <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/50 text-[10px] font-mono font-black text-emerald-300">
-                  ₦500 / L
-                </span>
-              </div>
-
-              {/* Live Digital Pump Readout */}
-              <div className="grid grid-cols-3 gap-2 bg-stone-900/90 border border-stone-800 rounded-xl p-2 text-center font-mono">
-                <div>
-                  <div className="text-[8px] text-stone-400">LITERS PUMPED</div>
-                  <div className="text-sm font-black text-white tabular-nums">{refuelLitersPumped.toFixed(1)} L</div>
-                </div>
-                <div className="border-x border-stone-800">
-                  <div className="text-[8px] text-stone-400">TOTAL COST</div>
-                  <div className="text-sm font-black text-amber-400 tabular-nums">₦{refuelCostNaira.toLocaleString()}</div>
-                </div>
-                <div>
-                  <div className="text-[8px] text-stone-400">WALLET BALANCE</div>
-                  <div className="text-sm font-black text-emerald-400 tabular-nums">₦{gameState.walletNaira.toLocaleString()}</div>
-                </div>
-              </div>
-
-              {/* Tank Level Progress Bar */}
-              <div className="flex flex-col gap-1">
-                <div className="flex justify-between text-[10px] font-mono font-bold">
-                  <span className="text-stone-300">DIESEL TANK LEVEL</span>
-                  <span className="text-emerald-400 font-black">{hudFuel}%</span>
-                </div>
-                <div className="w-full h-3 bg-stone-900 rounded-full overflow-hidden border border-stone-700">
-                  <div
-                    className="h-full bg-gradient-to-r from-amber-400 to-emerald-400 transition-all duration-150"
-                    style={{ width: `${hudFuel}%` }}
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between gap-2 pt-1">
-                <span className="text-[9px] font-mono text-stone-400">
-                  Start engine (Key E or K) when ready to depart
-                </span>
-                <button
-                  onClick={toggleEngine}
-                  className="px-4 py-2 bg-amber-400 hover:bg-amber-300 active:scale-95 text-stone-950 font-black text-[10px] font-['Bungee'] rounded-xl shadow-lg flex items-center gap-1.5"
-                >
-                  <Power className="w-3.5 h-3.5" />
-                  <span>START ENGINE & DRIVE (E)</span>
-                </button>
+              <div className="text-xs text-white font-bold">
+                {parkedBay.type === 'GAS' ? 'Step out to see the Fuel Attendant' : 'Step out to see the Mechanic'}
               </div>
             </div>
+          </div>
+          <button
+            onClick={toggleStepDown}
+            className="px-3.5 py-2 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 active:scale-95 text-stone-950 font-black text-[10px] font-['Bungee'] rounded-xl shadow-lg shrink-0 flex items-center gap-1 transition"
+          >
+            <span>🚶 STEP OUT (F)</span>
+          </button>
+        </div>
+      )}
+
+      {/* 💬 ON-FOOT SERVICE INTERACTION PROMPT */}
+      {isSteppedDown && walkInteractTarget && (
+        <div className="absolute bottom-28 left-1/2 -translate-x-1/2 z-50 pointer-events-auto animate-in fade-in zoom-in-95 duration-150">
+          {walkInteractTarget.type === 'GAS' && (
+            <button
+              onClick={() => setIsGasModalOpen(true)}
+              className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 active:scale-95 text-stone-950 font-black text-xs font-['Bungee'] rounded-2xl shadow-[0_8px_25px_rgba(16,185,129,0.5)] border-2 border-emerald-300 flex items-center gap-2 animate-bounce"
+            >
+              <span>⛽ TALK TO FUEL ATTENDANT ({walkInteractTarget.name})</span>
+              <span className="px-1.5 py-0.5 rounded bg-black/30 text-[9px] font-mono text-white">[E]</span>
+            </button>
+          )}
+          {walkInteractTarget.type === 'MECHANIC' && (
+            <button
+              onClick={() => setIsMechanicModalOpen(true)}
+              className="px-5 py-2.5 bg-gradient-to-r from-sky-500 to-sky-600 hover:from-sky-400 hover:to-sky-500 active:scale-95 text-stone-950 font-black text-xs font-['Bungee'] rounded-2xl shadow-[0_8px_25px_rgba(14,165,233,0.5)] border-2 border-sky-300 flex items-center gap-2 animate-bounce"
+            >
+              <span>🔧 TALK TO MECHANIC BABA KAZEEM</span>
+              <span className="px-1.5 py-0.5 rounded bg-black/30 text-[9px] font-mono text-white">[E]</span>
+            </button>
+          )}
+          {walkInteractTarget.type === 'BUS' && (
+            <button
+              onClick={toggleStepDown}
+              className="px-5 py-2.5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 active:scale-95 text-stone-950 font-black text-xs font-['Bungee'] rounded-2xl shadow-[0_8px_25px_rgba(245,158,11,0.5)] border-2 border-amber-300 flex items-center gap-2 animate-bounce"
+            >
+              <span>🚌 GET IN DANFO BUS</span>
+              <span className="px-1.5 py-0.5 rounded bg-black/30 text-[9px] font-mono text-stone-900">[E / F]</span>
+            </button>
           )}
         </div>
       )}
 
-      {/* 🔧 MECHANIC DRIVE-IN COMPOUND WORKSHOP HUD */}
-      {activeMechanicCompound && !activeGasStation && (
-        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-50 pointer-events-auto w-[94vw] max-w-md bg-stone-950/95 border-2 border-sky-400 rounded-2xl p-3.5 shadow-[0_14px_40px_rgba(0,0,0,0.95)] backdrop-blur-md flex flex-col gap-2.5">
-          <div className="flex items-center justify-between border-b border-stone-800 pb-2">
-            <div className="flex items-center gap-2">
-              <Wrench className="w-5 h-5 text-sky-400 animate-bounce shrink-0" />
-              <div>
-                <div className="text-xs font-black font-['Bungee'] text-sky-400 tracking-wide">
-                  🔧 {activeMechanicCompound.name}
-                </div>
-                <div className="text-[10px] font-mono text-stone-400">
-                  {activeMechanicCompound.specialty}
-                </div>
-              </div>
-            </div>
-            <span className="px-2 py-0.5 rounded bg-sky-500/20 border border-sky-400/50 text-[9px] font-mono font-black text-sky-300">
-              DRIVE-IN BAY
-            </span>
-          </div>
+      {/* ⛽ GAS STATION FUEL SERVICE MODAL */}
+      <GasStationServiceModal
+        station={{
+          id: parkedBay?.id || 'gas-station',
+          name: parkedBay?.name || 'Total Energies Express Plaza',
+          brand: parkedBay?.brand || 'TOTAL',
+          pricePerLiter: 500,
+        }}
+        currentFuel={hudFuel}
+        walletNaira={gameState.walletNaira}
+        isOpen={isGasModalOpen}
+        onClose={() => setIsGasModalOpen(false)}
+        onRefuelSuccess={(liters, cost) => {
+          const nextFuel = Math.min(100, simRef.current.fuel + liters * 2.0);
+          simRef.current.fuel = nextFuel;
+          setHudFuel(nextFuel);
+          setGameState((prev) => {
+            const nextWallet = Math.max(0, prev.walletNaira - cost);
+            onUpdateSave?.({ walletNaira: nextWallet });
+            return {
+              ...prev,
+              walletNaira: nextWallet,
+              bus: {
+                ...prev.bus,
+                fuel: nextFuel,
+              },
+            };
+          });
+          triggerCashToast(-cost, `-₦${cost.toLocaleString()} Refueled ${liters}L`);
+          addFeedMessage(`⛽ REFUEL COMPLETE: Added +${liters}L of diesel for ₦${cost.toLocaleString()}!`);
+        }}
+      />
 
-          {/* Live Vehicle Condition Row */}
-          <div className="grid grid-cols-3 gap-2 bg-stone-900/90 border border-stone-800 rounded-xl p-2 text-center font-mono text-[10px]">
-            <div>
-              <div className="text-[8px] text-stone-400">ENGINE HEAT</div>
-              <div className="font-black text-sky-300">{hudHeat}°C</div>
-            </div>
-            <div className="border-x border-stone-800">
-              <div className="text-[8px] text-stone-400">BUS COMFORT</div>
-              <div className="font-black text-emerald-400">{hudComfort}%</div>
-            </div>
-            <div>
-              <div className="text-[8px] text-stone-400">WALLET</div>
-              <div className="font-black text-amber-400">₦{gameState.walletNaira.toLocaleString()}</div>
-            </div>
-          </div>
-
-          {/* Instant Overhaul & Drive-In Upgrades */}
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={() => {
-                if (gameState.walletNaira < 400) {
-                  addFeedMessage('⚠️ Need ₦400 for Full Engine & Body Overhaul!');
-                  return;
-                }
-                soundEngine.playCoin();
-                simRef.current.heat = 15;
-                simRef.current.comfort = 100;
-                setHudHeat(15);
-                setHudComfort(100);
-                setGameState((prev) => {
-                  const nextWallet = prev.walletNaira - 400;
-                  onUpdateSave?.({ walletNaira: nextWallet });
-                  return {
-                    ...prev,
-                    walletNaira: nextWallet,
-                    bus: {
-                      ...prev.bus,
-                      condition: 100,
-                      heat: 15,
-                      comfortMeter: 100,
-                    },
-                  };
-                });
-                addFeedMessage('🔧 MECHANIC OVERHAUL COMPLETE: Engine cooled to 15°C & suspension restored to 100%!');
-              }}
-              className="py-2 px-2.5 bg-sky-400 hover:bg-sky-300 active:scale-95 text-stone-950 font-black text-[10px] font-['Bungee'] rounded-xl shadow flex items-center justify-center gap-1"
-            >
-              <span>🔧 FULL SERVICE (₦400)</span>
-            </button>
-
-            <button
-              onClick={() => {
-                const hasFan = gameState.bus.upgrades.dualRadiatorFan;
-                const cost = hasFan ? 0 : 500;
-                if (!hasFan && gameState.walletNaira < cost) {
-                  addFeedMessage('⚠️ Need ₦500 to install Dual Radiator Fan + Bull-Bar!');
-                  return;
-                }
-                soundEngine.playCoin();
-                setGameState((prev) => {
-                  const nextWallet = prev.walletNaira - cost;
-                  const nextUpgrades = {
-                    ...prev.bus.upgrades,
-                    dualRadiatorFan: true,
-                    heavyBullBar: !prev.bus.upgrades.heavyBullBar,
-                  };
-                  simRef.current.busUpgrades = nextUpgrades;
-                  onUpdateSave?.({ walletNaira: nextWallet, busUpgrades: nextUpgrades });
-                  return {
-                    ...prev,
-                    walletNaira: nextWallet,
-                    bus: {
-                      ...prev.bus,
-                      upgrades: nextUpgrades,
-                    },
-                  };
-                });
-                addFeedMessage('🛡️ MECHANIC COMPOUND: Toggled Front Steel Bull-Bar & tuned Dual Radiator Fan!');
-              }}
-              className="py-2 px-2.5 bg-amber-400 hover:bg-amber-300 active:scale-95 text-stone-950 font-black text-[10px] font-['Bungee'] rounded-xl shadow flex items-center justify-center gap-1"
-            >
-              <span>🛡️ BULL-BAR / FAN ({gameState.bus.upgrades.dualRadiatorFan ? 'INSTALLED' : '₦500'})</span>
-            </button>
-          </div>
-
-          {onGoHome && (
-            <button
-              onClick={onGoHome}
-              className="w-full py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/60 text-emerald-300 rounded-xl font-mono font-black text-[10px] flex items-center justify-center gap-1.5"
-            >
-              <Home className="w-3.5 h-3.5" />
-              <span>🏠 PARK BUS IN COMPOUND & GO HOME (2D ROOM)</span>
-            </button>
-          )}
-        </div>
-      )}
+      {/* 🔧 MECHANIC REPAIR & UPGRADE MODAL */}
+      <MechanicServiceModal
+        workshop={{
+          id: parkedBay?.id || 'mechanic-workshop',
+          name: parkedBay?.name || 'Baba Suwe Mechanic Yard',
+          specialty: parkedBay?.specialty || 'Engine Overhaul & Suspension',
+        }}
+        engineHeat={hudHeat}
+        busComfort={hudComfort}
+        busCondition={gameState.bus.durability}
+        upgrades={gameState.bus.upgrades}
+        walletNaira={gameState.walletNaira}
+        isOpen={isMechanicModalOpen}
+        onClose={() => setIsMechanicModalOpen(false)}
+        onServiceApplied={({ newHeat, newComfort, newCondition, newUpgrades, costNaira, serviceName }) => {
+          if (newHeat !== undefined) {
+            simRef.current.heat = newHeat;
+            setHudHeat(newHeat);
+          }
+          if (newComfort !== undefined) {
+            simRef.current.comfort = newComfort;
+            setHudComfort(newComfort);
+          }
+          if (newUpgrades) {
+            simRef.current.busUpgrades = {
+              ...simRef.current.busUpgrades,
+              ...newUpgrades,
+            };
+          }
+          setGameState((prev) => {
+            const nextWallet = Math.max(0, prev.walletNaira - costNaira);
+            const nextUpgrades = newUpgrades ? { ...prev.bus.upgrades, ...newUpgrades } : prev.bus.upgrades;
+            onUpdateSave?.({
+              walletNaira: nextWallet,
+              busUpgrades: nextUpgrades,
+            });
+            return {
+              ...prev,
+              walletNaira: nextWallet,
+              bus: {
+                ...prev.bus,
+                heat: newHeat !== undefined ? newHeat : prev.bus.heat,
+                comfortMeter: newComfort !== undefined ? newComfort : prev.bus.comfortMeter,
+                durability: newCondition !== undefined ? newCondition : prev.bus.durability,
+                upgrades: nextUpgrades,
+              },
+            };
+          });
+          triggerCashToast(-costNaira, `-₦${costNaira.toLocaleString()} ${serviceName}`);
+          addFeedMessage(`🔧 ${serviceName.toUpperCase()} COMPLETE for ₦${costNaira.toLocaleString()}!`);
+        }}
+      />
 
       {/* 🚌 OSHODI NPC BRT MEGA TERMINAL HUD BANNER */}
       {activeBrtStation && !activeGasStation && !activeMechanicCompound && (
@@ -2953,6 +2922,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                     </button>
                   </div>
                   <div
+                    id="alt-steering-wheel"
                     ref={wheelElementRef}
                     onPointerDown={handleWheelPointerDown}
                     onPointerMove={handleWheelPointerMove}

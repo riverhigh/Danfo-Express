@@ -1713,13 +1713,13 @@ export class ThreeDrivingEngine {
       this.scene.add(group);
       this.gasStationMeshes.push(group);
 
-      // 4. Static 3D Bounding Box (THREE.Box3) representing the Gas Station Refueling Zone!
-      // Covers the pull-off side lane and outer shoulder next to the pumps so pulling into the station triggers it cleanly.
-      const minX = st.x < 0 ? -21.5 : 4.2;
-      const maxX = st.x < 0 ? -4.2 : 21.5;
+      // 4. Static 3D Bounding Box (THREE.Box3) representing the Gas Station Refueling Bay!
+      // Covers the pull-off side lane and apron next to the pumps (outside the highway) so pulling into the station triggers it cleanly.
+      const minX = st.x < 0 ? -22.5 : 10.2;
+      const maxX = st.x < 0 ? -10.2 : 22.5;
       const zoneBox = new THREE.Box3(
-        new THREE.Vector3(minX, -1.0, st.z - 19),
-        new THREE.Vector3(maxX, 6.0, st.z + 19)
+        new THREE.Vector3(minX, -1.0, st.z - 13),
+        new THREE.Vector3(maxX, 6.0, st.z + 13)
       );
       this.gasStationZones.push({
         id: st.id,
@@ -1905,11 +1905,11 @@ export class ThreeDrivingEngine {
       this.scene.add(group);
 
       // 5. Static 3D Bounding Box (THREE.Box3) for Mechanic Drive-In Compound detection
-      const minX = isLeft ? 4.2 : -25.5;
-      const maxX = isLeft ? 25.5 : -4.2;
+      const minX = isLeft ? 10.2 : -25.5;
+      const maxX = isLeft ? 25.5 : -10.2;
       const zoneBox = new THREE.Box3(
-        new THREE.Vector3(minX, -1.0, mc.z - 21),
-        new THREE.Vector3(maxX, 6.0, mc.z + 21)
+        new THREE.Vector3(minX, -1.0, mc.z - 15),
+        new THREE.Vector3(maxX, 6.0, mc.z + 15)
       );
       this.mechanicCompoundZones.push({
         id: mc.id,
@@ -4280,8 +4280,8 @@ export class ThreeDrivingEngine {
       this.vehicle.updateWheelTransform(i);
     }
 
-    const frontSteerAngle = this.smoothedSteerNorm * 0.48;
-    // Outer knuckle strictly handles Y-axis steering yaw
+    // Outer knuckle strictly handles Y-axis steering yaw: Turning left steers toward +X (left of road)
+    const frontSteerAngle = -this.smoothedSteerNorm * 0.48;
     this.leftFrontWheel.rotation.set(0, frontSteerAngle, 0);
     this.rightFrontWheel.rotation.set(0, frontSteerAngle, 0);
 
@@ -4523,8 +4523,8 @@ export class ThreeDrivingEngine {
           }
         }
 
-        this.driverWalkPos.x = Math.max(-26, Math.min(16, this.driverWalkPos.x));
-        this.driverWalkPos.z = Math.max(busZ - 35, Math.min(busZ + 35, this.driverWalkPos.z));
+        this.driverWalkPos.x = Math.max(-28.5, Math.min(28.5, this.driverWalkPos.x));
+        this.driverWalkPos.z = Math.max(busZ - 40, Math.min(busZ + 40, this.driverWalkPos.z));
 
         // Animate 3D Driver Character walking stride
         this.driverWalkAnimTimer += dt * 11 * Math.min(1.0, joyMag);
@@ -5241,6 +5241,63 @@ export class ThreeDrivingEngine {
       x: this.busRoot ? this.busRoot.position.x : 0,
       y: this.busRoot ? this.busRoot.position.y : 0,
       z: this.busRoot ? this.busRoot.position.z : 0,
+    };
+  }
+
+  public getDriverWalkPos(): { x: number; y: number; z: number } {
+    return {
+      x: this.driverWalkPos.x,
+      y: this.driverWalkPos.y,
+      z: this.driverWalkPos.z,
+    };
+  }
+
+  public getNearbyServiceEntities(): {
+    nearbyGasAttendant: { id: string; name: string; brand: string; x: number; z: number; dist: number } | null;
+    nearbyMechanic: { id: string; name: string; specialty: string; x: number; z: number; dist: number } | null;
+    busDistance: number;
+  } {
+    const p = this.driverWalkPos;
+    const busPos = this.busRoot ? this.busRoot.position : new THREE.Vector3();
+    const busDist = Math.hypot(p.x - busPos.x, p.z - busPos.z);
+
+    let nearbyGas: { id: string; name: string; brand: string; x: number; z: number; dist: number } | null = null;
+    const gasStations = [
+      { id: 'gas-0', name: 'Conoil Express Service Bay', brand: 'CONOIL', z: 210, x: -14.5 },
+      { id: 'gas-1', name: 'Total Energies Express Plaza', brand: 'TOTAL', z: 520, x: 14.5 },
+      { id: 'gas-2', name: 'Oando Mega Petrol Station', brand: 'OANDO', z: 1750, x: 14.5 },
+    ];
+    for (const st of gasStations) {
+      // Attendant is at (st.x, 0, st.z + 1.8)
+      const dist = Math.hypot(p.x - st.x, p.z - (st.z + 1.8));
+      if (dist < 26) {
+        nearbyGas = { id: st.id, name: st.name, brand: st.brand, x: st.x, z: st.z + 1.8, dist };
+        break;
+      }
+    }
+
+    let nearbyMech: { id: string; name: string; specialty: string; x: number; z: number; dist: number } | null = null;
+    const mechanicCompounds = [
+      { id: 'mech-0', name: 'Baba Suwe Drive-In Mechanic Compound', specialty: 'Engine Overhaul & Radiator', z: 95, x: 16.5 },
+      { id: 'mech-1', name: 'Ladipo Auto Parts & Mechanic Village', specialty: 'Chassis & Suspension Repair', z: 1160, x: -16.5 },
+      { id: 'mech-2', name: 'Surulere / Costain Express Mechanic Yard', specialty: 'Heavy Duty Shocks & Body Work', z: 2120, x: 16.5 },
+    ];
+    for (const mc of mechanicCompounds) {
+      const isLeft = mc.x > 0;
+      const roadEdgeSign = isLeft ? -1 : 1;
+      const mechX = mc.x - roadEdgeSign * 2.2;
+      const mechZ = mc.z + 5.5;
+      const dist = Math.hypot(p.x - mechX, p.z - mechZ);
+      if (dist < 30) {
+        nearbyMech = { id: mc.id, name: mc.name, specialty: mc.specialty, x: mechX, z: mechZ, dist };
+        break;
+      }
+    }
+
+    return {
+      nearbyGasAttendant: nearbyGas,
+      nearbyMechanic: nearbyMech,
+      busDistance: busDist,
     };
   }
 
