@@ -69,6 +69,8 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
   const [doorState, setDoorState] = useState<DoorState>(gameState.bus.doorState || 'CLOSED');
   const [bootState, setBootState] = useState<'OPEN' | 'CLOSED'>('CLOSED');
   const [isSteppedDown, setIsSteppedDown] = useState<boolean>(false);
+  const [walkThirdPerson, setWalkThirdPerson] = useState<boolean>(true);
+  const walkThirdPersonRef = useRef<boolean>(true);
   const [turnSignal, setTurnSignal] = useState<'OFF' | 'LEFT' | 'RIGHT'>('OFF');
   const [hazardLights, setHazardLights] = useState<boolean>(false);
   const [wipersActive, setWipersActive] = useState<boolean>(false);
@@ -83,6 +85,10 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
   useEffect(() => {
     cameraModeRef.current = cameraMode;
   }, [cameraMode]);
+
+  useEffect(() => {
+    walkThirdPersonRef.current = walkThirdPerson;
+  }, [walkThirdPerson]);
 
   // NPC Interaction State
   const [activeNpc, setActiveNpc] = useState<LagosNpc | null>(null);
@@ -128,6 +134,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
     fuel: gameState.bus.fuelPercent,
     comfort: gameState.bus.comfortMeter,
     laneOffset: initialLaneOffset,
+    headingYaw: 0,
     distanceTraveled: gameState.distanceTraveledMeters || 0,
     targetDistance: gameState.targetDistanceMeters,
     steeringAngle: 0,
@@ -229,44 +236,51 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
     }
   };
 
-  // Strict camera mode switcher
+  // Strict camera mode switcher (Works both while Driving and in On-Foot Walk Mode!)
   const cycleCameraMode = useCallback(() => {
-    if (isSteppedDown) {
-      addFeedMessage('🚶 Walkout mode: Drag to look around in first-person outside your bus.');
+    if (simRef.current.isSteppedDown) {
+      const nextWalk3P = !walkThirdPersonRef.current;
+      walkThirdPersonRef.current = nextWalk3P;
+      setWalkThirdPerson(nextWalk3P);
+      addFeedMessage(
+        nextWalk3P
+          ? '📷 WALK CAMERA: 3rd-Person On-Foot View (Driver + Danfo Bus)'
+          : '📷 WALK CAMERA: 1st-Person Eye View'
+      );
       return;
     }
-    setCameraMode((prev) => {
-      let next: CameraViewMode = 'FIRST_PERSON';
-      if (prev === 'FIRST_PERSON') next = 'THIRD_PERSON';
-      else if (prev === 'THIRD_PERSON') next = 'TOP_DOWN';
-      else if (prev === 'TOP_DOWN') next = 'ORBIT';
-      else next = 'FIRST_PERSON';
 
-      cameraModeRef.current = next;
+    const prev = cameraModeRef.current;
+    let next: CameraViewMode = 'FIRST_PERSON';
+    if (prev === 'FIRST_PERSON') next = 'THIRD_PERSON';
+    else if (prev === 'THIRD_PERSON') next = 'TOP_DOWN';
+    else if (prev === 'TOP_DOWN') next = 'ORBIT';
+    else next = 'FIRST_PERSON';
 
-      // STRICT LOGIC: Always reset look yaw/pitch so angles never desync or carry over
-      lookRef.current.yaw = 0;
-      lookRef.current.pitch = 0;
+    cameraModeRef.current = next;
+    setCameraMode(next);
 
-      const labels: Record<string, string> = {
-        FIRST_PERSON: '🎥 1ST PERSON (DR. DRIVING BUS DASH)',
-        THIRD_PERSON: '🚗 3RD PERSON (CHASE CAM)',
-        TOP_DOWN: '🦅 TOP-DOWN (BIRD EYE)',
-        ORBIT: '🔄 360 FREE ORBIT',
-      };
-      addFeedMessage(`📷 CAMERA VIEW: ${labels[next] || next}`);
-      return next;
-    });
-  }, [isSteppedDown, addFeedMessage]);
+    // Reset look yaw/pitch so camera transitions cleanly without carry-over angles
+    lookRef.current.yaw = 0;
+    lookRef.current.pitch = 0;
 
-  const toggleStepDown = () => {
-    if (!isSteppedDown && simRef.current.speed > 12) {
+    const labels: Record<string, string> = {
+      FIRST_PERSON: '🎥 1ST PERSON (DR. DRIVING BUS DASH)',
+      THIRD_PERSON: '🚗 3RD PERSON (CHASE CAM)',
+      TOP_DOWN: '🦅 TOP-DOWN (BIRD EYE)',
+      ORBIT: '🔄 360 FREE ORBIT',
+    };
+    addFeedMessage(`📷 CAMERA VIEW: ${labels[next] || next}`);
+  }, [addFeedMessage]);
+
+  const toggleStepDown = useCallback(() => {
+    if (!simRef.current.isSteppedDown && simRef.current.speed > 14) {
       addFeedMessage('⚠️ Slow down before stepping out of the Danfo bus!');
       return;
     }
-    const nextStep = !isSteppedDown;
-    setIsSteppedDown(nextStep);
+    const nextStep = !simRef.current.isSteppedDown;
     simRef.current.isSteppedDown = nextStep;
+    setIsSteppedDown(nextStep);
     soundEngine.playDoorOpenClose();
     if (nextStep) {
       // Bring bus to a complete parked stop so it stays right beside the player
@@ -281,17 +295,18 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       walkJoyRef.current.x = 0;
       walkJoyRef.current.y = 0;
       setWalkJoyVisual({ x: 0, y: 0 });
+      walkThirdPersonRef.current = true;
+      setWalkThirdPerson(true);
 
-      if (doorState === 'CLOSED') {
+      if (simRef.current.doorState === 'CLOSED') {
         setDoorState('OPEN');
         simRef.current.doorState = 'OPEN';
         soundEngine.playDoorSlide(true);
       }
-      // Reset walk look angles so camera faces the yellow Danfo bus directly!
+      // Reset walk look angles so camera frames the 3D Driver Character and yellow Danfo bus directly!
       lookRef.current.yaw = 0;
       lookRef.current.pitch = -0.04;
 
-      // STRICT: ONLY open NPC dialogue popup if parked at a BUS STOP or FILLING STATION!
       const currentDist = simRef.current.distanceTraveled;
       const nearJunction = gameState.junctions.find(
         (j) => Math.abs(j.distanceMarkerMeters - currentDist) <= 18
@@ -317,7 +332,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         setActiveNpc(shopNpc);
       } else {
         setActiveNpc(null);
-        addFeedMessage('🚶 ON FOOT: Your Danfo bus is parked right in front of you! Use WASD / Joystick to walk around it.');
+        addFeedMessage('🚶 ON FOOT: Walking outside your Danfo bus! Use WASD or the Walk Pad to move around.');
       }
     } else {
       // RE-ENTERING DRIVER SEAT: automatically ready to start & drive!
@@ -338,23 +353,21 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       lookRef.current.pitch = 0;
       addFeedMessage('🚌 BACK IN DRIVER SEAT: Engine running, in D gear, ready to accelerate!');
     }
-  };
+  }, [gameState.junctions, gameState.gasStations, gameState.roadsideShops, addFeedMessage]);
 
-  // Walk Mode Virtual Analog Joystick Handlers
-  const handleWalkJoyPointerDown = (e: React.PointerEvent) => {
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    walkJoyRef.current.isDragging = true;
-    walkJoyRef.current.startX = e.clientX;
-    walkJoyRef.current.startY = e.clientY;
-  };
-
-  const handleWalkJoyPointerMove = (e: React.PointerEvent) => {
-    if (!walkJoyRef.current.isDragging) return;
-    const dx = e.clientX - walkJoyRef.current.startX;
-    const dy = e.clientY - walkJoyRef.current.startY;
-    const maxRadius = 36;
+  // Walk Mode Virtual Analog Joystick Handlers (Uses pad center so tapping arrows OR dragging works!)
+  const updateWalkJoystickFromClient = (clientX: number, clientY: number, centerX: number, centerY: number) => {
+    const dx = clientX - centerX;
+    const dy = clientY - centerY;
+    const maxRadius = 38;
     const dist = Math.hypot(dx, dy);
-    const clampedDist = Math.min(maxRadius, dist);
+    if (dist < 2) {
+      walkJoyRef.current.x = 0;
+      walkJoyRef.current.y = 0;
+      setWalkJoyVisual({ x: 0, y: 0 });
+      return;
+    }
+    const clampedDist = Math.min(maxRadius, Math.max(16, dist));
     const angle = Math.atan2(dy, dx);
     const clampedX = Math.cos(angle) * clampedDist;
     const clampedY = Math.sin(angle) * clampedDist;
@@ -364,7 +377,28 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
     setWalkJoyVisual({ x: clampedX, y: clampedY });
   };
 
-  const handleWalkJoyPointerUp = () => {
+  const handleWalkJoyPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch {}
+    const rect = e.currentTarget.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    walkJoyRef.current.isDragging = true;
+    walkJoyRef.current.startX = cx;
+    walkJoyRef.current.startY = cy;
+    updateWalkJoystickFromClient(e.clientX, e.clientY, cx, cy);
+  };
+
+  const handleWalkJoyPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!walkJoyRef.current.isDragging) return;
+    e.stopPropagation();
+    updateWalkJoystickFromClient(e.clientX, e.clientY, walkJoyRef.current.startX, walkJoyRef.current.startY);
+  };
+
+  const handleWalkJoyPointerUp = (e?: React.PointerEvent<HTMLDivElement>) => {
+    if (e) {
+      try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
+    }
     walkJoyRef.current.isDragging = false;
     walkJoyRef.current.x = 0;
     walkJoyRef.current.y = 0;
@@ -533,7 +567,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
     inputsRef.current.isDraggingWheel = true;
     try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch {}
 
-    const el = wheelElementRef.current || (e.currentTarget as HTMLDivElement);
+    const el = e.currentTarget as HTMLDivElement;
     if (el) {
       const rect = el.getBoundingClientRect();
       const cx = rect.left + rect.width / 2;
@@ -594,6 +628,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           walkJoyRef.current.x = 1;
           setWalkJoyVisual((v) => ({ ...v, x: 28 }));
         }
+        if (e.key === 'v' || e.key === 'V') cycleCameraMode();
         if (e.key === 'o' || e.key === 'O') toggleDoor();
         if (e.key === 'b' || e.key === 'B') toggleBoot();
         if (e.key === 'p' || e.key === 'P') onOpenPhone();
@@ -792,21 +827,40 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         sim.heat = Math.max(10, sim.heat - 4.5 * fanMult * dt);
       }
 
-      // Lateral lane offset & distance only update when driving (locked when parked on foot!)
+      // True Ackermann / Bicycle Vehicle Turning Kinematics (Zero Lateral Sliding!)
       if (sim.isSteppedDown) {
         sim.speed = 0;
-      } else {
+      } else if (sim.speed > 0.05) {
+        const speedMps = (sim.speed * 1000) / 3600;
         const turnDir = inp.gear === 'R' ? -1 : 1;
-        const speedMultiplier = Math.max(5.8, (sim.speed / 28) * 9.5);
-        sim.laneOffset -= turnDir * steerFactor * speedMultiplier * dt;
-        const minLaneX = sim.distanceTraveled < 48 ? -26.5 : -8.5;
-        sim.laneOffset = Math.max(minLaneX, Math.min(8.5, sim.laneOffset));
 
-        const deltaM = (sim.speed * 1000 / 3600) * dt;
+        // Front wheel steer angle in radians (Steer Left -> steerFactor < 0 -> wheelAngleRad > 0 -> turns toward +X Left)
+        const wheelAngleRad = -steerFactor * 0.46;
+        const wheelbase = 3.45;
+        const effectiveTurnSpeed = Math.min(speedMps, 14.5);
+        const yawRate = turnDir * (effectiveTurnSpeed / wheelbase) * Math.tan(wheelAngleRad) * 1.38;
+
+        // Natural self-aligning road follow as driver centers the wheel
+        const selfAlignRate = (1 - Math.abs(steerFactor) * 0.65) * (0.9 + speedMps * 0.12);
+        sim.headingYaw += (yawRate - sim.headingYaw * selfAlignRate) * dt;
+        sim.headingYaw = Math.max(-0.45, Math.min(0.45, sim.headingYaw));
+
+        // Lateral & longitudinal motion driven strictly by the bus's nose heading (Math.sin / Math.cos)
+        sim.laneOffset += Math.sin(sim.headingYaw) * speedMps * dt;
+        const minLaneX = sim.distanceTraveled < 48 ? -26.5 : -8.5;
+        if (sim.laneOffset <= minLaneX) {
+          sim.laneOffset = minLaneX;
+          if (sim.headingYaw < 0) sim.headingYaw *= Math.pow(0.04, dt);
+        } else if (sim.laneOffset >= 8.5) {
+          sim.laneOffset = 8.5;
+          if (sim.headingYaw > 0) sim.headingYaw *= Math.pow(0.04, dt);
+        }
+
+        const forwardDeltaM = Math.cos(sim.headingYaw) * speedMps * dt;
         if (inp.gear === 'R') {
-          sim.distanceTraveled = Math.max(0, sim.distanceTraveled - deltaM);
+          sim.distanceTraveled = Math.max(0, sim.distanceTraveled - forwardDeltaM);
         } else {
-          sim.distanceTraveled += deltaM;
+          sim.distanceTraveled += forwardDeltaM;
         }
       }
 
@@ -1041,9 +1095,11 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       if (engineRef.current) {
         engineRef.current.update(
           {
-            speedKmH: Math.round(sim.speed),
+            speedKmH: sim.speed,
             steeringWheelAngleDeg: sim.steeringAngle,
             laneOffsetMeters: sim.laneOffset,
+            headingYaw: sim.headingYaw,
+            walkThirdPerson: walkThirdPersonRef.current,
             gear: inp.gear,
             isBraking: inp.brake,
             cameraMode: cameraModeRef.current,
@@ -1073,14 +1129,14 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         );
 
         const phys = engineRef.current.getPhysicsChassis();
-        if (phys && !isNaN(phys.speedKmH) && !isNaN(phys.position.x) && !isNaN(phys.position.z)) {
-          sim.speed = phys.speedKmH;
+        if (phys && !isNaN(phys.position.x) && !isNaN(phys.position.z)) {
           sim.laneOffset = phys.position.x;
           sim.distanceTraveled = Math.max(0, phys.position.z);
         }
 
         const collisionMsg = engineRef.current.consumeCollisionMessage();
         if (collisionMsg) {
+          sim.speed = Math.max(0, sim.speed * 0.72);
           sim.comfort = Math.max(10, sim.comfort - 8);
           addFeedMessage(collisionMsg);
         }
@@ -1115,21 +1171,22 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
 
   // ── Retractable panel states ──────────────────────────────────────
   const [showTopHUD, setShowTopHUD] = React.useState(true);
+  const [isDashHidden, setIsDashHidden] = React.useState(false);
   const [showLeftPanel, setShowLeftPanel] = React.useState(true);
   const [showRightPanel, setShowRightPanel] = React.useState(true);
 
   return (
     <div className="relative w-[100vw] h-[100vh] bg-stone-950 overflow-hidden select-none pointer-events-none" style={{ position: "relative", width: "100vw", height: "100vh" }}>
       
-        {/* CAMERA MODE BUTTON - Positioned top-right below top HUD bar */}
-        <div className="absolute top-11 right-3 z-50 pointer-events-auto flex flex-col gap-1">
+        {/* QUICK CAMERA & WALK TOGGLE BAR - Positioned cleanly below Top Bar beside Left Mirror so it NEVER overlaps R-Mirror! */}
+        <div className="absolute top-10 left-[94px] sm:left-[138px] z-50 pointer-events-auto flex items-center gap-1.5">
           <button
             onClick={cycleCameraMode}
-            className="px-3 py-1.5 bg-stone-950/95 border-2 border-sky-400 hover:border-sky-300 rounded-xl text-sky-300 hover:text-white font-black text-[10px] font-mono shadow-2xl backdrop-blur flex items-center gap-1.5 active:scale-95 transition-all"
+            className="px-2.5 py-1 bg-stone-950/95 border-2 border-sky-400 hover:border-sky-300 rounded-xl text-sky-300 hover:text-white font-black text-[9px] sm:text-[10px] font-mono shadow-xl backdrop-blur flex items-center gap-1 active:scale-95 transition-all"
             title="Cycle Camera View (or press V)"
           >
             {isSteppedDown ? (
-              '🚶 ON FOOT (DRAG TO LOOK)'
+              walkThirdPerson ? '🎥 WALK: 3RD' : '👁️ WALK: 1ST'
             ) : (
               <>
                 {cameraMode === 'FIRST_PERSON' && '🎥 1ST COCKPIT'}
@@ -1138,6 +1195,17 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                 {cameraMode === 'ORBIT' && '🔄 360 FREE'}
               </>
             )}
+          </button>
+          <button
+            onClick={toggleStepDown}
+            className={`px-2.5 py-1 rounded-xl font-black text-[9px] sm:text-[10px] font-mono shadow-xl backdrop-blur border-2 flex items-center gap-1 active:scale-95 transition-all ${
+              isSteppedDown
+                ? 'bg-amber-400 border-amber-200 text-stone-950'
+                : 'bg-stone-950/95 border-amber-400/80 text-amber-300 hover:text-white'
+            }`}
+            title="Step Out to Walk Mode or Re-enter Bus (Press E)"
+          >
+            {isSteppedDown ? '🚌 GET IN BUS (E)' : '🚶 WALK MODE (E)'}
           </button>
         </div>
 
@@ -1556,28 +1624,43 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       )}
 
       {/* ═══════ FIRST-PERSON DR. DRIVING SLEEK LOW-PROFILE BUS COCKPIT DASHBOARD ═══════ */}
-      {/* Takes up only ~20-22% height at the bottom so 78%+ of the screen is wide-open road! */}
+      {/* When visible: takes ~20% height at bottom. When hidden: slides 100% down off-screen & disappears! */}
       {!isSteppedDown && cameraMode === 'FIRST_PERSON' && (
         <>
-          {/* Slim Yellow Danfo A-Pillars framing the edges of the wide windshield */}
-          <div className="absolute top-9 bottom-[20%] left-0 w-2 sm:w-3 bg-gradient-to-r from-amber-500 to-stone-900 border-r border-stone-800 z-20 pointer-events-none" />
-          <div className="absolute top-9 bottom-[20%] right-0 w-2 sm:w-3 bg-gradient-to-l from-amber-500 to-stone-900 border-l border-stone-800 z-20 pointer-events-none" />
+          {/* Slim Yellow Danfo A-Pillars framing the edges of the wide windshield (hidden when dash is hidden) */}
+          {!isDashHidden && (
+            <>
+              <div className="absolute top-9 bottom-[20%] left-0 w-2 sm:w-3 bg-gradient-to-r from-amber-500 to-stone-900 border-r border-stone-800 z-20 pointer-events-none transition-opacity duration-300" />
+              <div className="absolute top-9 bottom-[20%] right-0 w-2 sm:w-3 bg-gradient-to-l from-amber-500 to-stone-900 border-l border-stone-800 z-20 pointer-events-none transition-opacity duration-300" />
+            </>
+          )}
 
-          {/* Low-Profile Molded Bus Dashboard Strip (Dr. Driving Inspired — Compact & Unobstructed) */}
+          {/* Floating "▲ SHOW DASH" Pill at bottom center when Dash is completely hidden */}
+          {isDashHidden && (
+            <button
+              onClick={() => setIsDashHidden(false)}
+              className="absolute bottom-1.5 left-1/2 -translate-x-1/2 z-50 pointer-events-auto px-3.5 py-1 bg-stone-950/90 hover:bg-stone-900 border-2 border-amber-400/80 rounded-full text-[9px] font-mono font-black text-amber-300 hover:text-white flex items-center gap-1.5 shadow-xl backdrop-blur active:scale-95 transition-all"
+              title="Restore Cockpit Dashboard"
+            >
+              <span>▲ SHOW DASH</span>
+            </button>
+          )}
+
+          {/* Low-Profile Molded Bus Dashboard Strip — Completely slides down & disappears when isDashHidden is true */}
           <div
-            className={`absolute inset-x-0 bottom-0 z-40 pointer-events-auto select-none transition-all duration-200 ${
-              showLeftPanel
-                ? 'h-[21vh] min-h-[86px] max-h-[124px]'
-                : 'h-[56px]'
+            className={`absolute inset-x-0 bottom-0 z-40 select-none transition-all duration-300 ease-in-out h-[20vh] min-h-[84px] max-h-[120px] ${
+              isDashHidden
+                ? 'translate-y-[125%] opacity-0 pointer-events-none'
+                : 'translate-y-0 opacity-100 pointer-events-auto'
             }`}
           >
-            {/* Tiny Dash Minimize/Expand Pill on top center of Dash */}
+            {/* Dash Hide Button on top center of Dash */}
             <button
-              onClick={() => setShowLeftPanel((v) => !v)}
-              className="absolute -top-4 left-1/2 -translate-x-1/2 z-50 px-2.5 h-4 bg-stone-900/95 border border-stone-600 rounded-t-lg text-[8px] font-mono font-bold text-amber-400 hover:text-white flex items-center gap-1 shadow"
-              title="Toggle Compact Dash"
+              onClick={() => setIsDashHidden(true)}
+              className="absolute -top-4 left-1/2 -translate-x-1/2 z-50 px-3 h-4 bg-stone-900/95 border border-stone-600 rounded-t-lg text-[8px] font-mono font-bold text-amber-400 hover:text-white flex items-center gap-1 shadow"
+              title="Hide Dashboard Completely"
             >
-              {showLeftPanel ? '▼ SLIM DASH' : '▲ FULL DASH'}
+              ▼ HIDE DASH
             </button>
 
             <div className="relative w-full h-full bg-gradient-to-b from-stone-800/95 via-stone-900/98 to-stone-950 border-t-[3px] border-stone-600/90 rounded-t-[20px] shadow-[0_-8px_24px_rgba(0,0,0,0.9)] flex items-center justify-between px-2 sm:px-4 py-1 overflow-visible">
@@ -1586,7 +1669,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
 
               {/* ── LEFT SECTION: QUICK SWITCHES + 3-SPOKE BUS STEERING WHEEL + INTEGRATED GAUGE CLUSTER ── */}
               <div className="relative flex items-center gap-1.5 sm:gap-2.5 h-full">
-                {/* Compact Quick-Switch Column */}
+                {/* Compact Quick-Switch Column (Blinkers, Hazards, Door, Camera & Walk) */}
                 <div className="flex flex-col justify-center gap-0.5 shrink-0 z-30">
                   <div className="flex gap-0.5">
                     <button
@@ -1634,6 +1717,22 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                       🚪
                     </button>
                   </div>
+                  <div className="flex gap-0.5">
+                    <button
+                      onClick={cycleCameraMode}
+                      className="w-6 sm:w-7 py-0.5 rounded border border-sky-500/70 bg-sky-950/80 text-sky-300 hover:text-white text-[8px] font-mono font-black"
+                      title="Switch Camera View (V)"
+                    >
+                      🎥
+                    </button>
+                    <button
+                      onClick={toggleStepDown}
+                      className="w-6 sm:w-7 py-0.5 rounded border border-amber-500/70 bg-amber-950/80 text-amber-300 hover:text-white text-[8px] font-mono font-black"
+                      title="Step Out / Walk Mode (E)"
+                    >
+                      🚶
+                    </button>
+                  </div>
                 </div>
 
                 {/* REDESIGNED 3-SPOKE COMMERCIAL BUS STEERING WHEEL (Sized cleanly so it never blocks the road!) */}
@@ -1643,7 +1742,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                   onPointerMove={handleWheelPointerMove}
                   onPointerUp={handleWheelPointerUp}
                   onPointerCancel={handleWheelPointerUp}
-                  className="relative w-[84px] h-[84px] sm:w-[112px] sm:h-[112px] rounded-full cursor-grab active:cursor-grabbing touch-none select-none flex items-center justify-center z-30 shrink-0 -mt-1.5"
+                  className="relative w-[84px] h-[84px] sm:w-[110px] sm:h-[110px] rounded-full cursor-grab active:cursor-grabbing touch-none select-none flex items-center justify-center z-30 shrink-0 -mt-1.5"
                   style={{
                     transform: `rotate(${wheelVisualAngle}deg)`,
                     filter: 'drop-shadow(0 6px 12px rgba(0,0,0,0.95))',
@@ -1697,83 +1796,79 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                   </button>
                 </div>
 
-                {/* Integrated In-Dash Digital Instrument Cluster (Flush inside the dash, zero screen obstruction!) */}
-                {showLeftPanel && (
-                  <div className="bg-stone-950 border-2 border-stone-700 rounded-xl px-2 py-1 flex flex-col justify-between w-[102px] sm:w-[138px] h-[68px] sm:h-[86px] shadow-inner shrink-0">
-                    <div className="flex items-center justify-between">
-                      <span
-                        className={`text-[10px] font-black ${
-                          turnSignal === 'LEFT' || hazardLights ? 'text-emerald-400 animate-pulse' : 'text-stone-700'
-                        }`}
-                      >
-                        ◀
+                {/* Integrated In-Dash Digital Instrument Cluster */}
+                <div className="bg-stone-950 border-2 border-stone-700 rounded-xl px-2 py-1 flex flex-col justify-between w-[102px] sm:w-[138px] h-[68px] sm:h-[84px] shadow-inner shrink-0">
+                  <div className="flex items-center justify-between">
+                    <span
+                      className={`text-[10px] font-black ${
+                        turnSignal === 'LEFT' || hazardLights ? 'text-emerald-400 animate-pulse' : 'text-stone-700'
+                      }`}
+                    >
+                      ◀
+                    </span>
+                    <div className="flex items-baseline gap-0.5">
+                      <span className="text-sm sm:text-lg font-black font-mono text-amber-300 tabular-nums leading-none">
+                        {hudSpeed}
                       </span>
-                      <div className="flex items-baseline gap-0.5">
-                        <span className="text-sm sm:text-lg font-black font-mono text-amber-300 tabular-nums leading-none">
-                          {hudSpeed}
-                        </span>
-                        <span className="text-[7px] font-mono text-stone-400">KM/H</span>
-                      </div>
-                      <span
-                        className={`text-[10px] font-black ${
-                          turnSignal === 'RIGHT' || hazardLights ? 'text-emerald-400 animate-pulse' : 'text-stone-700'
-                        }`}
-                      >
-                        ▶
-                      </span>
+                      <span className="text-[7px] font-mono text-stone-400">KM/H</span>
                     </div>
-                    {/* RPM Bar */}
-                    <div className="w-full bg-stone-900 h-1.5 rounded-full overflow-hidden border border-stone-800">
-                      <div
-                        className="h-full bg-gradient-to-r from-emerald-400 via-amber-400 to-rose-500 transition-all duration-100"
-                        style={{ width: `${Math.min(100, Math.round((hudRPM / 5200) * 100))}%` }}
-                      />
-                    </div>
-                    <div className="flex items-center justify-between text-[7px] sm:text-[8px] font-mono">
-                      <span className={hudFuel < 20 ? 'text-rose-400 font-black' : 'text-emerald-300'}>⛽{hudFuel}%</span>
-                      <span className="px-1 rounded bg-amber-400/20 text-amber-300 font-black">{gear}</span>
-                      <span className={hudHeat > 80 ? 'text-rose-400 font-black' : 'text-sky-300'}>🌡️{hudHeat}°</span>
-                    </div>
+                    <span
+                      className={`text-[10px] font-black ${
+                        turnSignal === 'RIGHT' || hazardLights ? 'text-emerald-400 animate-pulse' : 'text-stone-700'
+                      }`}
+                    >
+                      ▶
+                    </span>
                   </div>
-                )}
+                  {/* RPM Bar */}
+                  <div className="w-full bg-stone-900 h-1.5 rounded-full overflow-hidden border border-stone-800">
+                    <div
+                      className="h-full bg-gradient-to-r from-emerald-400 via-amber-400 to-rose-500 transition-all duration-100"
+                      style={{ width: `${Math.min(100, Math.round((hudRPM / 5200) * 100))}%` }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-[7px] sm:text-[8px] font-mono">
+                    <span className={hudFuel < 20 ? 'text-rose-400 font-black' : 'text-emerald-300'}>⛽{hudFuel}%</span>
+                    <span className="px-1 rounded bg-amber-400/20 text-amber-300 font-black">{gear}</span>
+                    <span className={hudHeat > 80 ? 'text-rose-400 font-black' : 'text-sky-300'}>🌡️{hudHeat}°</span>
+                  </div>
+                </div>
               </div>
 
               {/* ── CENTER SECTION: COMPACT ROUTE & CONDUCTOR CONSOLE (Hidden on tiny screens) ── */}
-              {showLeftPanel && (
-                <div className="hidden md:flex flex-col justify-between items-center w-[22%] h-[68px] sm:h-[86px] bg-stone-950/90 border border-stone-700/80 rounded-xl px-2.5 py-1 shadow-inner">
-                  <div className="w-full flex items-center justify-between text-[8px] font-mono">
-                    <span className="text-amber-400 font-black truncate">
-                      🚏 {currentJunction ? currentJunction.name : 'TERMINAL'}
-                    </span>
-                    <span className="text-emerald-400 font-black">{Math.max(0, distToJunc)}m</span>
-                  </div>
-                  <div className="w-full flex items-center justify-between text-[8px] font-mono text-stone-300">
-                    <span>👥 {gameState.bus.passengers?.length || 0}/{gameState.bus.capacity} seats</span>
-                    <span className="text-emerald-400 font-black">₦{gameState.conductor.collectedCash.toLocaleString()}</span>
-                  </div>
-                  <div className="w-full flex items-center gap-1">
-                    <button
-                      onClick={handleCollectFares}
-                      className="flex-1 py-0.5 bg-emerald-500/20 border border-emerald-400/50 rounded text-[8px] font-mono font-black text-emerald-300 active:scale-95"
-                    >
-                      💵 FARES (C)
-                    </button>
-                    <button
-                      onClick={toggleWipers}
-                      className={`px-1.5 py-0.5 rounded border text-[8px] font-mono ${
-                        wipersActive ? 'bg-sky-400 text-stone-950 border-sky-200' : 'bg-stone-900 border-stone-700 text-stone-300'
-                      }`}
-                    >
-                      🌧️
-                    </button>
-                  </div>
+              <div className="hidden md:flex flex-col justify-between items-center w-[22%] h-[68px] sm:h-[84px] bg-stone-950/90 border border-stone-700/80 rounded-xl px-2.5 py-1 shadow-inner">
+                <div className="w-full flex items-center justify-between text-[8px] font-mono">
+                  <span className="text-amber-400 font-black truncate">
+                    🚏 {currentJunction ? currentJunction.name : 'TERMINAL'}
+                  </span>
+                  <span className="text-emerald-400 font-black">{Math.max(0, distToJunc)}m</span>
                 </div>
-              )}
+                <div className="w-full flex items-center justify-between text-[8px] font-mono text-stone-300">
+                  <span>👥 {gameState.bus.passengers?.length || 0}/{gameState.bus.capacity} seats</span>
+                  <span className="text-emerald-400 font-black">₦{gameState.conductor.collectedCash.toLocaleString()}</span>
+                </div>
+                <div className="w-full flex items-center gap-1">
+                  <button
+                    onClick={handleCollectFares}
+                    className="flex-1 py-0.5 bg-emerald-500/20 border border-emerald-400/50 rounded text-[8px] font-mono font-black text-emerald-300 active:scale-95"
+                  >
+                    💵 FARES (C)
+                  </button>
+                  <button
+                    onClick={toggleWipers}
+                    className={`px-1.5 py-0.5 rounded border text-[8px] font-mono ${
+                      wipersActive ? 'bg-sky-400 text-stone-950 border-sky-200' : 'bg-stone-900 border-stone-700 text-stone-300'
+                    }`}
+                  >
+                    🌧️
+                  </button>
+                </div>
+              </div>
 
               {/* ── RIGHT SECTION: COMPACT DR. DRIVING GEAR SHIFTER + RIBBED BRAKE & GAS PEDALS ── */}
               <div className="flex items-center justify-end gap-1.5 sm:gap-2.5 h-full">
                 {/* Compact Vertical Gear Shifter (R - N - D - P) */}
-                <div className="relative h-[70px] sm:h-[90px] w-10 sm:w-12 bg-stone-950 border-2 border-stone-600 rounded-xl p-1 flex flex-col justify-between shadow-inner">
+                <div className="relative h-[68px] sm:h-[86px] w-10 sm:w-12 bg-stone-950 border-2 border-stone-600 rounded-xl p-1 flex flex-col justify-between shadow-inner">
                   {(['R', 'N', 'D', 'P'] as const).map((g) => {
                     const isActive = gear === g;
                     return (
@@ -1817,7 +1912,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                     inputsRef.current.brake = false;
                     setIsBrakePressed(false);
                   }}
-                  className={`w-12 sm:w-14 h-[60px] sm:h-[78px] rounded-xl flex flex-col items-center justify-between py-1.5 px-1 select-none touch-none transition-all ${
+                  className={`w-12 sm:w-14 h-[58px] sm:h-[74px] rounded-xl flex flex-col items-center justify-between py-1.5 px-1 select-none touch-none transition-all ${
                     isBrakePressed
                       ? 'bg-rose-950 border-2 border-rose-400 translate-y-1 scale-95 shadow-[0_0_14px_rgba(244,63,94,0.7)]'
                       : 'bg-gradient-to-b from-stone-700 via-stone-800 to-stone-900 border-2 border-stone-500 shadow-lg'
@@ -1849,7 +1944,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                     inputsRef.current.gas = false;
                     setIsGasPressed(false);
                   }}
-                  className={`w-12 sm:w-14 h-[70px] sm:h-[90px] rounded-xl flex flex-col items-center justify-between py-1.5 px-1.5 select-none touch-none transition-all ${
+                  className={`w-12 sm:w-14 h-[68px] sm:h-[86px] rounded-xl flex flex-col items-center justify-between py-1.5 px-1.5 select-none touch-none transition-all ${
                     isGasPressed
                       ? 'bg-amber-400 text-stone-950 border-2 border-amber-200 translate-y-1 scale-95 shadow-[0_0_18px_rgba(251,191,36,0.85)]'
                       : 'bg-gradient-to-b from-stone-700 via-stone-800 to-stone-900 border-2 border-amber-400/80 shadow-lg'
@@ -1867,13 +1962,19 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         </>
       )}
 
-      {/* ═══════ EXTERNAL CAMERA MODES (3RD PERSON / BIRD EYE / 360) OR ON-FOOT WALK MODE ═══════ */}
-      {(isSteppedDown || cameraMode !== 'FIRST_PERSON') && (
+      {/* ═══════ EXTERNAL CAMERA MODES, HIDDEN DASH MODE, OR ON-FOOT WALK MODE ═══════ */}
+      {(isSteppedDown || cameraMode !== 'FIRST_PERSON' || isDashHidden) && (
         <>
           {/* ON-FOOT VEHICLE & STREET INTERACTION BAR (When Stepped Down) */}
           {isSteppedDown && (
             <div className="absolute top-11 left-1/2 -translate-x-1/2 z-50 pointer-events-auto flex items-center gap-1.5 bg-stone-950/95 border-2 border-amber-400 rounded-full px-3 py-1 shadow-2xl backdrop-blur-md">
               <span className="text-[9px] font-mono font-black text-amber-400 hidden sm:inline">🚶 ON FOOT:</span>
+              <button
+                onClick={cycleCameraMode}
+                className="px-2 py-0.5 bg-sky-900/80 hover:bg-sky-800 text-sky-200 border border-sky-400/60 rounded-full text-[9px] font-mono font-bold active:scale-95"
+              >
+                {walkThirdPerson ? '🎥 3RD VIEW' : '👁️ 1ST VIEW'}
+              </button>
               <button
                 onClick={() => {
                   if (engineRef.current) {
@@ -1926,6 +2027,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
             <button
               onClick={() => setShowLeftPanel((v) => !v)}
               className="mb-1 w-8 h-5 bg-stone-900/80 border border-stone-700/50 rounded text-stone-400 text-[8px] flex items-center justify-center"
+              title="Toggle Bottom-Left Controls"
             >
               {showLeftPanel ? '◀' : '▶'}
             </button>
@@ -1976,7 +2078,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                     onPointerMove={handleWheelPointerMove}
                     onPointerUp={handleWheelPointerUp}
                     onPointerCancel={handleWheelPointerUp}
-                    className="relative w-28 h-28 sm:w-36 sm:h-36 rounded-full cursor-grab active:cursor-grabbing touch-none select-none flex items-center justify-center"
+                    className="relative w-24 h-24 sm:w-32 sm:h-32 rounded-full cursor-grab active:cursor-grabbing touch-none select-none flex items-center justify-center"
                     style={{
                       transform: `rotate(${wheelVisualAngle}deg)`,
                       filter: 'drop-shadow(0 8px 14px rgba(0,0,0,0.9))',
@@ -1996,7 +2098,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                         e.stopPropagation();
                         handleHorn();
                       }}
-                      className="absolute w-10 h-10 mt-1 bg-amber-400 hover:bg-amber-300 active:bg-amber-200 text-stone-950 rounded-full font-black text-[8px] font-['Bungee'] flex items-center justify-center shadow-lg border border-stone-900 transition-transform active:scale-95"
+                      className="absolute w-9 h-9 mt-1 bg-amber-400 hover:bg-amber-300 active:bg-amber-200 text-stone-950 rounded-full font-black text-[8px] font-['Bungee'] flex items-center justify-center shadow-lg border border-stone-900 transition-transform active:scale-95"
                     >
                       HORN
                     </button>
@@ -2011,10 +2113,10 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                     onPointerCancel={handleWalkJoyPointerUp}
                     className="relative w-28 h-28 rounded-full bg-stone-950/90 backdrop-blur-md border-2 border-amber-400/80 shadow-2xl touch-none select-none flex items-center justify-center cursor-grab active:cursor-grabbing"
                   >
-                    <div className="absolute top-1 text-[8px] font-black text-amber-400/80 font-mono">▲ W</div>
-                    <div className="absolute bottom-1 text-[8px] font-black text-amber-400/80 font-mono">▼ S</div>
-                    <div className="absolute left-1.5 text-[8px] font-black text-amber-400/80 font-mono">◀ A</div>
-                    <div className="absolute right-1.5 text-[8px] font-black text-amber-400/80 font-mono">D ▶</div>
+                    <div className="absolute top-1 text-[8px] font-black text-amber-400/90 font-mono pointer-events-none">▲ W</div>
+                    <div className="absolute bottom-1 text-[8px] font-black text-amber-400/90 font-mono pointer-events-none">▼ S</div>
+                    <div className="absolute left-1.5 text-[8px] font-black text-amber-400/90 font-mono pointer-events-none">◀ A</div>
+                    <div className="absolute right-1.5 text-[8px] font-black text-amber-400/90 font-mono pointer-events-none">D ▶</div>
                     <div
                       className="w-12 h-12 rounded-full bg-gradient-to-b from-amber-300 to-amber-500 text-stone-950 font-black text-[9px] shadow-xl border-2 border-amber-200 flex items-center justify-center pointer-events-none transition-transform duration-75"
                       style={{
@@ -2025,7 +2127,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                     </div>
                   </div>
                   <div className="mt-1 text-[8px] font-mono font-bold text-amber-400 bg-stone-950/90 px-2 py-0.5 rounded-full border border-amber-500/40">
-                    WASD / DRAG TO WALK
+                    WASD / TAP OR DRAG
                   </div>
                 </div>
               )}
@@ -2037,6 +2139,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
             <button
               onClick={() => setShowRightPanel((v) => !v)}
               className="mb-1 w-8 h-5 bg-stone-900/80 border border-stone-700/50 rounded text-stone-400 text-[8px] flex items-center justify-center"
+              title="Toggle Bottom-Right Controls"
             >
               {showRightPanel ? '▶' : '◀'}
             </button>
@@ -2055,7 +2158,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                           setGear(g);
                           inputsRef.current.gear = g;
                         }}
-                        className={`w-7 h-6 rounded-lg font-mono font-black text-[10px] transition-all flex items-center justify-center my-0.5 ${
+                        className={`w-7 h-5.5 rounded-lg font-mono font-black text-[10px] transition-all flex items-center justify-center my-0.5 ${
                           gear === g
                             ? 'bg-amber-400 text-stone-950 shadow-md ring-1 ring-amber-300 scale-105'
                             : 'text-stone-400 hover:text-white'
@@ -2082,13 +2185,13 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                         inputsRef.current.brake = false;
                         setIsBrakePressed(false);
                       }}
-                      className={`w-13 h-18 bg-stone-900/95 rounded-xl flex flex-col items-center justify-center shadow-xl transition-all select-none touch-none px-3 py-3 ${
+                      className={`w-12 h-16 bg-stone-900/95 rounded-xl flex flex-col items-center justify-center shadow-xl transition-all select-none touch-none px-2.5 py-2.5 ${
                         isBrakePressed
                           ? 'bg-rose-950 border-2 border-rose-500 scale-95 shadow-[0_0_15px_rgba(244,63,94,0.6)]'
                           : 'border border-stone-600 active:border-rose-500'
                       }`}
                     >
-                      <span className={`text-[10px] font-mono font-black ${isBrakePressed ? 'text-rose-300' : 'text-rose-400'}`}>BRAKE</span>
+                      <span className={`text-[9px] font-mono font-black ${isBrakePressed ? 'text-rose-300' : 'text-rose-400'}`}>BRAKE</span>
                       <span className="text-[7px] text-stone-400 font-mono mt-0.5">STOP</span>
                     </button>
                     <button
@@ -2109,13 +2212,13 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                         inputsRef.current.gas = false;
                         setIsGasPressed(false);
                       }}
-                      className={`w-13 h-24 rounded-xl flex flex-col items-center justify-center shadow-xl transition-all select-none touch-none px-3 py-4 ${
+                      className={`w-12 h-20 rounded-xl flex flex-col items-center justify-center shadow-xl transition-all select-none touch-none px-2.5 py-3 ${
                         isGasPressed
                           ? 'bg-amber-400 text-stone-950 border-2 border-amber-300 scale-95 shadow-[0_0_20px_rgba(251,191,36,0.6)]'
                           : 'bg-stone-900/95 border border-stone-600 active:border-amber-500'
                       }`}
                     >
-                      <span className={`text-[10px] font-mono font-black ${isGasPressed ? 'text-stone-950' : 'text-amber-400'}`}>GAS</span>
+                      <span className={`text-[9px] font-mono font-black ${isGasPressed ? 'text-stone-950' : 'text-amber-400'}`}>GAS</span>
                       <span className={`text-[7px] font-mono mt-0.5 ${isGasPressed ? 'text-stone-800' : 'text-stone-400'}`}>DRIVE</span>
                     </button>
                   </div>
@@ -2137,7 +2240,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       {/* ═══════ ACTION FEED (Positioned cleanly above low-profile dashboard) ═══════ */}
       <div
         className={`absolute left-1/2 -translate-x-1/2 z-30 pointer-events-none flex flex-col gap-0.5 items-center transition-all ${
-          !isSteppedDown && cameraMode === 'FIRST_PERSON' ? 'bottom-[23vh]' : 'bottom-3'
+          !isSteppedDown && cameraMode === 'FIRST_PERSON' && !isDashHidden ? 'bottom-[22vh]' : 'bottom-8'
         }`}
         style={{ maxWidth: '52vw' }}
       >
