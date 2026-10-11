@@ -148,7 +148,7 @@ export default function App() {
       comboMultiplier: 1,
       comboStreak: 0,
       distanceTraveledMeters: 0,
-      targetDistanceMeters: 3500,
+      targetDistanceMeters: 3800,
       junctions: junctions,
       activeJunctionIndex: 0,
       activeDelivery: null,
@@ -218,7 +218,7 @@ export default function App() {
       lastShiftResult: null,
     }));
 
-    addFeedMessage(`🎯 MISSION STARTED: ${mission.title}! Bus is empty (0/${bus.capacity}) — stop at Ikeja Along (160m) to load commuters.`);
+    addFeedMessage(`🎯 MISSION STARTED: ${mission.title}! Bus is empty (0/${bus.capacity}) — stop at Mangoro / Cement (150m) & Ikeja Along (280m) to load commuters.`);
     soundEngine.playHorn(bus.upgrades.musicalHorn);
   };
 
@@ -244,7 +244,7 @@ export default function App() {
         collectedCash: 0,
       },
       distanceTraveledMeters: 0,
-      targetDistanceMeters: 3500,
+      targetDistanceMeters: 3800,
       junctions: junctions,
       activeJunctionIndex: 0,
       activeDelivery: null,
@@ -253,7 +253,7 @@ export default function App() {
       lastShiftResult: null,
     }));
 
-    addFeedMessage(`🚌 SHIFT STARTED: ${shift.title}! Bus is empty (0/${bus.capacity}) — drive out of Oshodi Park to Ikeja Along (160m) to load passengers!`);
+    addFeedMessage(`🚌 SHIFT STARTED: ${shift.title}! Bus is empty (0/${bus.capacity}) — drive to Mangoro / Cement (150m) → Ikeja Along (280m) → Maryland → Oshodi → CMS!`);
     soundEngine.playHorn(bus.upgrades.musicalHorn);
   };
 
@@ -657,7 +657,7 @@ export default function App() {
 
               <div className="hidden lg:flex items-center gap-2 pr-2 text-[11px] font-mono text-stone-400">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span>10 Bus Stops • Multiple Street Shortcuts • 3rd Mainland Roadblock</span>
+                <span>20 Real Bus Stops (with UIDs) • Inbound & Opposite-Side Routes</span>
               </div>
             </div>
 
@@ -677,7 +677,7 @@ export default function App() {
                           {activeBusPreset.name}
                         </h2>
                         <p className="text-xs font-mono text-emerald-400 font-bold">
-                          🪑 Starting Load: 0 / {activeBusPreset.capacity} Passengers (Load at Stop #1: Ikeja Along!)
+                          🪑 Starting Load: 0 / {activeBusPreset.capacity} Passengers (Load at Stop #1: Mangoro / Ikeja!)
                         </p>
                       </div>
 
@@ -775,8 +775,8 @@ export default function App() {
                               <p className="text-[10px] text-stone-400 mt-1 line-clamp-2">{cfg.subtitle}</p>
                             </div>
                             <div className="mt-2 pt-1.5 border-t border-stone-800/80 flex items-center justify-between text-[10px] font-mono">
-                              <span className="text-emerald-400 font-bold">10 Stops</span>
-                              <span className="text-stone-300">3.5 km</span>
+                              <span className="text-emerald-400 font-bold">20 Real Stops</span>
+                              <span className="text-stone-300">3.8 km</span>
                             </div>
                           </button>
                         );
@@ -794,16 +794,16 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* RIGHT COLUMN (5 cols): 10-Bus-Stop Route Corridor, Intersections & Locked 3rd Mainland Bridge */}
+                {/* RIGHT COLUMN (5 cols): 20-Bus-Stop Route Corridor, Intersections & Locked 3rd Mainland Bridge */}
                 <div className="lg:col-span-5 space-y-4">
                   <div className="bg-stone-900 border border-stone-800 rounded-3xl p-4 sm:p-5 space-y-3">
                     <div className="flex items-center justify-between">
                       <div>
                         <h3 className="text-sm font-black font-['Bungee'] text-amber-400">
-                          LAGOS CORRIDOR ROUTE (10 STOPS)
+                          LAGOS CORRIDOR ROUTE (20 STOPS)
                         </h3>
                         <p className="text-[11px] text-stone-400">
-                          Dense urban streets, branching shortcuts & 3rd Mainland roadblock
+                          Real geographic sequence (Ikeja ➔ Maryland ➔ Oshodi ➔ Yaba ➔ CMS)
                         </p>
                       </div>
                       <button
@@ -823,40 +823,51 @@ export default function App() {
                         <div>
                           <div className="flex items-center gap-1.5">
                             <span className="text-xs font-black font-mono text-rose-300">
-                              🌉 3RD MAINLAND BRIDGE RAMP (620m)
+                              🌉 3RD MAINLAND BRIDGE RAMP (600m)
                             </span>
                             <span className="px-1.5 py-0.5 rounded bg-rose-500 text-white text-[8px] font-mono font-black flex items-center gap-0.5">
                               <Lock className="w-2.5 h-2.5" /> LOCKED
                             </span>
                           </div>
                           <p className="text-[10px] text-stone-300">
-                            Federal Works roadblock active at 620m & 1,980m. Stay on Mainland Express!
+                            Federal Works roadblock active at 600m & 2,020m. Stay on Mainland Express!
                           </p>
                         </div>
                       </div>
                     </div>
 
-                    {/* Scrollable 10 Bus Stops List */}
+                    {/* Scrollable 20 Bus Stops List with UID & Directional Next Stop */}
                     <div className="max-h-[260px] overflow-y-auto space-y-1.5 pr-1">
                       {DEFAULT_JUNCTIONS.map((junc, idx) => (
                         <div
                           key={junc.uid}
-                          className="flex items-center justify-between px-3 py-2 rounded-xl bg-stone-950 border border-stone-800/90 text-xs font-mono"
+                          className="flex flex-col gap-1 px-3 py-2 rounded-xl bg-stone-950 border border-stone-800/90 text-xs font-mono"
                         >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="w-5 h-5 rounded-full bg-amber-400 text-stone-950 font-black text-[10px] flex items-center justify-center shrink-0">
-                              {idx + 1}
-                            </span>
-                            <div className="truncate">
-                              <div className="font-bold text-stone-100 truncate">{junc.name}</div>
-                              <div className="text-[9px] text-stone-400 truncate">
-                                {junc.distanceMarkerMeters}m • {junc.side} SIDE • {junc.waitingPassengersCount} waiting
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="w-5 h-5 rounded-full bg-amber-400 text-stone-950 font-black text-[10px] flex items-center justify-center shrink-0">
+                                {idx + 1}
+                              </span>
+                              <div className="truncate">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-bold text-stone-100 truncate">{junc.name}</span>
+                                  <span className="px-1 py-0.2 rounded bg-stone-800 text-[8px] text-stone-400 shrink-0">
+                                    {junc.uid}
+                                  </span>
+                                </div>
+                                <div className="text-[9px] text-stone-400 truncate">
+                                  {junc.distanceMarkerMeters}m • {junc.landmark}
+                                </div>
                               </div>
                             </div>
+                            <span className="px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 font-black text-[10px] shrink-0">
+                              ₦{junc.averageFare}
+                            </span>
                           </div>
-                          <span className="px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 font-black text-[10px] shrink-0">
-                            ₦{junc.averageFare}
-                          </span>
+                          <div className="flex items-center justify-between text-[8px] text-stone-400 pt-1 border-t border-stone-900">
+                            <span className="text-emerald-300 truncate">➔ Next (Inbound): {junc.nextStopName}</span>
+                            <span className="text-sky-300 truncate">↩ Other Side: {junc.oppositeNextStopName}</span>
+                          </div>
                         </div>
                       ))}
                     </div>

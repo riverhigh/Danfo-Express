@@ -3121,8 +3121,11 @@ export class ThreeDrivingEngine {
         bench.position.set(benchX, 0.45, 0);
         group.add(bench);
 
-        // Bus Stop Signboard facing incoming traffic
-        const signTex = createBusStopSignTexture(junc.name, junc.destinationTag);
+        // Bus Stop Signboard facing incoming traffic (Right side = Inbound Next Stop; Left side = Opposite Side Next Stop!)
+        const directionalNextStop = isLeft
+          ? junc.oppositeNextStopName || junc.destinationTag
+          : junc.nextStopName || junc.destinationTag;
+        const signTex = createBusStopSignTexture(junc.name, directionalNextStop, junc.uid, isLeft);
         const signMesh = new THREE.Mesh(
           new THREE.BoxGeometry(0.1, 2.2, 4.4),
           new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.4 })

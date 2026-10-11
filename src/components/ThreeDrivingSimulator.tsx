@@ -291,15 +291,20 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
     }
   }, [gear, addFeedMessage]);
 
-  // AI Conductor Shouting Destinations Out the Door ("Oshodi, Oshodi, enter!")
+  // AI Conductor Shouting Destinations Out the Door ("Maryland, next stop Idiroko & Anthony, enter!")
   const triggerConductorShout = useCallback(() => {
     const nextStop = gameState.junctions[simRef.current.activeJunctionIndex];
-    const destName = nextStop ? nextStop.name : 'CMS Marina';
+    const isOnOppositeSide = simRef.current.laneOffset > 1.5;
+    const stopName = nextStop ? nextStop.name : 'CMS Marina';
+    const followingStopName = nextStop
+      ? isOnOppositeSide
+        ? nextStop.oppositeNextStopName
+        : nextStop.nextStopName
+      : 'CMS Marina Waterfront';
     const pidginShouts = [
-      `📢 "${destName}! ${destName}! Enter with your change o!"`,
-      `📢 "${destName} straight! Smart people enter fast, no waste time!"`,
-      `📢 "Oya ${destName} dey go! Market women, students, enter o!"`,
-      `📢 "Hold your ₦500 change o! ${destName} express!"`,
+      `📢 "${stopName}! Next stop: ${followingStopName}! Enter with your change o!"`,
+      `📢 "${stopName} straight ➔ ${followingStopName}! Smart people enter fast!"`,
+      `📢 "Oya ${stopName} dey go ${followingStopName}! Hold your ₦200 change o!"`,
     ];
     const chosen = pidginShouts[Math.floor(Math.random() * pidginShouts.length)];
     setConductorShoutText(chosen);
@@ -2168,25 +2173,35 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         </div>
       )}
 
-      {/* 🚏 Upcoming Bus Stop Alert with Passenger Destination Bubbles (28m to 75m ahead) */}
+      {/* 🚏 Upcoming Bus Stop Alert with UID & Directional Next Bus Stop (28m to 75m ahead) */}
       {(() => {
         const upcomingJ = gameState.junctions.find(
           (j) => j.distanceMarkerMeters - currentDist > 28 && j.distanceMarkerMeters - currentDist <= 75
         );
         if (!upcomingJ || activeGasStation || activeShop || isSteppedDown || !isEngineRunning) return null;
         const distAhead = Math.round(upcomingJ.distanceMarkerMeters - currentDist);
+        const isOppositeLane = simRef.current.laneOffset > 1.5;
         return (
-          <div className="absolute top-20 left-1/2 -translate-x-1/2 z-40 bg-stone-950/90 border border-amber-400/70 rounded-full px-4 py-1.5 shadow-xl flex items-center gap-2 pointer-events-auto backdrop-blur-sm">
-            <span className="text-xs">🚏</span>
-            <span className="text-[10px] font-mono font-black text-amber-400">STOP AHEAD: {upcomingJ.name} ({distAhead}m)</span>
-            <span className="text-[9px] font-mono text-emerald-300 font-bold">
-              💬 "{upcomingJ.destinationTag}!" ({upcomingJ.waitingPassengersCount} waiting)
-            </span>
+          <div className="absolute top-20 left-1/2 -translate-x-1/2 z-40 bg-stone-950/90 border border-amber-400/70 rounded-2xl px-3.5 py-1.5 shadow-xl flex flex-col items-center gap-0.5 pointer-events-auto backdrop-blur-sm">
+            <div className="flex items-center gap-2">
+              <span className="text-xs">🚏</span>
+              <span className="text-[10px] font-mono font-black text-amber-400">
+                STOP AHEAD: {upcomingJ.name} ({distAhead}m)
+              </span>
+              <span className="px-1.5 py-0.5 rounded bg-stone-800 border border-stone-700 text-[8px] font-mono text-stone-300">
+                {upcomingJ.uid}
+              </span>
+            </div>
+            <div className="text-[9px] font-mono text-emerald-300 font-bold">
+              {isOppositeLane
+                ? `↩ OTHER SIDE NEXT: ${upcomingJ.oppositeNextStopName} (${upcomingJ.waitingPassengersCount} waiting)`
+                : `➔ NEXT STOP AFTER THIS: ${upcomingJ.nextStopName} (${upcomingJ.waitingPassengersCount} waiting)`}
+            </div>
           </div>
         );
       })()}
 
-      {/* 🚏 At Bus Stop: Boarding, Destination Bubbles & Fare Bargaining Hub */}
+      {/* 🚏 At Bus Stop: Boarding, Stop UID, Directional Next Stop (Inbound vs Opposite Side) & Fare Bargaining Hub */}
       {(() => {
         const nearJ = gameState.junctions.find((j) => Math.abs(j.distanceMarkerMeters - currentDist) <= 28);
         if (!nearJ || activeGasStation || activeShop || isSteppedDown) return null;
@@ -2206,14 +2221,18 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         const seatsUsedCount = (gameState.bus.passengers || []).length;
 
         return (
-          <div className="absolute top-16 left-1/2 -translate-x-1/2 z-40 bg-stone-950/95 border-2 border-amber-400 rounded-2xl px-3.5 py-2 shadow-2xl flex flex-col gap-1.5 pointer-events-auto max-w-md w-[92vw]">
+          <div className="absolute top-16 left-1/2 -translate-x-1/2 z-40 bg-stone-950/95 border-2 border-amber-400 rounded-2xl px-3.5 py-2 shadow-2xl flex flex-col gap-1.5 pointer-events-auto max-w-md w-[94vw]">
             <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
+              <div className="flex items-center gap-1.5 min-w-0">
                 <MapPin className="w-4 h-4 text-amber-400 animate-pulse shrink-0" />
-                <span className="text-[11px] font-mono font-black text-amber-400 truncate">🚏 {nearJ.name}</span>
-                <span className="text-[9px] font-mono text-emerald-300 font-bold">
-                  ₦{nearJ.averageFare} • "{nearJ.destinationTag}!"
-                </span>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] font-mono font-black text-amber-400 truncate">🚏 {nearJ.name}</span>
+                    <span className="px-1.5 py-0.2 rounded bg-stone-800 border border-stone-700 text-[8px] font-mono text-stone-300 shrink-0">
+                      {nearJ.uid}
+                    </span>
+                  </div>
+                </div>
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 <button
@@ -2239,6 +2258,18 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                 >
                   {doorState === 'CLOSED' ? 'OPEN DOOR (O)' : 'CLOSE DOOR'}
                 </button>
+              </div>
+            </div>
+
+            {/* Real-World Directional Next Bus Stop Row (Inbound vs Opposite Side) */}
+            <div className="grid grid-cols-2 gap-1.5 bg-stone-900/90 border border-stone-800 rounded-xl px-2.5 py-1 text-[8px] font-mono">
+              <div className="truncate">
+                <span className="text-emerald-400 font-black">➔ NEXT (TO CMS): </span>
+                <span className="text-white font-bold">{nearJ.nextStopName}</span>
+              </div>
+              <div className="truncate border-l border-stone-800 pl-1.5">
+                <span className="text-sky-400 font-black">↩ OTHER SIDE (TO IKEJA): </span>
+                <span className="text-stone-200 font-bold">{nearJ.oppositeNextStopName}</span>
               </div>
             </div>
 

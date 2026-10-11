@@ -14,16 +14,27 @@ export type PassengerArchetype =
   | 'PREACHER';       // Loud, affects surrounding passenger patience
 
 export type LagosDestination = 
-  | 'Oshodi Interchange'
+  | 'Mangoro / Cement'
   | 'Ikeja Along'
+  | 'Ikeja Underbridge'
   | 'Allen Roundabout'
+  | 'Opebi / Sheraton'
   | 'Maryland Mall'
+  | 'Idiroko Maryland'
   | 'Anthony Village'
   | 'Gbagada Phase 1'
+  | 'Oshodi Interchange'
   | 'Mushin Olosa Market'
-  | 'Third Mainland Bridge / Obalende'
-  | 'Ojuelegba Underbridge'
+  | 'Obanikoro'
+  | 'Palmgrove'
+  | 'Onipanu'
+  | 'Fadeyi'
+  | 'Jibowu / Yaba'
   | 'Yaba Tech / Sabo'
+  | 'Ojuelegba Underbridge'
+  | 'Stadium Surulere'
+  | 'Costain Roundabout'
+  | 'Third Mainland Bridge / Obalende'
   | 'Lekki Phase 1 Toll Gate'
   | 'CMS Marina Terminal';
 
@@ -109,6 +120,10 @@ export interface JunctionStop {
   waitingPassengersCount: number;
   averageFare: number;
   destinationTag: LagosDestination;
+  nextStopUid: string;
+  nextStopName: string;
+  oppositeNextStopUid: string;
+  oppositeNextStopName: string;
   stopReached: boolean;
   cleared: boolean;
   side?: 'LEFT' | 'RIGHT' | 'BOTH';

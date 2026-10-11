@@ -130,23 +130,31 @@ export function createSignboardTexture(text: string, subtext: string, bgColor: s
   return new THREE.CanvasTexture(canvas);
 }
 
-export function createBusStopSignTexture(stopName: string, destination: string): THREE.CanvasTexture {
+export function createBusStopSignTexture(
+  stopName: string,
+  nextStopLabel: string,
+  stopUid?: string,
+  isOppositeSide: boolean = false
+): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
   canvas.width = 512;
   canvas.height = 256;
   const ctx = canvas.getContext('2d')!;
 
-  // Lagos Yellow Header
+  // Lagos Yellow Header with Stop UID & Corridor Direction
   ctx.fillStyle = '#facc15';
   ctx.fillRect(0, 0, 512, 60);
 
   ctx.fillStyle = '#09090b';
-  ctx.font = 'bold 22px sans-serif';
+  ctx.font = '900 19px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('LAGOS BUS TRANSIT STOP 🚏', 256, 40);
+  const headerText = stopUid
+    ? `🚏 ${stopUid.toUpperCase()} • ${isOppositeSide ? 'TO IKEJA / MAINLAND' : 'TO CMS / ISLAND'}`
+    : 'LAGOS BUS TRANSIT STOP 🚏';
+  ctx.fillText(headerText, 256, 38);
 
-  // Green Main Body
-  ctx.fillStyle = '#047857';
+  // Green Main Body (or Deep Blue for Opposite Return Lane)
+  ctx.fillStyle = isOppositeSide ? '#0369a1' : '#047857';
   ctx.fillRect(0, 60, 512, 196);
 
   // Border
@@ -154,19 +162,29 @@ export function createBusStopSignTexture(stopName: string, destination: string):
   ctx.lineWidth = 6;
   ctx.strokeRect(6, 66, 500, 184);
 
-  // Stop Name
+  // Current Stop Name
   ctx.fillStyle = '#ffffff';
-  ctx.font = '900 34px sans-serif';
-  ctx.fillText(stopName.toUpperCase(), 256, 125);
+  ctx.font = '900 28px sans-serif';
+  ctx.fillText(stopName.toUpperCase(), 256, 120);
 
-  // Destination Tag
+  // Directional Next Bus Stop After This Stop
   ctx.fillStyle = '#fef08a';
-  ctx.font = 'bold 24px sans-serif';
-  ctx.fillText(`ROUTE: ${destination.toUpperCase()}`, 256, 175);
+  ctx.font = 'bold 22px sans-serif';
+  ctx.fillText(
+    `${isOppositeSide ? '↩ OTHER SIDE NEXT:' : '➔ NEXT STOP:'} ${nextStopLabel.toUpperCase()}`,
+    256,
+    172
+  );
 
   ctx.fillStyle = '#a7f3d0';
-  ctx.font = '18px sans-serif';
-  ctx.fillText('PASSENGER BOARDING BAY • NO ILLEGAL PARKING', 256, 220);
+  ctx.font = 'bold 16px sans-serif';
+  ctx.fillText(
+    isOppositeSide
+      ? 'OUTBOUND CORRIDOR (MARYLAND ➔ IKEJA DIRECTION)'
+      : 'INBOUND CORRIDOR (IKEJA ➔ MARYLAND ➔ OSHODI ➔ CMS)',
+    256,
+    220
+  );
 
   return new THREE.CanvasTexture(canvas);
 }
