@@ -436,6 +436,7 @@ class DanfoSoundEngine {
 
   /**
    * Industrial truck / Danfo reverse warning beep ("BEEP... BEEP...")
+   * Clean single resonant chirp with smooth envelopes (no harsh clipping)
    */
   public playReverseBeep() {
     if (this.isMuted) return;
@@ -446,18 +447,50 @@ class DanfoSoundEngine {
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
 
-    osc.type = 'square';
-    osc.frequency.setValueAtTime(1400, t);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(1046.5, t); // C6 clean chime
 
-    gain.gain.setValueAtTime(0.08, t);
-    gain.gain.setValueAtTime(0.08, t + 0.12);
-    gain.gain.linearRampToValueAtTime(0.001, t + 0.15);
+    gain.gain.setValueAtTime(0.001, t);
+    gain.gain.linearRampToValueAtTime(0.07, t + 0.02);
+    gain.gain.setValueAtTime(0.07, t + 0.08);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
 
     osc.connect(gain);
     gain.connect(this.ctx.destination);
 
     osc.start(t);
-    osc.stop(t + 0.16);
+    osc.stop(t + 0.15);
+  }
+
+  /**
+   * Mechanical gear shifter clunk when engaging Reverse ('R')
+   */
+  public playReverseGearEngaged() {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const filter = this.ctx.createBiquadFilter();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(180, t);
+    osc.frequency.exponentialRampToValueAtTime(65, t + 0.09);
+
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(350, t);
+
+    gain.gain.setValueAtTime(0.22, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(t);
+    osc.stop(t + 0.14);
   }
 
   /**
@@ -541,9 +574,10 @@ class DanfoSoundEngine {
   private isEngineRunningState: boolean = false;
 
   /**
-   * Dynamic engine tone update based on speed (km/h)
+   * Dynamic engine tone update based on speed (km/h) and gear
+   * Cleanly transitions to a smooth low-pitch mechanical whine in Reverse ('R')
    */
-  public updateEngine(speedKmH: number) {
+  public updateEngine(speedKmH: number, gear: string = 'D') {
     if (this.isMuted || !this.isEngineRunningState) {
       if (this.engineGain && this.ctx) {
         this.engineGain.gain.setValueAtTime(0, this.ctx.currentTime);
@@ -566,10 +600,23 @@ class DanfoSoundEngine {
     }
 
     if (this.engineOsc && this.engineGain) {
-      const targetFreq = 48 + Math.min(195, (speedKmH / 100) * 135);
-      const targetVol = 0.02 + Math.min(0.07, (speedKmH / 100) * 0.06);
-      this.engineOsc.frequency.setTargetAtTime(targetFreq, this.ctx.currentTime, 0.04);
-      this.engineGain.gain.setTargetAtTime(targetVol, this.ctx.currentTime, 0.04);
+      if (gear === 'R') {
+        // Reverse gear: Clean, low-pitched mechanical transmission whine & low idle purr (no harsh high revs!)
+        const reverseFreq = 52 + Math.min(36, (speedKmH / 25) * 32);
+        const reverseVol = 0.03 + Math.min(0.035, (speedKmH / 25) * 0.025);
+        this.engineOsc.frequency.setTargetAtTime(reverseFreq, this.ctx.currentTime, 0.06);
+        this.engineGain.gain.setTargetAtTime(reverseVol, this.ctx.currentTime, 0.06);
+      } else if (gear === 'N' || gear === 'P') {
+        // Smooth resting idle
+        this.engineOsc.frequency.setTargetAtTime(48, this.ctx.currentTime, 0.08);
+        this.engineGain.gain.setTargetAtTime(0.02, this.ctx.currentTime, 0.08);
+      } else {
+        // Forward drive revs
+        const targetFreq = 48 + Math.min(195, (speedKmH / 100) * 135);
+        const targetVol = 0.02 + Math.min(0.07, (speedKmH / 100) * 0.06);
+        this.engineOsc.frequency.setTargetAtTime(targetFreq, this.ctx.currentTime, 0.04);
+        this.engineGain.gain.setTargetAtTime(targetVol, this.ctx.currentTime, 0.04);
+      }
     }
   }
 

@@ -490,12 +490,18 @@ export default function App() {
     return (
       <>
         <PlayerHome2D
-          gameState={{ ...gameState, walletNaira, bankBalanceNaira, streetCred }}
+          gameState={{
+            ...gameState,
+            walletNaira: saveData.walletNaira,
+            bankBalanceNaira: saveData.bankBalanceNaira ?? 250000,
+            streetCred: saveData.streetCred,
+          }}
           onUpdateWalletAndCred={(walletDelta, credDelta = 0, staminaSet) => {
-            const nextWallet = Math.max(0, walletNaira + walletDelta);
-            const nextCred = Math.max(0, streetCred + credDelta);
-            setWalletNaira(nextWallet);
-            setStreetCred(nextCred);
+            const currentWallet = saveData.walletNaira;
+            const currentCred = saveData.streetCred;
+            const nextWallet = Math.max(0, currentWallet + walletDelta);
+            const nextCred = Math.max(0, currentCred + credDelta);
+            updateSave({ walletNaira: nextWallet, streetCred: nextCred });
             setGameState((prev) => ({
               ...prev,
               walletNaira: nextWallet,
@@ -512,6 +518,7 @@ export default function App() {
             }
           }}
           onOpenPhone={() => setIsPhoneOpen(true)}
+          onOpenPosOrBank={openPosOrBank}
           onBackToMenu={() => {
             setIsHome2DOpen(false);
             setGameState((prev) => ({ ...prev, screen: 'MENU' }));

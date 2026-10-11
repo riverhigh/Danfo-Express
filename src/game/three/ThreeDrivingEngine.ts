@@ -4280,7 +4280,7 @@ export class ThreeDrivingEngine {
       this.vehicle.updateWheelTransform(i);
     }
 
-    const frontSteerAngle = -this.smoothedSteerNorm * 0.48;
+    const frontSteerAngle = this.smoothedSteerNorm * 0.48;
     // Outer knuckle strictly handles Y-axis steering yaw
     this.leftFrontWheel.rotation.set(0, frontSteerAngle, 0);
     this.rightFrontWheel.rotation.set(0, frontSteerAngle, 0);
@@ -4303,14 +4303,14 @@ export class ThreeDrivingEngine {
       }
     });
 
-    // 3. Cockpit 3D Steering Wheel: Fixed rotation direction & hidden in FIRST_PERSON (unless stepped down)
+    // 3. Cockpit 3D Steering Wheel: Clockwise rotation when steering right (-Z) & hidden in FIRST_PERSON (unless stepped down)
     const show3DCockpitWheel = params.cameraMode !== 'FIRST_PERSON' || isSteppedDown;
     this.steeringWheelMesh.visible = show3DCockpitWheel;
     this.speedNeedle.visible = show3DCockpitWheel;
     this.tachNeedle.visible = show3DCockpitWheel;
     this.fuelNeedle.visible = show3DCockpitWheel;
     this.accelNeedle.visible = show3DCockpitWheel;
-    this.steeringWheelMesh.rotation.z = THREE.MathUtils.degToRad(steeringWheelAngleDeg);
+    this.steeringWheelMesh.rotation.z = -THREE.MathUtils.degToRad(steeringWheelAngleDeg);
 
     // 4. Working Dashboard Needles (All 4 Working Gauges)
     const dashSpeedRatio = Math.min(1.0, speedKmH / 140);
@@ -4662,8 +4662,8 @@ export class ThreeDrivingEngine {
         localCamPos.add(this.busRoot.position);
         this.camera.position.copy(localCamPos);
 
-        const isReversing = gear === 'R';
-        const baseYaw = isReversing ? 0 : Math.PI;
+        // Maintain forward-facing driver cockpit view looking through windshield glass (zero jarring 180-deg flip!)
+        const baseYaw = Math.PI;
         const pitchG = isBraking ? 0.018 : (speedKmH > 20 ? -0.006 : 0);
 
         const clampedLookYaw = Math.max(-0.65, Math.min(0.65, params.cameraLookYaw || 0));

@@ -22,6 +22,7 @@ interface PlayerHome2DProps {
   onGoToDrive: () => void;
   onOpenPhone: () => void;
   onBackToMenu: () => void;
+  onOpenPosOrBank?: (mode: 'POS_KIOSK' | 'BANK_HALL') => void;
 }
 
 const HOME_UPGRADE_TIERS = [
@@ -189,14 +190,17 @@ export const PlayerHome2D: React.FC<PlayerHome2DProps> = ({
   onUpdateWalletAndCred,
   onGoToDrive,
   onOpenPhone,
+  onOpenPosOrBank,
 }) => {
   const walletNaira = gameState.walletNaira || 0;
+  const bankBalanceNaira = gameState.bankBalanceNaira ?? 250000;
   const energy = gameState.needs?.energy ?? 85;
   const maxEnergy = 100;
 
   const mountRef = useRef<HTMLDivElement | null>(null);
   const [cleanModelOnly, setCleanModelOnly] = useState<boolean>(false);
-  const [showAllRoomsUnveiled, setShowAllRoomsUnveiled] = useState<boolean>(true);
+  // Default to false so player STARTS IN SINGLE ROOM (Face-Me-I-Face-You), with luxury rooms locked!
+  const [showAllRoomsUnveiled, setShowAllRoomsUnveiled] = useState<boolean>(false);
   const [activeRoom, setActiveRoom] = useState<RoomId>('bedroom_minor');
   const [statusToast, setStatusToast] = useState<string>(
     '🏠 Welcome home! Drag to orbit the 3D isometric apartment or click any room floor to walk.'
@@ -1186,11 +1190,23 @@ export const PlayerHome2D: React.FC<PlayerHome2DProps> = ({
             <div className="bg-stone-950/90 border border-stone-700/80 rounded-xl px-3 py-1.5 flex items-center gap-3 shadow-xl backdrop-blur">
               <div className="flex items-center gap-1.5">
                 <Home className="w-4 h-4 text-amber-400" />
-                <span className="text-xs font-['Bungee'] text-white">3D APARTMENT INTERIOR</span>
+                <span className="text-xs font-['Bungee'] text-white">3D HOME</span>
               </div>
-              <span className="text-xs font-mono font-black text-emerald-400">
-                ₦{walletNaira.toLocaleString()}
-              </span>
+              <button
+                onClick={() => onOpenPosOrBank?.('POS_KIOSK')}
+                className="flex items-center gap-1 text-xs font-mono font-black text-emerald-400 hover:text-emerald-300 cursor-pointer tabular-nums"
+                title="Wallet Cash (Click for POS Kiosk)"
+              >
+                <span>₦{walletNaira.toLocaleString()}</span>
+              </button>
+              <span className="text-stone-700">·</span>
+              <button
+                onClick={() => onOpenPosOrBank?.('BANK_HALL')}
+                className="flex items-center gap-1 text-xs font-mono font-black text-sky-400 hover:text-sky-300 cursor-pointer tabular-nums"
+                title="Bank Account (Click for Bank Hall)"
+              >
+                <span>🏦 ₦{bankBalanceNaira.toLocaleString()}</span>
+              </button>
               <div className="flex items-center gap-1 text-xs font-mono text-sky-300">
                 <Zap className="w-3.5 h-3.5 text-amber-400" />
                 <span>

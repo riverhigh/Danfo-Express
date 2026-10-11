@@ -869,7 +869,9 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       if (e.key === 'r' || e.key === 'R') {
         setGear('R');
         inputsRef.current.gear = 'R';
+        soundEngine.playReverseGearEngaged();
         soundEngine.playReverseBeep();
+        addFeedMessage('🔄 REVERSE ENGAGED: Smooth mechanical gear whine active.');
       }
       if (e.key === 'n' || e.key === 'N') {
         setGear('N');
@@ -940,6 +942,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
     let telemetryAcc = 0;
     let boardingTimer = 0;
     let waybillTimer = 0;
+    let reverseBeepTimer = 0;
 
     const loop = (currTime: number) => {
       const dt = Math.min((currTime - lastTime) / 1000, 0.1);
@@ -1021,25 +1024,31 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         sim.heat = Math.max(10, sim.heat - 4.5 * fanMult * dt);
       }
 
-      // Tight, Precise 'Dr. Driving' Turning Kinematics + Lateral Velocity Dampening (Zero Ice-Sliding!)
+      // Tight, Precise Driving Turning Kinematics + Lateral Velocity Dampening
       if (sim.isSteppedDown) {
         sim.speed = 0;
       } else if (sim.speed > 0.05) {
         const speedMps = (sim.speed * 1000) / 3600;
-        const turnDir = inp.gear === 'R' ? -1 : 1;
+        const isReversing = inp.gear === 'R';
 
         if (Math.abs(steerFactor) > 0.015) {
-          // Snappy cornering bite proportional to steering input
-          const targetHeadingYaw = steerFactor * 0.44 * turnDir;
+          // Snappy cornering bite proportional to steering input (steer right turns right in forward and guides rear in reverse)
+          const targetHeadingYaw = steerFactor * 0.44 * (isReversing ? -0.65 : 1.0);
           sim.headingYaw += (targetHeadingYaw - sim.headingYaw) * Math.min(1.0, 14.5 * dt);
         } else {
-          // Artificial sideways velocity dampening when wheel is centered -> zero lateral drift!
+          // Centered steering: cancel out lateral heading drift immediately
           sim.headingYaw *= Math.pow(0.0005, dt);
           if (Math.abs(sim.headingYaw) < 0.002) sim.headingYaw = 0;
         }
         sim.headingYaw = Math.max(-0.46, Math.min(0.46, sim.headingYaw));
 
-        sim.laneOffset += Math.sin(sim.headingYaw) * speedMps * dt;
+        if (isReversing) {
+          // In reverse: turning wheel right smoothly steers the vehicle to the right (+X) without inversion
+          const reverseLatSpeed = steerFactor * 3.6 * Math.min(1.0, sim.speed / 14);
+          sim.laneOffset += reverseLatSpeed * dt;
+        } else {
+          sim.laneOffset += Math.sin(sim.headingYaw) * speedMps * dt;
+        }
         const allowedBounds = engineRef.current
           ? engineRef.current.getAllowedRoadBounds(sim.distanceTraveled)
           : { minX: sim.distanceTraveled < 48 ? -26.5 : -8.8, maxX: 8.8 };
@@ -1172,12 +1181,20 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         setActiveShop(null);
       }
 
-      // Reverse Safety Beep Audio
-      if (inp.gear === 'R' && sim.speed > 1) {
-        boardingTimer += dt;
-        if (boardingTimer >= 0.9) {
+      // Reverse Safety Beep & Mechanical Engine Sound (Clean 1.25s cadence, stops high forward revs)
+      if (inp.gear === 'R' && inp.isEngineRunning && !sim.isSteppedDown) {
+        reverseBeepTimer += dt;
+        if (reverseBeepTimer >= 1.25) {
+          reverseBeepTimer = 0;
           soundEngine.playReverseBeep();
         }
+      } else {
+        reverseBeepTimer = 0;
+      }
+
+      // Continuous dynamic engine audio loop: forward revs in D/L, smooth mechanical whine in R, resting idle in N/P
+      if (inp.isEngineRunning && !sim.isSteppedDown) {
+        soundEngine.updateEngine(sim.speed, inp.gear);
       }
 
       // NPC honk when player is blocking their lane
@@ -1511,6 +1528,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
             pendingRefuelCostRef.current -= costToDeduct;
             setGameState((prev) => {
               const nextWallet = Math.max(0, prev.walletNaira - costToDeduct);
+              onUpdateSave?.({ walletNaira: nextWallet });
               return {
                 ...prev,
                 walletNaira: nextWallet,
@@ -1590,8 +1608,26 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
             </span>
           </div>
 
-          {/* Center: Clean Essential Finances & Passenger Counter */}
-          <div className="flex items-center gap-2.5 text-[10px] font-mono">
+          {/* Center: Consolidated Essential Telemetry (Speed, Gear, Fuel, Passengers, Finances) */}
+          <div className="flex items-center gap-2 text-[10px] font-mono">
+            <span className="text-amber-300 font-black tabular-nums">{hudSpeed} KM/H</span>
+            <span
+              className={`px-1.5 py-0.5 rounded text-[8px] font-mono font-black ${
+                gear === 'R'
+                  ? 'bg-rose-600 text-white shadow ring-1 ring-rose-300 animate-pulse'
+                  : 'bg-stone-800 text-stone-200'
+              }`}
+            >
+              {gear}
+            </span>
+            {gear === 'R' && (
+              <span className="bg-emerald-950/90 border border-emerald-400 text-emerald-300 px-1.5 py-0.5 rounded text-[8px] font-mono font-black shrink-0">
+                [✓ Fixed] R-Gear Sound
+              </span>
+            )}
+            <span className="text-stone-700 hidden sm:inline">·</span>
+            <span className="text-stone-400 hidden md:inline tabular-nums">⛽{hudFuel}%</span>
+            <span className="text-stone-700 hidden sm:inline">·</span>
             <button
               onClick={() => onOpenPosOrBank?.('POS_KIOSK')}
               className="flex items-center gap-1 text-emerald-400 font-black tabular-nums hover:text-emerald-300 cursor-pointer"
@@ -1603,7 +1639,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
             <span className="text-stone-700">·</span>
             <button
               onClick={() => onOpenPosOrBank?.('BANK_HALL')}
-              className="hidden sm:flex items-center gap-1 text-sky-400 font-black tabular-nums hover:text-sky-300 cursor-pointer"
+              className="hidden lg:flex items-center gap-1 text-sky-400 font-black tabular-nums hover:text-sky-300 cursor-pointer"
               title="Bank Balance (Click for Bank Hall >₦100k)"
             >
               <span>🏦 ₦{(gameState.bankBalanceNaira || 0).toLocaleString()}</span>
@@ -1614,8 +1650,21 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
             </span>
           </div>
 
-          {/* Right: Compact Controls (Camera, Walk, Engine, Boost, Home, Exit) */}
+          {/* Right: Compact Controls (Dashboard Mode Toggle, Camera, Walk, Engine, Boost, Home, Exit) */}
           <div className="flex items-center gap-1 shrink-0">
+            {!isSteppedDown && cameraMode === 'FIRST_PERSON' && (
+              <button
+                onClick={() => setIsDashHidden((v) => !v)}
+                title="Toggle Dashboard Mode (Collapses bottom dash for unobstructed mobile view)"
+                className={`px-2 py-1 rounded border font-mono font-black text-[9px] transition-all ${
+                  isDashHidden
+                    ? 'bg-amber-400 border-amber-200 text-stone-950'
+                    : 'bg-stone-900 border-stone-700 text-stone-300 hover:text-white'
+                }`}
+              >
+                {isDashHidden ? '🎛️ DASH' : '👁️ CLEAN'}
+              </button>
+            )}
             <button
               onClick={cycleCameraMode}
               title="Switch Camera View (Key V)"
@@ -2104,11 +2153,16 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                 setDramaChallenge(null);
                 triggerCashToast(50, '+₦50 Change Settled!');
                 addFeedMessage(`🪙 CHANGE SETTLED: ${dramaChallenge.passengerName} received ₦50 change (+₦50 bonus)!`);
-                setGameState((prev) => ({
-                  ...prev,
-                  walletNaira: prev.walletNaira + 50,
-                  streetCred: prev.streetCred + 5,
-                }));
+                setGameState((prev) => {
+                  const nextWallet = prev.walletNaira + 50;
+                  const nextCred = prev.streetCred + 5;
+                  onUpdateSave?.({ walletNaira: nextWallet, streetCred: nextCred });
+                  return {
+                    ...prev,
+                    walletNaira: nextWallet,
+                    streetCred: nextCred,
+                  };
+                });
               } else {
                 setDramaChallenge({
                   ...dramaChallenge,
@@ -2154,24 +2208,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         </div>
       )}
 
-      {/* 🔑 COMPACT NON-INTRUSIVE ENGINE STARTER PILL (When Engine is OFF outside Gas Station) */}
-      {!isEngineRunning && !isSteppedDown && !activeGasStation && (
-        <div className="absolute top-11 left-1/2 -translate-x-1/2 z-50 pointer-events-auto flex items-center gap-2 bg-stone-950/95 border-2 border-amber-400 rounded-full px-3.5 py-1 shadow-[0_6px_20px_rgba(0,0,0,0.85)] backdrop-blur-md">
-          <span className="text-xs animate-pulse">🔑</span>
-          <span className="text-[10px] font-mono font-black text-amber-300">
-            ENGINE OFF (BUS LOCKED)
-          </span>
-          <button
-            onClick={toggleEngine}
-            className="px-2.5 py-0.5 bg-amber-400 hover:bg-amber-300 active:scale-95 text-stone-950 font-black text-[10px] font-['Bungee'] rounded-full shadow flex items-center gap-1"
-          >
-            <Power className="w-3 h-3 text-stone-950" />
-            START ENGINE (E / K)
-          </button>
-        </div>
-      )}
-
-      {/* 🚏 At Bus Stop: Boarding, Stop UID, Directional Next Stop (Inbound vs Opposite Side) & Fare Bargaining Hub */}
+      {/* 🚏 At Bus Stop: Compact Non-Intrusive Streamlined Indicator (Top-Left under top bar, ZERO Windshield Obstruction!) */}
       {(() => {
         const nearJ = gameState.junctions.find((j) => Math.abs(j.distanceMarkerMeters - currentDist) <= 28);
         if (!nearJ || activeGasStation || activeShop || isSteppedDown) return null;
@@ -2191,57 +2228,27 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         const seatsUsedCount = (gameState.bus.passengers || []).length;
 
         return (
-          <div className="absolute top-12 left-1/2 -translate-x-1/2 z-40 bg-stone-950/95 border-2 border-amber-400 rounded-2xl px-3.5 py-2 shadow-2xl flex flex-col gap-1.5 pointer-events-auto max-w-md w-[92vw]">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-1.5 min-w-0">
-                <MapPin className="w-4 h-4 text-amber-400 animate-pulse shrink-0" />
-                <div className="min-w-0 flex items-center gap-1.5">
-                  <span className="text-[11px] font-mono font-black text-amber-400 truncate">🚏 {nearJ.name}</span>
-                  <span className="text-[9px] font-mono text-stone-400 shrink-0">· {nearJ.uid}</span>
-                </div>
+          <div className="absolute top-11 left-3 z-40 bg-stone-950/92 border border-amber-400/80 rounded-xl px-3 py-1.5 shadow-xl flex items-center gap-2.5 pointer-events-auto max-w-sm backdrop-blur-md">
+            <MapPin className="w-4 h-4 text-amber-400 animate-pulse shrink-0" />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-mono font-black text-amber-400 truncate">🚏 {nearJ.name}</span>
+                <span className="text-[8px] font-mono text-emerald-400 shrink-0">({nearJ.waitingPassengersCount} wait)</span>
               </div>
-              <div className="flex items-center gap-1 shrink-0">
-                <button
-                  onClick={() =>
-                    setFareBargainMode((m) => (m === 'STANDARD' ? 'SURGE_BARGAIN' : 'STANDARD'))
-                  }
-                  className={`px-2 py-0.5 rounded-lg text-[8px] font-mono font-black border ${
-                    fareBargainMode === 'SURGE_BARGAIN'
-                      ? 'bg-amber-400 text-stone-950 border-amber-200'
-                      : 'bg-stone-900 text-stone-300 border-stone-700'
-                  }`}
-                  title="Bargain Fares at Stop"
-                >
-                  {fareBargainMode === 'SURGE_BARGAIN' ? '🔥 BARGAIN 1.2x' : `💵 ₦${nearJ.averageFare}`}
-                </button>
-                <button
-                  onClick={toggleDoor}
-                  className={`px-2.5 py-1 font-black text-[9px] font-['Bungee'] rounded-xl transition-transform active:scale-95 shadow shrink-0 ${
-                    doorState === 'CLOSED'
-                      ? 'bg-amber-400 text-stone-950 hover:bg-amber-300'
-                      : 'bg-rose-500 text-white'
-                  }`}
-                >
-                  {doorState === 'CLOSED' ? 'OPEN DOOR (O)' : 'CLOSE DOOR'}
-                </button>
+              <div className="text-[8px] text-stone-300 font-mono truncate">
+                Next: {nearJ.nextStopName} {dropOffsCount > 0 ? `· 🎯 ${dropOffsCount} drop` : ''}
               </div>
             </div>
-
-            <div className="flex items-center justify-between text-[9px] text-stone-300 font-mono">
-              <span className="text-emerald-400 truncate">➔ Next: {nearJ.nextStopName}</span>
-              <span>🚪 {nearJ.waitingPassengersCount} waiting</span>
-              <span>👥 {seatsUsedCount}/{gameState.bus.capacity || 14}</span>
-              {dropOffsCount > 0 && <span className="text-amber-300 font-bold">🎯 {dropOffsCount} drop</span>}
-            </div>
-
-            {isDeliveryDropOff && (
-              <div className="text-[9px] font-mono font-bold text-emerald-400 flex items-center gap-1">
-                <span>📦 WAYBILL DROP-OFF:</span>
-                <span>
-                  {gameState.activeDelivery?.itemName} (+₦{gameState.activeDelivery?.rewardNaira.toLocaleString()})
-                </span>
-              </div>
-            )}
+            <button
+              onClick={toggleDoor}
+              className={`px-2 py-1 font-black text-[8px] font-['Bungee'] rounded-lg transition-transform active:scale-95 shadow shrink-0 ${
+                doorState === 'CLOSED'
+                  ? 'bg-amber-400 text-stone-950 hover:bg-amber-300'
+                  : 'bg-rose-500 text-white'
+              }`}
+            >
+              {doorState === 'CLOSED' ? 'DOOR (O)' : 'CLOSE'}
+            </button>
           </div>
         );
       })()}
@@ -2665,7 +2672,12 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           {!isSteppedDown ? (
             <>
               {/* Vertical Gear Selector (R - N - D - P) resting on dashboard */}
-              <div className="flex flex-col bg-stone-950/95 border-2 border-stone-600 p-1 rounded-xl shadow-lg h-[82px] sm:h-[92px] justify-between">
+              <div className="relative flex flex-col bg-stone-950/95 border-2 border-stone-600 p-1 rounded-xl shadow-lg h-[82px] sm:h-[92px] justify-between">
+                {gear === 'R' && (
+                  <div className="absolute -top-6 right-0 bg-emerald-950/95 border border-emerald-400/90 text-emerald-300 text-[8px] font-mono font-black px-1.5 py-0.5 rounded shadow-xl flex items-center gap-1 whitespace-nowrap animate-in fade-in">
+                    <span>[✓ Fixed] R-Gear Sound</span>
+                  </div>
+                )}
                 {(['R', 'N', 'D', 'P'] as const).map((g) => (
                   <button
                     key={g}
@@ -2678,13 +2690,15 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                       if (!inputsRef.current.isEngineRunning) {
                         addFeedMessage('🔑 Engine is OFF! Start the engine (E / K) before driving.');
                       } else if (g === 'R') {
+                        soundEngine.playReverseGearEngaged();
                         soundEngine.playReverseBeep();
+                        addFeedMessage('🔄 REVERSE ENGAGED: Smooth mechanical gear whine active.');
                       }
                     }}
                     className={`w-7 sm:w-8 h-4 sm:h-4.5 rounded-md font-mono font-black text-[9px] sm:text-[10px] transition-all flex items-center justify-center cursor-pointer ${
                       gear === g
                         ? g === 'R'
-                          ? 'bg-rose-500 text-white shadow'
+                          ? 'bg-rose-600 text-white shadow-lg ring-2 ring-rose-400 animate-pulse'
                           : g === 'D'
                           ? 'bg-amber-400 text-stone-950 shadow ring-1 ring-amber-200'
                           : 'bg-sky-400 text-stone-950 shadow'
@@ -3027,11 +3041,16 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           walletNaira={gameState.walletNaira}
           onClose={() => setActiveNpc(null)}
           onSettleOrBuy={(cost, reward, msg) => {
-            setGameState((prev) => ({
-              ...prev,
-              walletNaira: Math.max(0, prev.walletNaira - cost + (reward?.cashNaira || 0)),
-              streetCred: Math.max(0, prev.streetCred + (reward?.streetCred || 0)),
-            }));
+            setGameState((prev) => {
+              const nextWallet = Math.max(0, prev.walletNaira - cost + (reward?.cashNaira || 0));
+              const nextCred = Math.max(0, prev.streetCred + (reward?.streetCred || 0));
+              onUpdateSave?.({ walletNaira: nextWallet, streetCred: nextCred });
+              return {
+                ...prev,
+                walletNaira: nextWallet,
+                streetCred: nextCred,
+              };
+            });
             addFeedMessage(msg);
             setActiveNpc(null);
           }}
