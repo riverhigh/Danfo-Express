@@ -655,7 +655,7 @@ export default function App() {
   }
 
   return (
-    <div className="w-screen h-screen bg-stone-950 text-stone-100 flex flex-col overflow-hidden font-['Plus_Jakarta_Sans',sans-serif]">
+    <div className="w-full h-[100dvh] max-h-[100dvh] fixed inset-0 bg-stone-950 text-stone-100 flex flex-col overflow-hidden font-['Plus_Jakarta_Sans',sans-serif]">
       {/* TOP DANFO HAZARD STRIPE ACCENT (Only in Menu/Results) */}
       {gameState.screen !== 'SHIFT_ACTIVE' && (
         <div

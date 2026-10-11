@@ -3622,78 +3622,370 @@ export class ThreeDrivingEngine {
    * Dispatch Courier Bikes with delivery boxes, Police Patrol cars, and Danfo Vans.
    */
 
-  // 1. KEKE NAPEP (BAJAJ TRICYCLE)
+  // 1. KEKE NAPEP (BAJAJ RE TRICYCLE) - HIGH QUALITY LOW-POLY GRAPHICS ASSET
   public createProceduralKeke(slogan: string = 'GOD DEY'): THREE.Group {
     const keke = new THREE.Group();
-    const yellowMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.2, metalness: 0.3 });
-    const blackCanvasMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.9 });
-    const chromeMat = new THREE.MeshStandardMaterial({ color: 0xd1d5db, roughness: 0.1, metalness: 0.9 });
-    const tireMat = new THREE.MeshStandardMaterial({ color: 0x222224, roughness: 0.8 });
-    const glassMat = new THREE.MeshStandardMaterial({ color: 0x050810, roughness: 0.05, transparent: true, opacity: 0.65 });
-    const headlightMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    const taillightMat = new THREE.MeshBasicMaterial({ color: 0xff1e1e });
 
-    // Lower cabin body
-    const body = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.65, 2.3), yellowMat);
-    body.position.set(0, 0.55, 0);
-    keke.add(body);
-
-    // Canvas roof canopy
-    const roof = new THREE.Mesh(new THREE.BoxGeometry(1.32, 0.08, 2.25), blackCanvasMat);
-    roof.position.set(0, 1.62, -0.05);
-    keke.add(roof);
-
-    // Canopy frame pillars
-    [-0.62, 0.62].forEach((px) => {
-      [-0.95, 0.1, 0.95].forEach((pz) => {
-        const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.75), chromeMat);
-        pillar.position.set(px, 1.25, pz);
-        keke.add(pillar);
-      });
+    // Stylized, High-Quality Material Shaders matching the Danfo bus and Lagos environment
+    const yellowMat = new THREE.MeshStandardMaterial({
+      color: 0xfacc15,
+      roughness: 0.28,
+      metalness: 0.22,
+    });
+    const yellowNoseMat = new THREE.MeshStandardMaterial({
+      color: 0xfbbf24,
+      roughness: 0.25,
+      metalness: 0.2,
+    });
+    const blackStripeMat = new THREE.MeshStandardMaterial({
+      color: 0x141416,
+      roughness: 0.35,
+      metalness: 0.15,
+    });
+    const blackCanvasMat = new THREE.MeshStandardMaterial({
+      color: 0x1c1917,
+      roughness: 0.88,
+      metalness: 0.05,
+    });
+    const darkCanvasRibMat = new THREE.MeshStandardMaterial({
+      color: 0x27272a,
+      roughness: 0.85,
+      metalness: 0.08,
+    });
+    const tubularFrameMat = new THREE.MeshStandardMaterial({
+      color: 0x18181b,
+      roughness: 0.35,
+      metalness: 0.65,
+    });
+    const chromeMat = new THREE.MeshStandardMaterial({
+      color: 0xe4e4e7,
+      roughness: 0.12,
+      metalness: 0.9,
+    });
+    const rubberTireMat = new THREE.MeshStandardMaterial({
+      color: 0x222224,
+      roughness: 0.85,
+      metalness: 0.06,
+    });
+    const steelRimMat = new THREE.MeshStandardMaterial({
+      color: 0x94a3b8,
+      roughness: 0.25,
+      metalness: 0.75,
+    });
+    const glassMat = new THREE.MeshStandardMaterial({
+      color: 0x93c5fd,
+      roughness: 0.08,
+      metalness: 0.18,
+      transparent: true,
+      opacity: 0.52,
+    });
+    const rubberGasketMat = new THREE.MeshStandardMaterial({
+      color: 0x09090b,
+      roughness: 0.92,
+    });
+    const vinylSeatMat = new THREE.MeshStandardMaterial({
+      color: 0x18181b,
+      roughness: 0.75,
+      metalness: 0.05,
+    });
+    const headlightMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      emissive: 0xfffbeb,
+      emissiveIntensity: 0.75,
+      roughness: 0.12,
+      metalness: 0.1,
+    });
+    const indicatorMat = new THREE.MeshStandardMaterial({
+      color: 0xf59e0b,
+      emissive: 0xd97706,
+      emissiveIntensity: 0.55,
+      roughness: 0.2,
+    });
+    const taillightMat = new THREE.MeshStandardMaterial({
+      color: 0xdc2626,
+      emissive: 0x991b1b,
+      emissiveIntensity: 0.7,
+      roughness: 0.2,
     });
 
-    // Front Windshield
-    const ws = new THREE.Mesh(new THREE.PlaneGeometry(1.15, 0.65), glassMat);
-    ws.position.set(0, 1.28, 0.96);
-    ws.rotation.x = -0.15;
-    keke.add(ws);
+    // Helper for 10-inch Keke wheels with tires, rims, and lug nuts
+    const buildKekeWheel = (radius: number = 0.24, width: number = 0.14) => {
+      const wheel = new THREE.Group();
+      // Outer rubber tire with tread bevel
+      const tireGeo = new THREE.CylinderGeometry(radius, radius, width, 18);
+      tireGeo.rotateZ(Math.PI / 2);
+      const tireMesh = new THREE.Mesh(tireGeo, rubberTireMat);
+      wheel.add(tireMesh);
 
-    // Front single tire (Tricycle layout)
-    const frontWheelGeo = new THREE.CylinderGeometry(0.24, 0.24, 0.14, 16);
-    frontWheelGeo.rotateZ(Math.PI / 2);
-    const frontTire = new THREE.Mesh(frontWheelGeo, tireMat);
-    frontTire.position.set(0, 0.24, 1.05);
-    keke.add(frontTire);
+      // Silver pressed steel rim
+      const rimGeo = new THREE.CylinderGeometry(radius * 0.68, radius * 0.68, width + 0.006, 18);
+      rimGeo.rotateZ(Math.PI / 2);
+      const rimMesh = new THREE.Mesh(rimGeo, steelRimMat);
+      wheel.add(rimMesh);
 
-    // Front chrome fork
-    const fork = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.55), chromeMat);
-    fork.position.set(0, 0.48, 1.02);
-    keke.add(fork);
+      // Chrome center hubcap
+      const hubGeo = new THREE.CylinderGeometry(radius * 0.28, radius * 0.28, width + 0.012, 12);
+      hubGeo.rotateZ(Math.PI / 2);
+      const hubMesh = new THREE.Mesh(hubGeo, chromeMat);
+      wheel.add(hubMesh);
 
-    // Dual rear tires
+      // 4 Wheel Lug Nuts
+      for (let i = 0; i < 4; i++) {
+        const ang = (i * Math.PI) / 2;
+        const nutGeo = new THREE.CylinderGeometry(0.016, 0.016, width + 0.014, 6);
+        nutGeo.rotateZ(Math.PI / 2);
+        const nut = new THREE.Mesh(nutGeo, chromeMat);
+        nut.position.set(0, Math.sin(ang) * (radius * 0.44), Math.cos(ang) * (radius * 0.44));
+        wheel.add(nut);
+      }
+      return wheel;
+    };
+
+    // Single Front Wheel & Telescopic Fork
+    const frontWheel = buildKekeWheel(0.24, 0.13);
+    frontWheel.position.set(0, 0.24, 1.05);
+    keke.add(frontWheel);
+
+    // Dual chrome front fork legs
+    [-0.09, 0.09].forEach((fx) => {
+      const forkLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.52, 10), chromeMat);
+      forkLeg.position.set(fx, 0.46, 1.04);
+      forkLeg.rotation.x = -0.12;
+      keke.add(forkLeg);
+    });
+
+    // Front fork crown & yellow mudguard
+    const mudguard = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.12, 0.48), yellowMat);
+    mudguard.position.set(0, 0.44, 1.04);
+    mudguard.rotation.x = -0.12;
+    keke.add(mudguard);
+
+    // Dual Rear Wheels
     [-0.58, 0.58].forEach((rx) => {
-      const rearTire = new THREE.Mesh(frontWheelGeo, tireMat);
-      rearTire.position.set(rx, 0.24, -0.75);
-      keke.add(rearTire);
+      const rearWheel = buildKekeWheel(0.24, 0.14);
+      rearWheel.position.set(rx, 0.24, -0.68);
+      keke.add(rearWheel);
     });
 
-    // Front single headlight
-    const headlight = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.05, 12), headlightMat);
-    headlight.rotateX(Math.PI / 2);
-    headlight.position.set(0, 0.72, 1.16);
-    keke.add(headlight);
+    // Chassis & Black Underbody Platform
+    const chassis = new THREE.Mesh(new THREE.BoxGeometry(1.24, 0.08, 2.30), rubberGasketMat);
+    chassis.position.set(0, 0.22, 0.0);
+    keke.add(chassis);
 
-    // Rear taillights
-    [-0.48, 0.48].forEach((lx) => {
-      const tl = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 0.04), taillightMat);
-      tl.position.set(lx, 0.65, -1.16);
-      keke.add(tl);
+    // Rear Passenger Tub (Main Yellow Body)
+    const rearTub = new THREE.Mesh(new THREE.BoxGeometry(1.28, 0.42, 1.25), yellowMat);
+    rearTub.position.set(0, 0.44, -0.52);
+    keke.add(rearTub);
+
+    // Rear Tub Upper Side Panels
+    [-0.62, 0.62].forEach((sx) => {
+      const sideWall = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.38, 1.25), yellowMat);
+      sideWall.position.set(sx, 0.68, -0.52);
+      keke.add(sideWall);
+
+      // Lagos Iconic Twin Black Livery Stripes on sides!
+      const topStripe = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.05, 1.25), blackStripeMat);
+      topStripe.position.set(sx + (sx > 0 ? 0.026 : -0.026), 0.74, -0.52);
+      const btmStripe = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.05, 1.25), blackStripeMat);
+      btmStripe.position.set(sx + (sx > 0 ? 0.026 : -0.026), 0.62, -0.52);
+      keke.add(topStripe, btmStripe);
+
+      // Low Tubular Passenger Safety Side Rail
+      const sideRail = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 1.24, 8), chromeMat);
+      sideRail.rotation.x = Math.PI / 2;
+      sideRail.position.set(sx, 0.88, -0.52);
+      keke.add(sideRail);
     });
 
-    // Slogan Plate on Rear
-    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.16, 0.02), new THREE.MeshBasicMaterial({ color: 0x000000 }));
-    plate.position.set(0, 0.45, -1.16);
-    keke.add(plate);
+    // Sloping Front Nosecone / Cowl (Tapered aerodynamic Bajaj RE front)
+    const frontNose = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.46, 0.78), yellowNoseMat);
+    frontNose.position.set(0, 0.46, 0.60);
+    keke.add(frontNose);
+
+    const frontApron = new THREE.Mesh(new THREE.BoxGeometry(0.70, 0.42, 0.34), yellowMat);
+    frontApron.position.set(0, 0.54, 0.98);
+    frontApron.rotation.x = -0.16;
+    keke.add(frontApron);
+
+    // Front Apron Black Lagos Livery Stripe
+    const frontStripe = new THREE.Mesh(new THREE.BoxGeometry(0.71, 0.065, 0.02), blackStripeMat);
+    frontStripe.position.set(0, 0.56, 1.15);
+    frontStripe.rotation.x = -0.16;
+    keke.add(frontStripe);
+
+    // Chrome Front Bumper / Crash Guard
+    const frontBumper = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.78, 10), chromeMat);
+    frontBumper.rotation.z = Math.PI / 2;
+    frontBumper.position.set(0, 0.30, 1.18);
+    keke.add(frontBumper);
+
+    // Driver Saddle Seat
+    const driverSeat = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.12, 0.34), vinylSeatMat);
+    driverSeat.position.set(0, 0.56, 0.18);
+    keke.add(driverSeat);
+
+    // Chrome Steering Handlebars & Grips
+    const handlebar = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.56, 10), chromeMat);
+    handlebar.rotation.z = Math.PI / 2;
+    handlebar.position.set(0, 0.86, 0.74);
+    keke.add(handlebar);
+
+    // Handlebar rubber grips
+    [-0.26, 0.26].forEach((gx) => {
+      const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.10, 8), rubberGasketMat);
+      grip.rotation.z = Math.PI / 2;
+      grip.position.set(gx, 0.86, 0.74);
+      keke.add(grip);
+    });
+
+    // Dashboard Instrument Pod
+    const dashPod = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 0.08), rubberGasketMat);
+    dashPod.position.set(0, 0.86, 0.76);
+    keke.add(dashPod);
+
+    // Chrome Side Mirrors on handlebar stalks
+    [-0.30, 0.30].forEach((mx) => {
+      const stalk = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.14), chromeMat);
+      stalk.position.set(mx, 0.93, 0.74);
+      const mirror = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, 0.015), chromeMat);
+      mirror.position.set(mx, 0.99, 0.74);
+      keke.add(stalk, mirror);
+    });
+
+    // Rear Passenger Bench Seat & Backrest
+    const passengerBench = new THREE.Mesh(new THREE.BoxGeometry(1.14, 0.15, 0.42), vinylSeatMat);
+    passengerBench.position.set(0, 0.48, -0.74);
+    keke.add(passengerBench);
+
+    const passengerBackrest = new THREE.Mesh(new THREE.BoxGeometry(1.14, 0.38, 0.09), vinylSeatMat);
+    passengerBackrest.position.set(0, 0.82, -0.98);
+    keke.add(passengerBackrest);
+
+    // Windshield Outer Rubber Gasket Frame
+    const wsFrame = new THREE.Mesh(new THREE.BoxGeometry(0.84, 0.64, 0.025), rubberGasketMat);
+    wsFrame.position.set(0, 1.25, 0.93);
+    wsFrame.rotation.x = -0.16;
+    keke.add(wsFrame);
+
+    // Windshield Glass Pane
+    const wsGlass = new THREE.Mesh(new THREE.PlaneGeometry(0.78, 0.58), glassMat);
+    wsGlass.position.set(0, 1.25, 0.945);
+    wsGlass.rotation.x = -0.16;
+    keke.add(wsGlass);
+
+    // Centered Black Windshield Wiper
+    const wiperArm = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.32, 0.015), rubberGasketMat);
+    wiperArm.position.set(0.04, 1.15, 0.95);
+    wiperArm.rotation.x = -0.16;
+    wiperArm.rotation.z = -0.22;
+    keke.add(wiperArm);
+
+    // Distinct Arched Black Canvas Hood Canopy (Not a flat board!)
+    // Lower main canopy canvas
+    const canopyBase = new THREE.Mesh(new THREE.BoxGeometry(1.28, 0.06, 2.32), blackCanvasMat);
+    canopyBase.position.set(0, 1.62, -0.06);
+    keke.add(canopyBase);
+
+    // Arched crown roof canopy
+    const canopyCrown = new THREE.Mesh(new THREE.BoxGeometry(1.16, 0.06, 2.26), darkCanvasRibMat);
+    canopyCrown.position.set(0, 1.66, -0.06);
+    keke.add(canopyCrown);
+
+    // Canvas Hood Rear Flap Curtain draping down at back
+    const rearCanvasFlap = new THREE.Mesh(new THREE.BoxGeometry(1.22, 0.64, 0.03), blackCanvasMat);
+    rearCanvasFlap.position.set(0, 1.30, -1.16);
+    keke.add(rearCanvasFlap);
+
+    // Clear vinyl rear window in canvas curtain
+    const rearWindow = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.32), glassMat);
+    rearWindow.position.set(0, 1.35, -1.176);
+    rearWindow.rotation.y = Math.PI;
+    keke.add(rearWindow);
+
+    // Tubular Rollover Cage Framing
+    // A-Pillars (Windshield arch)
+    [-0.41, 0.41].forEach((px) => {
+      const aPillar = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.88, 8), tubularFrameMat);
+      aPillar.position.set(px, 1.25, 0.93);
+      aPillar.rotation.x = -0.16;
+      keke.add(aPillar);
+    });
+
+    // B-Pillars (Center roll hoop)
+    [-0.62, 0.62].forEach((px) => {
+      const bPillar = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.84, 8), tubularFrameMat);
+      bPillar.position.set(px, 1.24, 0.04);
+      keke.add(bPillar);
+    });
+
+    // C-Pillars (Rear roll hoop)
+    [-0.62, 0.62].forEach((px) => {
+      const cPillar = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.84, 8), tubularFrameMat);
+      cPillar.position.set(px, 1.24, -1.14);
+      keke.add(cPillar);
+    });
+
+    // Longitudinal Roof Side Rails connecting pillars
+    [-0.62, 0.62].forEach((rx) => {
+      const roofRail = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 2.15, 8), tubularFrameMat);
+      roofRail.rotation.x = Math.PI / 2;
+      roofRail.position.set(rx, 1.60, -0.10);
+      keke.add(roofRail);
+    });
+
+    // Front Central Headlamp
+    const headlamp = new THREE.Mesh(new THREE.CylinderGeometry(0.10, 0.10, 0.06, 14), headlightMat);
+    headlamp.rotateX(Math.PI / 2);
+    headlamp.position.set(0, 0.72, 1.16);
+    const headlampRim = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.05, 14), chromeMat);
+    headlampRim.rotateX(Math.PI / 2);
+    headlampRim.position.set(0, 0.72, 1.14);
+    keke.add(headlamp, headlampRim);
+
+    // Front Amber Indicators
+    [-0.32, 0.32].forEach((ix) => {
+      const ind = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, 0.04), indicatorMat);
+      ind.position.set(ix, 0.72, 1.10);
+      keke.add(ind);
+    });
+
+    // Rear Taillights (Red brake + amber blinker pods)
+    [-0.50, 0.50].forEach((tx) => {
+      const tailPod = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.08, 0.04), taillightMat);
+      tailPod.position.set(tx, 0.64, -1.16);
+      keke.add(tailPod);
+    });
+
+    // Rear Chrome Bumper Bar
+    const rearBumper = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.24, 10), chromeMat);
+    rearBumper.rotation.z = Math.PI / 2;
+    rearBumper.position.set(0, 0.28, -1.18);
+    keke.add(rearBumper);
+
+    // Rear Slogan Plate / Flap
+    const sloganCanvas = document.createElement('canvas');
+    sloganCanvas.width = 256;
+    sloganCanvas.height = 64;
+    const sCtx = sloganCanvas.getContext('2d');
+    if (sCtx) {
+      sCtx.fillStyle = '#09090b';
+      sCtx.fillRect(0, 0, 256, 64);
+      sCtx.strokeStyle = '#facc15';
+      sCtx.lineWidth = 4;
+      sCtx.strokeRect(4, 4, 248, 56);
+      sCtx.fillStyle = '#fef08a';
+      sCtx.font = 'bold 20px "Bungee", monospace, sans-serif';
+      sCtx.textAlign = 'center';
+      sCtx.textBaseline = 'middle';
+      sCtx.fillText((slogan || 'GOD DEY').toUpperCase(), 128, 32);
+    }
+    const sloganTex = new THREE.CanvasTexture(sloganCanvas);
+    const sloganPlate = new THREE.Mesh(
+      new THREE.BoxGeometry(0.72, 0.18, 0.02),
+      new THREE.MeshStandardMaterial({ map: sloganTex, roughness: 0.7 })
+    );
+    sloganPlate.position.set(0, 0.44, -1.16);
+    keke.add(sloganPlate);
 
     return keke;
   }

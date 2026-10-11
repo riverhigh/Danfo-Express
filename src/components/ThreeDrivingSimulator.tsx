@@ -1743,7 +1743,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
   const [showRightPanel, setShowRightPanel] = React.useState(true);
 
   return (
-    <div className="relative w-[100vw] h-[100vh] bg-stone-950 overflow-hidden select-none pointer-events-none" style={{ position: "relative", width: "100vw", height: "100vh" }}>
+    <div className="relative w-full h-[100dvh] max-h-[100dvh] bg-stone-950 overflow-hidden select-none pointer-events-none" style={{ position: "relative", width: "100%", height: "100dvh" }}>
       {/* 3D WebGL Canvas */}
       <div
         ref={mountRef}
@@ -1780,7 +1780,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
 
       {/* ═══════ CLEAN, UNCLUTTERED TOP BAR ═══════ */}
       <div className={`absolute top-0 left-0 right-0 z-40 pointer-events-auto transition-transform duration-300 ${showTopHUD ? 'translate-y-0' : '-translate-y-full'}`}>
-        <div className="flex items-center justify-between h-9 bg-stone-950/92 backdrop-blur-md border-b border-stone-800 shadow-lg px-2.5 gap-2">
+        <div className="flex items-center justify-between h-8 bg-stone-950/92 backdrop-blur-md border-b border-stone-800 shadow-lg px-2 sm:px-3 gap-2">
           {/* Left: Brand & Route Progress */}
           <div className="flex items-center gap-2 shrink-0">
             <span className="text-[10px] font-['Bungee'] text-amber-400 tracking-wide hidden sm:inline">DANFO EXPRESS</span>
@@ -1789,10 +1789,10 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
             </span>
           </div>
 
-          {/* Center: Sleek Gear & Next Stop Status (Speed, Gas, Balance, People Counter removed per request!) */}
+          {/* Center: Sleek Gear & Next Stop Status */}
           <div className="flex items-center gap-2 text-[10px] font-mono">
             <span
-              className={`px-2 py-0.5 rounded text-[8px] font-mono font-black ${
+              className={`px-1.5 py-0.5 rounded text-[8px] font-mono font-black ${
                 gear === 'R'
                   ? 'bg-rose-600 text-white shadow ring-1 ring-rose-300 animate-pulse'
                   : 'bg-stone-800 text-stone-200'
@@ -1807,13 +1807,13 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
             )}
           </div>
 
-          {/* Right: Compact Controls (Dashboard Mode Toggle, Camera, Walk, Engine, Boost with Counter & Buy, Home, Exit) */}
+          {/* Right: Compact Controls */}
           <div className="flex items-center gap-1 shrink-0">
             {!isSteppedDown && cameraMode === 'FIRST_PERSON' && (
               <button
                 onClick={() => setIsDashHidden((v) => !v)}
                 title="Toggle Dashboard Mode (Collapses bottom dash for unobstructed mobile view)"
-                className={`px-2 py-1 rounded border font-mono font-black text-[9px] transition-all ${
+                className={`px-1.5 py-0.5 rounded border font-mono font-black text-[8.5px] transition-all ${
                   isDashHidden
                     ? 'bg-amber-400 border-amber-200 text-stone-950'
                     : 'bg-stone-900 border-stone-700 text-stone-300 hover:text-white'
@@ -1825,14 +1825,14 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
             <button
               onClick={cycleCameraMode}
               title="Switch Camera View (Key V)"
-              className="px-2 py-1 rounded border border-sky-500/60 bg-sky-950/80 text-sky-300 hover:text-white font-mono font-black text-[9px]"
+              className="px-1.5 py-0.5 rounded border border-sky-500/60 bg-sky-950/80 text-sky-300 hover:text-white font-mono font-black text-[8.5px]"
             >
               {isSteppedDown ? (walkThirdPerson ? '🎥 3RD' : '👁️ 1ST') : cameraMode === 'FIRST_PERSON' ? '🎥 1ST' : cameraMode === 'THIRD_PERSON' ? '🚗 3RD' : '🦅 CAM'}
             </button>
             <button
               onClick={toggleStepDown}
               title="Walk Mode / Step Out (Key E or F)"
-              className={`px-2 py-1 rounded border font-mono font-black text-[9px] ${
+              className={`px-1.5 py-0.5 rounded border font-mono font-black text-[8.5px] ${
                 isSteppedDown
                   ? 'bg-amber-400 border-amber-200 text-stone-950'
                   : 'bg-stone-900 border-amber-400/60 text-amber-300 hover:text-white'
@@ -1843,13 +1843,13 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
             <button
               onClick={toggleEngine}
               title="Toggle Engine Ignition ON/OFF (Key K)"
-              className={`px-2 py-1 rounded border font-mono font-black text-[9px] flex items-center gap-1 transition-all ${
+              className={`px-1.5 py-0.5 rounded border font-mono font-black text-[8.5px] flex items-center gap-1 transition-all ${
                 isEngineRunning
                   ? 'bg-emerald-950/90 border-emerald-500/70 text-emerald-300'
                   : 'bg-rose-600 border-rose-300 text-white animate-pulse'
               }`}
             >
-              <Power className="w-3 h-3" />
+              <Power className="w-2.5 h-2.5" />
               <span className="hidden sm:inline">{isEngineRunning ? 'ENG: ON' : 'ENG: OFF'}</span>
             </button>
 
@@ -1858,7 +1858,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
               <button
                 onClick={triggerOvertakeBoost}
                 title="Consume 1 Nitro Boost (Shift)"
-                className={`px-2 py-1 rounded font-mono font-black text-[9px] transition-all flex items-center gap-1 active:scale-95 ${
+                className={`px-1.5 py-0.5 rounded font-mono font-black text-[8.5px] transition-all flex items-center gap-1 active:scale-95 ${
                   isBoosting
                     ? 'bg-amber-400 text-stone-950 animate-pulse'
                     : (gameState.boostCanisters ?? 0) > 0
@@ -1867,14 +1867,14 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                 }`}
               >
                 <span>⚡ BOOST</span>
-                <span className="px-1 py-0.2 rounded bg-black/40 text-amber-200 font-mono text-[8px] font-black border border-black/20">
+                <span className="px-1 py-0.2 rounded bg-black/40 text-amber-200 font-mono text-[7.5px] font-black border border-black/20">
                   {gameState.boostCanisters ?? 0}
                 </span>
               </button>
               <button
                 onClick={() => handleBuyBoost(1)}
                 title="Buy 1 Nitro Boost Canister for ₦500"
-                className="px-1.5 py-1 bg-amber-500/20 hover:bg-amber-400 hover:text-stone-950 text-amber-300 rounded font-mono font-black text-[8px] transition-all active:scale-95"
+                className="px-1 py-0.5 bg-amber-500/20 hover:bg-amber-400 hover:text-stone-950 text-amber-300 rounded font-mono font-black text-[7.5px] transition-all active:scale-95"
               >
                 +₦500
               </button>
@@ -1882,34 +1882,34 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
             {onGoHome && (
               <button
                 onClick={onGoHome}
-                className="px-2 py-1 rounded border border-emerald-400/70 bg-emerald-950/80 hover:bg-emerald-400 hover:text-stone-950 text-emerald-300 font-mono font-black text-[9px] flex items-center gap-1 transition-all"
+                className="px-1.5 py-0.5 rounded border border-emerald-400/70 bg-emerald-950/80 hover:bg-emerald-400 hover:text-stone-950 text-emerald-300 font-mono font-black text-[8.5px] flex items-center gap-1 transition-all"
                 title="Go Home (3D Apartment Interior)"
               >
-                <Home className="w-3 h-3" />
+                <Home className="w-2.5 h-2.5" />
                 <span className="hidden sm:inline">HOME</span>
               </button>
             )}
             <button
               onClick={onOpenPhone}
-              className="p-1.5 rounded border border-stone-700 bg-stone-900 text-stone-300 hover:text-white"
+              className="p-1 rounded border border-stone-700 bg-stone-900 text-stone-300 hover:text-white"
               title="Open Driver Phone (P)"
             >
-              <Smartphone className="w-3.5 h-3.5" />
+              <Smartphone className="w-3 h-3" />
             </button>
             <button
               onClick={() => onFinishShift(false)}
-              className="p-1.5 rounded border border-stone-700 bg-stone-900 text-stone-400 hover:text-rose-400"
+              className="p-1 rounded border border-stone-700 bg-stone-900 text-stone-400 hover:text-rose-400"
               title="End Shift"
             >
-              <LogOut className="w-3.5 h-3.5" />
+              <LogOut className="w-3 h-3" />
             </button>
           </div>
         </div>
       </div>
       {/* Top toggle tab */}
-      <div className="absolute left-1/2 -translate-x-1/2 z-50 pointer-events-auto transition-all duration-300" style={{ top: showTopHUD ? 36 : 0 }}>
+      <div className="absolute left-1/2 -translate-x-1/2 z-50 pointer-events-auto transition-all duration-300" style={{ top: showTopHUD ? 32 : 0 }}>
         <button onClick={() => setShowTopHUD(v => !v)}
-          className="w-10 h-4 bg-stone-900/90 border border-stone-700/60 rounded-b-lg flex items-center justify-center text-stone-400 hover:text-white text-[8px]">
+          className="w-10 h-3.5 bg-stone-900/90 border border-stone-700/60 rounded-b-lg flex items-center justify-center text-stone-400 hover:text-white text-[7px]">
           {showTopHUD ? '▲' : '▼'}
         </button>
       </div>
@@ -2210,10 +2210,13 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
 
       {/* 🛣️ ACTIVE SHORTCUT BYPASS BANNER */}
       {isOnShortcut && !activeGasStation && (
-        <div className="absolute top-11 left-1/2 -translate-x-1/2 z-40 pointer-events-none bg-emerald-950/90 border-2 border-emerald-400 rounded-full px-3.5 py-1 shadow-xl flex items-center gap-2">
-          <span className="text-xs">🛣️</span>
-          <span className="text-[10px] font-mono font-black text-emerald-300">
-            SHORTCUT BYPASS LANE • 1.35x ROUTE SPEED • ZERO HIGHWAY TRAFFIC
+        <div
+          className="absolute z-40 pointer-events-none bg-emerald-950/90 border border-emerald-400/90 rounded-full px-3 py-0.5 shadow-lg flex items-center gap-1.5 transition-all duration-300"
+          style={{ top: showTopHUD ? 33 : 5, left: '50%', transform: 'translateX(-50%)' }}
+        >
+          <span className="text-[10px]">🛣️</span>
+          <span className="text-[8.5px] sm:text-[9.5px] font-mono font-black text-emerald-300">
+            SHORTCUT BYPASS LANE • 1.35x SPEED • ZERO HIGHWAY TRAFFIC
           </span>
         </div>
       )}
@@ -2394,25 +2397,28 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       {/* ═══════ LIVE REAR-VIEW SIDE MIRRORS & TOP-RIGHT ORTHOGRAPHIC SATELLITE MINI-MAP ═══════ */}
       {!isSteppedDown && (
         <>
-          {/* LEFT SIDE MIRROR (Accurate Live Rear View - Uncluttered Left Windshield!) */}
-          <div className="absolute left-0 top-10 z-30 pointer-events-none flex items-center">
+          {/* LEFT SIDE MIRROR (High Top-Left Anchor - Max Windshield Visibility!) */}
+          <div
+            className="absolute left-1 sm:left-2 z-30 pointer-events-none flex items-center transition-all duration-300"
+            style={{ top: showTopHUD ? 33 : 4 }}
+          >
             {cameraMode === 'FIRST_PERSON' && (
-              <div className="w-2 sm:w-3 h-5 bg-gradient-to-r from-amber-500 via-stone-800 to-stone-900 border-y border-stone-700" />
+              <div className="w-1.5 sm:w-2.5 h-4 bg-gradient-to-r from-amber-500 via-stone-800 to-stone-900 border-y border-stone-700" />
             )}
-            <div className="relative rounded-r-xl rounded-l-md bg-stone-950 p-0.5 sm:p-1 border-2 border-stone-700 shadow-[0_6px_18px_rgba(0,0,0,0.9)] ring-1 ring-amber-400/70 overflow-hidden">
-              <div className="relative w-[82px] h-[46px] sm:w-[116px] sm:h-[64px] rounded-md overflow-hidden bg-stone-900 border border-stone-600/80">
+            <div className="relative rounded-xl bg-stone-950 p-0.5 border border-stone-700 shadow-[0_4px_14px_rgba(0,0,0,0.85)] ring-1 ring-amber-400/60 overflow-hidden">
+              <div className="relative w-[74px] h-[42px] sm:w-[94px] sm:h-[52px] rounded-lg overflow-hidden bg-stone-900 border border-stone-600/70">
                 <canvas
                   ref={leftMirrorCanvasRef}
-                  width={220}
-                  height={130}
+                  width={200}
+                  height={115}
                   className="w-full h-full object-cover block"
                 />
                 <div className="absolute top-0 bottom-0 left-[22%] w-px border-l border-dashed border-amber-300/35 pointer-events-none" />
-                <div className="absolute top-0.5 left-1 px-1 bg-stone-950/75 rounded text-[6px] sm:text-[7px] font-mono font-black text-amber-400">
+                <div className="absolute top-0.5 left-1 px-1 bg-stone-950/80 rounded text-[6px] sm:text-[7px] font-mono font-black text-amber-400">
                   L-MIRROR
                 </div>
                 {turnSignal === 'LEFT' || hazardLights ? (
-                  <div className="absolute bottom-0.5 left-1 text-[8px] font-black text-amber-400 animate-pulse">
+                  <div className="absolute bottom-0.5 left-1 text-[7px] font-black text-amber-400 animate-pulse">
                     ◀
                   </div>
                 ) : null}
@@ -2420,22 +2426,25 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
             </div>
           </div>
 
-          {/* RIGHT SIDE MIRROR (Positioned cleanly beside the Top-Right Orthographic Mini-Map) */}
-          <div className="absolute right-[108px] sm:right-[134px] top-10 z-30 pointer-events-none flex items-center">
-            <div className="relative rounded-xl bg-stone-950 p-0.5 sm:p-1 border-2 border-stone-700 shadow-[0_6px_18px_rgba(0,0,0,0.9)] ring-1 ring-amber-400/70 overflow-hidden">
-              <div className="relative w-[82px] h-[46px] sm:w-[116px] sm:h-[64px] rounded-md overflow-hidden bg-stone-900 border border-stone-600/80">
+          {/* RIGHT SIDE MIRROR (High Top-Right Anchor, snug beside scaled-down Mini-Map) */}
+          <div
+            className="absolute z-30 pointer-events-none flex items-center transition-all duration-300"
+            style={{ top: showTopHUD ? 33 : 4, right: 'clamp(88px, 11vw + 16px, 112px)' }}
+          >
+            <div className="relative rounded-xl bg-stone-950 p-0.5 border border-stone-700 shadow-[0_4px_14px_rgba(0,0,0,0.85)] ring-1 ring-amber-400/60 overflow-hidden">
+              <div className="relative w-[74px] h-[42px] sm:w-[94px] sm:h-[52px] rounded-lg overflow-hidden bg-stone-900 border border-stone-600/70">
                 <canvas
                   ref={rightMirrorCanvasRef}
-                  width={220}
-                  height={130}
+                  width={200}
+                  height={115}
                   className="w-full h-full object-cover block"
                 />
                 <div className="absolute top-0 bottom-0 right-[22%] w-px border-r border-dashed border-amber-300/35 pointer-events-none" />
-                <div className="absolute top-0.5 right-1 px-1 bg-stone-950/75 rounded text-[6px] sm:text-[7px] font-mono font-black text-amber-400">
+                <div className="absolute top-0.5 right-1 px-1 bg-stone-950/80 rounded text-[6px] sm:text-[7px] font-mono font-black text-amber-400">
                   R-MIRROR
                 </div>
                 {turnSignal === 'RIGHT' || hazardLights ? (
-                  <div className="absolute bottom-0.5 right-1 text-[8px] font-black text-amber-400 animate-pulse">
+                  <div className="absolute bottom-0.5 right-1 text-[7px] font-black text-amber-400 animate-pulse">
                     ▶
                   </div>
                 ) : null}
@@ -2445,11 +2454,14 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         </>
       )}
 
-      {/* 🗺️ TOP-RIGHT LIVE 3D ORTHOGRAPHIC CAMERA MINI-MAP (With Integrated Street Label) */}
-      <div className="absolute top-10 right-2 z-40 pointer-events-auto flex flex-col items-end">
+      {/* 🗺️ TOP-RIGHT LIVE 3D ORTHOGRAPHIC CAMERA MINI-MAP (Scaled Down 15% to 82px / 102px) */}
+      <div
+        className="absolute right-1.5 sm:right-2 z-40 pointer-events-auto flex flex-col items-end transition-all duration-300"
+        style={{ top: showTopHUD ? 33 : 4 }}
+      >
         <div
           onClick={onOpenMap}
-          className="relative w-[96px] h-[96px] sm:w-[120px] sm:h-[120px] rounded-xl overflow-hidden bg-stone-950 border-2 border-amber-400 shadow-[0_8px_24px_rgba(0,0,0,0.95)] cursor-pointer group"
+          className="relative w-[82px] h-[82px] sm:w-[102px] sm:h-[102px] rounded-xl overflow-hidden bg-stone-950 border-2 border-amber-400 shadow-[0_6px_20px_rgba(0,0,0,0.92)] cursor-pointer group"
           title="Live 3D Satellite Mini-Map (Click for Full Corridor Map)"
         >
           <canvas
@@ -2458,12 +2470,12 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
             height={180}
             className="w-full h-full object-cover block"
           />
-          <div className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-stone-950/85 border border-stone-700 text-[7px] font-mono font-black text-amber-400 flex items-center gap-1">
+          <div className="absolute top-0.5 left-0.5 px-1 py-0.2 rounded bg-stone-950/85 border border-stone-700 text-[6.5px] font-mono font-black text-amber-400 flex items-center gap-0.5">
             <span>🧭 N</span>
             <span className="text-emerald-400">SAT</span>
           </div>
-          <div className="absolute bottom-0 inset-x-0 bg-stone-950/90 px-1.5 py-0.5 flex items-center justify-between text-[7px] font-mono">
-            <span className="text-emerald-300 font-bold truncate max-w-[65%]">
+          <div className="absolute bottom-0 inset-x-0 bg-stone-950/92 px-1 py-0.5 flex items-center justify-between text-[6.5px] font-mono">
+            <span className="text-emerald-300 font-bold truncate max-w-[62%]">
               {streetTelemetry?.currentCorridor && streetTelemetry.currentCorridor !== 'MAIN_EXPRESSWAY'
                 ? '↪ SIDE ST'
                 : '🟢 EXPRESS'}
@@ -2474,14 +2486,13 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       </div>
 
       {/* ═══════ FULL-WIDTH FIRST-PERSON BUS COCKPIT DASHBOARD (LEFT-0 TO RIGHT-0) ═══════ */}
-      {/* Dashboard spans full width so Gear, Brake, and Tall Gas Pedal rest cleanly ON the right side of the dashboard! */}
       {!isSteppedDown && cameraMode === 'FIRST_PERSON' && (
         <>
           {/* Slim Yellow Danfo A-Pillars framing the edges of the wide windshield */}
           {!isDashHidden && (
             <>
-              <div className="absolute top-9 bottom-[104px] sm:bottom-[114px] left-0 w-2 sm:w-2.5 bg-gradient-to-r from-amber-500 to-stone-900 border-r border-stone-800 z-20 pointer-events-none" />
-              <div className="absolute top-9 bottom-[104px] sm:bottom-[114px] right-0 w-2 sm:w-2.5 bg-gradient-to-l from-amber-500 to-stone-900 border-l border-stone-800 z-20 pointer-events-none" />
+              <div className="absolute top-8 bottom-[126px] sm:bottom-[138px] md:bottom-[148px] left-0 w-2 sm:w-2.5 bg-gradient-to-r from-amber-500 to-stone-900 border-r border-stone-800 z-20 pointer-events-none" />
+              <div className="absolute top-8 bottom-[126px] sm:bottom-[138px] md:bottom-[148px] right-0 w-2 sm:w-2.5 bg-gradient-to-l from-amber-500 to-stone-900 border-l border-stone-800 z-20 pointer-events-none" />
             </>
           )}
 
@@ -2489,7 +2500,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           {isDashHidden && (
             <button
               onClick={() => setIsDashHidden(false)}
-              className="absolute bottom-1.5 left-1/2 -translate-x-1/2 z-50 pointer-events-auto px-3.5 py-1 bg-stone-950/90 hover:bg-stone-900 border-2 border-amber-400/80 rounded-full text-[9px] font-mono font-black text-amber-300 hover:text-white flex items-center gap-1.5 shadow-xl backdrop-blur active:scale-95 transition-all"
+              className="absolute bottom-[max(8px,env(safe-area-inset-bottom,4px))] left-1/2 -translate-x-1/2 z-50 pointer-events-auto px-4 py-1.5 bg-stone-950/95 hover:bg-stone-900 border-2 border-amber-400 rounded-full text-[9px] font-mono font-black text-amber-300 hover:text-white flex items-center gap-1.5 shadow-2xl backdrop-blur active:scale-95 transition-all"
               title="Restore Cockpit Dashboard"
             >
               <span>▲ SHOW DASH</span>
@@ -2498,7 +2509,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
 
           {/* Full-Width Molded Bus Dashboard Console (left-0 right-0 bottom-0) */}
           <div
-            className={`absolute left-0 right-0 bottom-0 z-40 select-none transition-all duration-300 ease-in-out h-[104px] sm:h-[114px] ${
+            className={`absolute left-0 right-0 bottom-0 z-40 select-none transition-all duration-300 ease-in-out h-[126px] sm:h-[138px] md:h-[148px] pb-[max(6px,env(safe-area-inset-bottom,0px))] pl-[max(6px,env(safe-area-inset-left,0px))] pr-[max(6px,env(safe-area-inset-right,0px))] ${
               isDashHidden
                 ? 'translate-y-[125%] opacity-0 pointer-events-none'
                 : 'translate-y-0 opacity-100 pointer-events-auto'
@@ -2513,28 +2524,29 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
               ▼ HIDE DASH
             </button>
 
-            <div className="relative w-full h-full bg-gradient-to-b from-stone-800/98 via-stone-900 to-stone-950 border-t-[3px] border-stone-600/90 rounded-t-[18px] shadow-[0_-8px_24px_rgba(0,0,0,0.92)] flex items-center justify-between pl-2 sm:pl-4 pr-[184px] sm:pr-[222px] py-1.5 overflow-visible">
+            <div className="relative w-full h-full bg-gradient-to-b from-stone-800/98 via-stone-900 to-stone-950 border-t-[3px] border-stone-600/90 rounded-t-[20px] shadow-[0_-8px_24px_rgba(0,0,0,0.95)] flex items-center justify-between pl-2 sm:pl-4 pr-[192px] sm:pr-[232px] py-1.5 overflow-visible">
               {/* Top Yellow-Black Danfo Trim Accent Line across the full dashboard */}
               <div className="absolute top-0 left-4 right-4 h-0.5 bg-gradient-to-r from-amber-400/80 via-stone-500/40 to-amber-400/80 rounded-full pointer-events-none" />
 
               {/* Subtle Molded Tray Recession on the Right Side of Dashboard where Gear, Brake & Gas Rest */}
-              <div className="absolute right-2 sm:right-3 top-1.5 bottom-1.5 w-[172px] sm:w-[206px] rounded-xl bg-stone-950/75 border border-stone-700/70 shadow-inner pointer-events-none" />
+              <div className="absolute right-2 sm:right-3 top-1.5 bottom-1.5 w-[184px] sm:w-[222px] rounded-xl bg-stone-950/75 border border-stone-700/70 shadow-inner pointer-events-none" />
 
-              {/* ── LEFT SECTION: QUICK SWITCHES + 3-SPOKE BUS STEERING WHEEL + INTEGRATED GAUGE CLUSTER ── */}
-              <div className="relative flex items-center gap-1.5 sm:gap-2.5 h-full shrink-0">
+              {/* ── LEFT SECTION: QUICK SWITCHES + ENLARGED STEERING WHEEL + INTEGRATED GAUGE CLUSTER ── */}
+              <div className="relative flex items-center gap-2 sm:gap-3 h-full shrink-0">
                 {/* Compact Quick-Switch Column (Blinkers, Hazards, Door, Camera & Walk) */}
                 <div className="flex flex-col justify-center gap-1 shrink-0 z-30">
-                  <div className="flex gap-0.5">
+                  <div className="flex gap-1">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         triggerTurnSignal('LEFT');
                       }}
-                      className={`w-6 sm:w-7 py-0.5 rounded border text-[8px] font-mono font-black ${
+                      className={`w-6.5 sm:w-7.5 h-5.5 rounded border text-[8px] font-mono font-black ${
                         turnSignal === 'LEFT'
                           ? 'bg-emerald-400 text-stone-950 border-emerald-200'
                           : 'bg-stone-900/90 border-stone-700 text-stone-300'
                       }`}
+                      title="Left Blinker"
                     >
                       ◀L
                     </button>
@@ -2543,22 +2555,23 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                         e.stopPropagation();
                         triggerTurnSignal('RIGHT');
                       }}
-                      className={`w-6 sm:w-7 py-0.5 rounded border text-[8px] font-mono font-black ${
+                      className={`w-6.5 sm:w-7.5 h-5.5 rounded border text-[8px] font-mono font-black ${
                         turnSignal === 'RIGHT'
                           ? 'bg-emerald-400 text-stone-950 border-emerald-200'
                           : 'bg-stone-900/90 border-stone-700 text-stone-300'
                       }`}
+                      title="Right Blinker"
                     >
                       R▶
                     </button>
                   </div>
-                  <div className="flex gap-0.5">
+                  <div className="flex gap-1">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         toggleHazards();
                       }}
-                      className={`w-6 sm:w-7 py-0.5 rounded border text-[8px] font-mono font-black ${
+                      className={`w-6.5 sm:w-7.5 h-5.5 rounded border text-[8px] font-mono font-black ${
                         hazardLights
                           ? 'bg-rose-500 text-white border-rose-200 animate-pulse'
                           : 'bg-rose-800/80 border-rose-900 text-rose-100'
@@ -2572,7 +2585,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                         e.stopPropagation();
                         toggleDoor();
                       }}
-                      className={`w-6 sm:w-7 py-0.5 rounded border text-[8px] font-mono font-bold ${
+                      className={`w-6.5 sm:w-7.5 h-5.5 rounded border text-[8px] font-mono font-bold ${
                         doorState === 'OPEN'
                           ? 'bg-amber-400 text-stone-950 border-amber-200'
                           : 'bg-stone-900/90 border-stone-700 text-stone-300'
@@ -2582,61 +2595,61 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                       🚪
                     </button>
                   </div>
-                  <div className="flex gap-0.5">
+                  <div className="flex gap-1">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         cycleCameraMode();
                       }}
-                      className="px-1.5 py-0.5 rounded border border-sky-500/70 bg-sky-950/80 text-sky-300 hover:text-white text-[8px] font-mono font-black flex items-center gap-0.5"
-                      title="Switch Camera View (V) - Cockpit, Cabin, 3rd, Top, Orbit"
+                      className="px-1.5 h-5.5 rounded border border-sky-500/70 bg-sky-950/80 text-sky-300 hover:text-white text-[7.5px] font-mono font-black flex items-center justify-center"
+                      title="Switch Camera View (V)"
                     >
-                      <span>🎥</span>
-                      <span className="text-[7px]">CABIN</span>
+                      🎥 CAM
                     </button>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         toggleLookBack();
                       }}
-                      className={`px-1.5 py-0.5 rounded border text-[8px] font-mono font-black flex items-center gap-0.5 ${
+                      className={`px-1.5 h-5.5 rounded border text-[7.5px] font-mono font-black flex items-center justify-center ${
                         isLookingBack
                           ? 'bg-amber-400 text-stone-950 border-amber-200 animate-pulse'
                           : 'border-amber-500/60 bg-stone-900/90 text-amber-300 hover:text-white'
                       }`}
-                      title="Glance Back at Commuters in Cabin (L / C)"
+                      title="Glance Back at Cabin (L)"
                     >
-                      <span>👀</span>
-                      <span className="text-[7px]">{isLookingBack ? 'FRONT' : 'CABIN'}</span>
+                      👀 CABIN
                     </button>
+                  </div>
+                  <div className="flex gap-1">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         toggleStepDown();
                       }}
-                      className="w-6 sm:w-7 py-0.5 rounded border border-amber-500/70 bg-amber-950/80 text-amber-300 hover:text-white text-[8px] font-mono font-black"
+                      className="flex-1 h-5 rounded border border-amber-500/70 bg-amber-950/80 text-amber-300 hover:text-white text-[7.5px] font-mono font-black flex items-center justify-center"
                       title="Step Out / Walk Mode (E)"
                     >
-                      🚶
+                      🚶 WALK
                     </button>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         setTouchControlMode((v) => (v === 'WHEEL' ? 'JOYSTICK' : 'WHEEL'));
                       }}
-                      className="px-1 py-0.5 rounded border border-amber-400/80 bg-stone-900/90 text-amber-300 hover:text-white text-[8px] font-mono font-black shrink-0"
-                      title="Toggle 3-Spoke Wheel vs NippleJS Analog Virtual Joystick"
+                      className="px-1.5 h-5 rounded border border-amber-400/80 bg-stone-900/90 text-amber-300 hover:text-white text-[7.5px] font-mono font-black shrink-0"
+                      title="Toggle Wheel vs Virtual Joystick"
                     >
                       {touchControlMode === 'WHEEL' ? '🕹️ JOY' : '🎡 WHL'}
                     </button>
                   </div>
                 </div>
 
-                {/* 3-SPOKE COMMERCIAL BUS STEERING WHEEL OR NIPPLEJS ANALOG VIRTUAL JOYSTICK */}
+                {/* 3-SPOKE COMMERCIAL BUS STEERING WHEEL (Larger, Prominent, Perfectly Centered) OR NIPPLE JOYSTICK */}
                 {touchControlMode === 'JOYSTICK' ? (
-                  <div className="flex items-center justify-center shrink-0 z-30 select-none touch-none">
+                  <div className="flex items-center justify-center shrink-0 z-30 select-none touch-none w-[110px] h-[110px] sm:w-[124px] sm:h-[124px]">
                     <NippleJoystick
-                      size={76}
+                      size={86}
                       label="NIPPLE JOYSTICK"
                       onMove={(vec) => {
                         const clamped = Math.max(-135, Math.min(135, vec.x * 135));
@@ -2650,65 +2663,67 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                     />
                   </div>
                 ) : (
-                  <div
-                    ref={wheelElementRef}
-                    onPointerDown={handleWheelPointerDown}
-                    onPointerMove={handleWheelPointerMove}
-                    onPointerUp={handleWheelPointerUp}
-                    onPointerCancel={handleWheelPointerUp}
-                    className="relative w-[84px] h-[84px] sm:w-[98px] sm:h-[98px] rounded-full cursor-grab active:cursor-grabbing touch-none select-none flex items-center justify-center z-30 shrink-0 -mt-1"
-                    style={{
-                      transform: `rotate(${wheelVisualAngle}deg)`,
-                      filter: 'drop-shadow(0 6px 12px rgba(0,0,0,0.95))',
-                    }}
-                  >
-                    <svg viewBox="0 0 200 200" className="w-full h-full overflow-visible pointer-events-none">
-                      <defs>
-                        <radialGradient id="busRimGrad" cx="50%" cy="50%" r="50%">
-                          <stop offset="72%" stopColor="#1c1917" />
-                          <stop offset="86%" stopColor="#3f3f46" />
-                          <stop offset="95%" stopColor="#18181b" />
-                          <stop offset="100%" stopColor="#09090b" />
-                        </radialGradient>
-                        <linearGradient id="spokeMetal" x1="0%" y1="0%" x2="100%" y2="100%">
-                          <stop offset="0%" stopColor="#71717a" />
-                          <stop offset="50%" stopColor="#3f3f46" />
-                          <stop offset="100%" stopColor="#18181b" />
-                        </linearGradient>
-                        <linearGradient id="woodTopGrip" x1="0%" y1="0%" x2="100%" y2="0%">
-                          <stop offset="0%" stopColor="#78350f" />
-                          <stop offset="50%" stopColor="#b45309" />
-                          <stop offset="100%" stopColor="#78350f" />
-                        </linearGradient>
-                      </defs>
-                      <circle cx="100" cy="100" r="90" fill="none" stroke="rgba(0,0,0,0.55)" strokeWidth="18" />
-                      <path d="M 18 102 L 72 90 L 74 114 L 18 118 Z" fill="url(#spokeMetal)" stroke="#52525b" strokeWidth="1.5" />
-                      <path d="M 182 102 L 128 90 L 126 114 L 182 118 Z" fill="url(#spokeMetal)" stroke="#52525b" strokeWidth="1.5" />
-                      <path d="M 88 124 L 112 124 L 116 184 L 84 184 Z" fill="url(#spokeMetal)" stroke="#52525b" strokeWidth="1.5" />
-                      <rect x="32" y="101" width="28" height="5" rx="2.5" fill="#a1a1aa" opacity="0.75" />
-                      <rect x="140" y="101" width="28" height="5" rx="2.5" fill="#a1a1aa" opacity="0.75" />
-                      <rect x="97" y="140" width="6" height="28" rx="3" fill="#a1a1aa" opacity="0.75" />
-                      <circle cx="100" cy="100" r="86" fill="none" stroke="url(#busRimGrad)" strokeWidth="18" />
-                      <path d="M 32 50 A 86 86 0 0 1 168 50" fill="none" stroke="url(#woodTopGrip)" strokeWidth="16" strokeLinecap="round" />
-                      <circle cx="100" cy="100" r="77" fill="none" stroke="rgba(255,255,255,0.14)" strokeWidth="1.2" strokeDasharray="6 4" />
-                      <rect x="96" y="5" width="8" height="19" rx="2" fill="#facc15" stroke="#18181b" strokeWidth="1.5" />
-                      <circle cx="100" cy="105" r="34" fill="#18181b" stroke="#52525b" strokeWidth="3" />
-                    </svg>
-
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleHorn();
+                  <div className="relative flex items-center justify-center shrink-0 z-30">
+                    <div
+                      ref={wheelElementRef}
+                      onPointerDown={handleWheelPointerDown}
+                      onPointerMove={handleWheelPointerMove}
+                      onPointerUp={handleWheelPointerUp}
+                      onPointerCancel={handleWheelPointerUp}
+                      className="relative w-[108px] h-[108px] sm:w-[122px] sm:h-[122px] md:w-[132px] md:h-[132px] rounded-full cursor-grab active:cursor-grabbing touch-none select-none flex items-center justify-center"
+                      style={{
+                        transform: `rotate(${wheelVisualAngle}deg)`,
+                        filter: 'drop-shadow(0 8px 16px rgba(0,0,0,0.95))',
                       }}
-                      className="absolute w-8 h-8 sm:w-9 sm:h-9 mt-0.5 rounded-full bg-gradient-to-b from-amber-400 to-amber-500 active:scale-95 text-stone-950 font-black text-[7px] sm:text-[8px] font-['Bungee'] flex items-center justify-center shadow border border-stone-900 pointer-events-auto"
                     >
-                      HORN
-                    </button>
+                      <svg viewBox="0 0 200 200" className="w-full h-full overflow-visible pointer-events-none">
+                        <defs>
+                          <radialGradient id="busRimGrad" cx="50%" cy="50%" r="50%">
+                            <stop offset="72%" stopColor="#1c1917" />
+                            <stop offset="86%" stopColor="#3f3f46" />
+                            <stop offset="95%" stopColor="#18181b" />
+                            <stop offset="100%" stopColor="#09090b" />
+                          </radialGradient>
+                          <linearGradient id="spokeMetal" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stopColor="#71717a" />
+                            <stop offset="50%" stopColor="#3f3f46" />
+                            <stop offset="100%" stopColor="#18181b" />
+                          </linearGradient>
+                          <linearGradient id="woodTopGrip" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stopColor="#78350f" />
+                            <stop offset="50%" stopColor="#b45309" />
+                            <stop offset="100%" stopColor="#78350f" />
+                          </linearGradient>
+                        </defs>
+                        <circle cx="100" cy="100" r="90" fill="none" stroke="rgba(0,0,0,0.55)" strokeWidth="18" />
+                        <path d="M 18 102 L 72 90 L 74 114 L 18 118 Z" fill="url(#spokeMetal)" stroke="#52525b" strokeWidth="1.5" />
+                        <path d="M 182 102 L 128 90 L 126 114 L 182 118 Z" fill="url(#spokeMetal)" stroke="#52525b" strokeWidth="1.5" />
+                        <path d="M 88 124 L 112 124 L 116 184 L 84 184 Z" fill="url(#spokeMetal)" stroke="#52525b" strokeWidth="1.5" />
+                        <rect x="32" y="101" width="28" height="5" rx="2.5" fill="#a1a1aa" opacity="0.75" />
+                        <rect x="140" y="101" width="28" height="5" rx="2.5" fill="#a1a1aa" opacity="0.75" />
+                        <rect x="97" y="140" width="6" height="28" rx="3" fill="#a1a1aa" opacity="0.75" />
+                        <circle cx="100" cy="100" r="86" fill="none" stroke="url(#busRimGrad)" strokeWidth="18" />
+                        <path d="M 32 50 A 86 86 0 0 1 168 50" fill="none" stroke="url(#woodTopGrip)" strokeWidth="16" strokeLinecap="round" />
+                        <circle cx="100" cy="100" r="77" fill="none" stroke="rgba(255,255,255,0.14)" strokeWidth="1.2" strokeDasharray="6 4" />
+                        <rect x="96" y="5" width="8" height="19" rx="2" fill="#facc15" stroke="#18181b" strokeWidth="1.5" />
+                        <circle cx="100" cy="105" r="34" fill="#18181b" stroke="#52525b" strokeWidth="3" />
+                      </svg>
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleHorn();
+                        }}
+                        className="absolute w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-b from-amber-400 to-amber-500 active:scale-95 text-stone-950 font-black text-[7.5px] sm:text-[8.5px] font-['Bungee'] flex items-center justify-center shadow-lg border-2 border-stone-900 pointer-events-auto"
+                      >
+                        HORN
+                      </button>
+                    </div>
                   </div>
                 )}
 
                 {/* Integrated In-Dash Digital Instrument Cluster */}
-                <div className="bg-stone-950 border-2 border-stone-700 rounded-xl px-2.5 py-1.5 flex flex-col justify-between w-[104px] sm:w-[138px] h-[74px] sm:h-[84px] shadow-inner shrink-0">
+                <div className="bg-stone-950 border-2 border-stone-700 rounded-xl px-2.5 py-1.5 flex flex-col justify-between w-[106px] sm:w-[136px] h-[84px] sm:h-[94px] shadow-inner shrink-0">
                   <div className="flex items-center justify-between">
                     <span
                       className={`text-[10px] font-black ${
@@ -2718,7 +2733,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                       ◀
                     </span>
                     <div className="flex items-baseline gap-0.5">
-                      <span className="text-base sm:text-xl font-black font-mono text-amber-300 tabular-nums leading-none">
+                      <span className="text-lg sm:text-2xl font-black font-mono text-amber-300 tabular-nums leading-none">
                         {hudSpeed}
                       </span>
                       <span className="text-[7px] font-mono text-stone-400">KM/H</span>
@@ -2739,14 +2754,14 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                   </div>
                   <div className="flex items-center justify-between text-[8px] font-mono">
                     <span className={hudFuel < 20 ? 'text-rose-400 font-black' : 'text-emerald-300'}>⛽{hudFuel}%</span>
-                    <span className="px-1.5 rounded bg-amber-400/20 text-amber-300 font-black">{gear}</span>
+                    <span className="px-1.5 py-0.5 rounded bg-amber-400/20 text-amber-300 font-black">{gear}</span>
                     <span className={hudHeat > 80 ? 'text-rose-400 font-black' : 'text-sky-300'}>🌡️{hudHeat}°</span>
                   </div>
                 </div>
               </div>
 
-              {/* ── CENTER OF DASHBOARD: CLEAN ROUTE & CONDUCTOR CONSOLE (Unclipped & Well-Spaced) ── */}
-              <div className="hidden md:flex flex-col justify-between flex-1 max-w-[260px] mx-3 h-[74px] sm:h-[84px] bg-stone-950/90 border border-stone-700/80 rounded-xl px-3 py-1.5 shadow-inner">
+              {/* ── CENTER OF DASHBOARD: ROUTE & CONDUCTOR CONSOLE (Wide screens) ── */}
+              <div className="hidden md:flex flex-col justify-between flex-1 max-w-[260px] mx-3 h-[84px] sm:h-[94px] bg-stone-950/90 border border-stone-700/80 rounded-xl px-3 py-1.5 shadow-inner">
                 <div className="w-full flex items-center justify-between text-[9px] font-mono gap-2">
                   <span className="text-amber-400 font-black truncate">
                     🚏 {currentJunction ? currentJunction.name : 'TERMINAL'}
@@ -2797,20 +2812,20 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         </>
       )}
 
-      {/* ═══════ RIGHT DASHBOARD PEDAL & GEAR CLUSTER: RESTS CLEANLY ON THE DASHBOARD, ISOLATED FROM EACH OTHER ═══════ */}
+      {/* ═══════ RIGHT DASHBOARD PEDAL & GEAR CLUSTER: UNCLIPPED, FULLY VISIBLE ACROSS ALL RATIOS ═══════ */}
       <div
         onPointerDown={(e) => e.stopPropagation()}
         onPointerMove={(e) => e.stopPropagation()}
-        className="absolute bottom-2 right-3 sm:right-4 z-50 pointer-events-auto flex flex-col items-end"
+        className="absolute bottom-[max(8px,env(safe-area-inset-bottom,4px))] right-2 sm:right-4 z-50 pointer-events-auto flex flex-col items-end"
       >
         <div className="flex items-end gap-2 sm:gap-2.5">
           {!isSteppedDown ? (
             <>
-              {/* Vertical Gear Selector (R - N - D - P) resting on dashboard */}
-              <div className="relative flex flex-col bg-stone-950/95 border-2 border-stone-600 p-1 rounded-xl shadow-lg h-[82px] sm:h-[92px] justify-between">
+              {/* Vertical Gear Selector (R - N - D - P) cleanly nested */}
+              <div className="relative flex flex-col bg-stone-950/95 border-2 border-stone-600 p-1 rounded-xl shadow-xl h-[92px] sm:h-[102px] w-8 sm:w-9 justify-between">
                 {gear === 'R' && (
-                  <div className="absolute -top-6 right-0 bg-emerald-950/95 border border-emerald-400/90 text-emerald-300 text-[8px] font-mono font-black px-1.5 py-0.5 rounded shadow-xl flex items-center gap-1 whitespace-nowrap animate-in fade-in">
-                    <span>[✓ Fixed] R-Gear Sound</span>
+                  <div className="absolute -top-5 right-0 bg-emerald-950/95 border border-emerald-400/90 text-emerald-300 text-[7.5px] font-mono font-black px-1.5 py-0.5 rounded shadow-xl flex items-center gap-1 whitespace-nowrap animate-in fade-in">
+                    <span>[✓ R-Gear]</span>
                   </div>
                 )}
                 {(['R', 'N', 'D', 'P'] as const).map((g) => (
@@ -2830,7 +2845,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                         addFeedMessage('🔄 REVERSE ENGAGED: Smooth mechanical gear whine active.');
                       }
                     }}
-                    className={`w-7 sm:w-8 h-4 sm:h-4.5 rounded-md font-mono font-black text-[9px] sm:text-[10px] transition-all flex items-center justify-center cursor-pointer ${
+                    className={`w-full h-[19px] sm:h-[21px] rounded-md font-mono font-black text-[9px] sm:text-[10px] transition-all flex items-center justify-center cursor-pointer ${
                       gear === g
                         ? g === 'R'
                           ? 'bg-rose-600 text-white shadow-lg ring-2 ring-rose-400 animate-pulse'
@@ -2845,7 +2860,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                 ))}
               </div>
 
-              {/* SHORT WIDE BRAKE PEDAL (58px-66px tall — rests cleanly on dashboard beside Gear & Gas) */}
+              {/* SHORT WIDE BRAKE PEDAL (Rests completely on dashboard floor) */}
               <button
                 type="button"
                 onPointerDown={(e) => {
@@ -2874,7 +2889,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                     setIsBrakePressed(false);
                   }
                 }}
-                className={`w-13 sm:w-15 h-[56px] sm:h-[64px] rounded-xl flex flex-col items-center justify-between py-1.5 px-1.5 select-none touch-none transition-all cursor-pointer ${
+                className={`w-14 sm:w-16 h-[64px] sm:h-[72px] rounded-xl flex flex-col items-center justify-between py-1.5 px-1.5 select-none touch-none transition-all cursor-pointer ${
                   isBrakePressed
                     ? 'bg-rose-950 border-2 border-rose-400 translate-y-0.5 scale-95 shadow-[0_0_16px_rgba(244,63,94,0.75)]'
                     : 'bg-gradient-to-b from-stone-700 via-stone-800 to-stone-950 border-2 border-stone-500 shadow-lg'
@@ -2890,7 +2905,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                 <div className="w-full h-1 bg-stone-950/80 rounded-full pointer-events-none" />
               </button>
 
-              {/* TALL GAS / ACCELERATOR PEDAL (92px-102px tall — taller than Brake, rests cleanly inside the dashboard height!) */}
+              {/* TALL GAS / ACCELERATOR PEDAL (Rests completely on dashboard floor without clipping) */}
               <button
                 type="button"
                 onPointerDown={(e) => {
@@ -2926,7 +2941,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                     setIsGasPressed(false);
                   }
                 }}
-                className={`w-12 sm:w-14 h-[92px] sm:h-[100px] rounded-2xl flex flex-col items-center justify-between py-2 px-1.5 select-none touch-none transition-all cursor-pointer ${
+                className={`w-13 sm:w-15 h-[96px] sm:h-[106px] rounded-2xl flex flex-col items-center justify-between py-2 px-1.5 select-none touch-none transition-all cursor-pointer ${
                   isGasPressed
                     ? 'bg-amber-400 text-stone-950 border-2 border-amber-200 translate-y-0.5 scale-95 shadow-[0_0_24px_rgba(251,191,36,0.9)]'
                     : 'bg-gradient-to-b from-stone-700 via-stone-800 to-stone-950 border-2 border-amber-400 shadow-lg'
@@ -3038,7 +3053,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           )}
 
           {/* BOTTOM-LEFT: Redesigned 3-Spoke Wheel or Walk Joystick */}
-          <div className="absolute bottom-3 left-2 z-50 pointer-events-auto flex flex-col items-start">
+          <div className="absolute bottom-[max(8px,env(safe-area-inset-bottom,4px))] left-[max(8px,env(safe-area-inset-left,4px))] z-50 pointer-events-auto flex flex-col items-start">
             <button
               onClick={() => setShowLeftPanel((v) => !v)}
               className="mb-1 w-8 h-5 bg-stone-900/80 border border-stone-700/50 rounded text-stone-400 text-[8px] flex items-center justify-center"
