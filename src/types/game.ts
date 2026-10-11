@@ -25,9 +25,11 @@ export interface Passenger {
   id: string;
   name: string;
   archetype: PassengerArchetype;
+  archetypeLabel?: string;
   destination: LagosDestination;
   destinationUid?: string;
   fare: number;
+  seatsTaken?: number;
   paid: boolean;
   patience: number; // 0 to 100
   maxPatience: number;

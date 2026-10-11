@@ -843,11 +843,19 @@ export const CHOWDECK_MENU = [
 
 export const DEFAULT_GAS_STATIONS = [
   {
+    id: 'gas-0',
+    name: 'Conoil Express Service Bay',
+    brand: 'CONOIL',
+    distanceMarkerMeters: 210,
+    fuelPricePerLiter: 500,
+    isInBay: false,
+  },
+  {
     id: 'gas-1',
     name: 'Total Energies Express Plaza',
     brand: 'TOTAL',
     distanceMarkerMeters: 520,
-    fuelPricePerLiter: 950,
+    fuelPricePerLiter: 500,
     isInBay: false,
   },
   {
@@ -855,7 +863,7 @@ export const DEFAULT_GAS_STATIONS = [
     name: 'Oando Mega Petrol Station',
     brand: 'OANDO',
     distanceMarkerMeters: 1750,
-    fuelPricePerLiter: 920,
+    fuelPricePerLiter: 500,
     isInBay: false,
   },
 ];

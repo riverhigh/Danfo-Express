@@ -69,10 +69,21 @@ export class ThreeDrivingEngine {
   private container: HTMLElement;
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
+  private miniMapCamera: THREE.OrthographicCamera;
+  private miniMapPlayerBeacon!: THREE.Group;
   private leftMirrorCamera: THREE.PerspectiveCamera;
   private rightMirrorCamera: THREE.PerspectiveCamera;
   private leftMirrorCanvas: HTMLCanvasElement | null = null;
   private rightMirrorCanvas: HTMLCanvasElement | null = null;
+  private miniMapCanvas: HTMLCanvasElement | null = null;
+  private gasStationZones: Array<{
+    id: string;
+    name: string;
+    brand: string;
+    box: THREE.Box3;
+    stationZ: number;
+    pricePerLiter: number;
+  }> = [];
   private renderer: THREE.WebGLRenderer;
 
   // Cannon-es Physics World & Raycast Vehicle
@@ -182,8 +193,18 @@ export class ThreeDrivingEngine {
 
     // 2. Camera (Wide-Angle Cockpit View Looking Forward Out Windshield)
     this.camera = new THREE.PerspectiveCamera(70, width / height, 0.45, 480);
+    this.camera.layers.disable(1); // Layer 1 is exclusively for Mini-Map satellite markers
     this.leftMirrorCamera = new THREE.PerspectiveCamera(56, 220 / 130, 0.4, 240);
+    this.leftMirrorCamera.layers.disable(1);
     this.rightMirrorCamera = new THREE.PerspectiveCamera(56, 220 / 130, 0.4, 240);
+    this.rightMirrorCamera.layers.disable(1);
+
+    // 2b. Top-Down Orthographic Mini-Map Camera floating high in the sky (Y = 200)
+    this.miniMapCamera = new THREE.OrthographicCamera(-50, 50, 50, -50, 1, 1000);
+    this.miniMapCamera.position.set(0, 200, 0);
+    this.miniMapCamera.up.set(0, 0, 1); // +Z (forward road direction) points UP on the mini-map
+    this.miniMapCamera.lookAt(0, 0, 0);
+    this.miniMapCamera.layers.enable(1); // Enable Layer 1 so miniMapCamera sees the bus location beacon!
 
     // 3. WebGL Renderer
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
@@ -195,10 +216,10 @@ export class ThreeDrivingEngine {
     // 4. Lighting
     this.setupLighting();
 
-    // 5. Road & City Environment
+    // 5. Road & City Environment (Main Highway + Branching Shortcuts)
     this.setupRoadAndCity();
 
-    // 5b. Cannon-es Physics World & RaycastVehicle
+    // 5b. Cannon-es Physics World & RaycastVehicle (including Shortcut & Gas Bay ground planes)
     this.setupPhysics();
 
     // 6. Danfo Bus Cockpit & Passenger Cabin with 3D Driver Hands & Dual Mirrors
@@ -228,6 +249,33 @@ export class ThreeDrivingEngine {
     this.bullBarMesh = busComponents.bullBar as any;
     this.roofSpeakersMesh = busComponents.speakers as any;
     this.underglowLight = busComponents.underglow;
+
+    // 6a. Distinct Bright Green/Red Sphere & Arrow Beacon on top of the Player's Bus (Layer 1 ONLY for Mini-Map!)
+    this.miniMapPlayerBeacon = new THREE.Group();
+    this.miniMapPlayerBeacon.position.set(0, 8.5, 0);
+    const beaconSphere = new THREE.Mesh(
+      new THREE.SphereGeometry(2.6, 16, 16),
+      new THREE.MeshBasicMaterial({ color: 0x22c55e })
+    );
+    beaconSphere.layers.set(1);
+    const beaconRing = new THREE.Mesh(
+      new THREE.RingGeometry(3.0, 4.4, 24),
+      new THREE.MeshBasicMaterial({ color: 0xff0044, side: THREE.DoubleSide })
+    );
+    beaconRing.rotation.x = -Math.PI / 2;
+    beaconRing.position.y = -0.2;
+    beaconRing.layers.set(1);
+    const beaconArrow = new THREE.Mesh(
+      new THREE.ConeGeometry(2.4, 4.8, 3),
+      new THREE.MeshBasicMaterial({ color: 0xfacc15 })
+    );
+    beaconArrow.rotation.x = Math.PI / 2;
+    beaconArrow.position.set(0, 0.4, 3.6);
+    beaconArrow.layers.set(1);
+    this.miniMapPlayerBeacon.add(beaconSphere, beaconRing, beaconArrow);
+    this.miniMapPlayerBeacon.layers.set(1);
+    this.busRoot.add(this.miniMapPlayerBeacon);
+
     this.scene.add(this.busRoot);
 
     // 6b. 3D On-Foot Driver Character for Walk Mode
@@ -235,7 +283,7 @@ export class ThreeDrivingEngine {
     this.driverCharacterGroup.visible = false;
     this.scene.add(this.driverCharacterGroup);
 
-    // 7. Gas Stations along Highway
+    // 7. Gas Stations along Highway (with THREE.Box3 Refueling Zones)
     this.setupGasStations();
 
     // 8. Overhead Highway Billboards (Flutterwave, OPay, Chowdeck, Custom Ads)
@@ -265,9 +313,93 @@ export class ThreeDrivingEngine {
     this.renderer.setSize(width, height);
   };
 
-  public setMirrorCanvases(left: HTMLCanvasElement | null, right: HTMLCanvasElement | null) {
+  public setMirrorCanvases(
+    left: HTMLCanvasElement | null,
+    right: HTMLCanvasElement | null,
+    miniMap?: HTMLCanvasElement | null
+  ) {
     this.leftMirrorCanvas = left;
     this.rightMirrorCanvas = right;
+    if (miniMap !== undefined) {
+      this.miniMapCanvas = miniMap;
+    }
+  }
+
+  /**
+   * Returns allowed lateral X bounds at longitudinal coordinate Z, expanding automatically
+   * for the Oshodi Bus Park, Gas Station Pull-Off Side Lanes, and Branching Road Shortcuts!
+   */
+  public getAllowedRoadBounds(z: number): { minX: number; maxX: number } {
+    let minX = -8.8;
+    let maxX = 8.8;
+
+    // 1. Starting Oshodi Bus Park (z < 48 on Right -X side)
+    if (z < 48) {
+      minX = -26.5;
+    }
+    // 2. Gas Station #1 Pull-Off Side Lane (Conoil Express at z = 210 on Right -X side)
+    if (z >= 182 && z <= 238) {
+      minX = Math.min(minX, -20.5);
+    }
+    // 3. Branching Shortcut #1: Allen Ave Right-Turn Shortcut Block (z = 340..840 on Right -X side)
+    if (z >= 325 && z <= 855) {
+      minX = Math.min(minX, -24.5);
+    }
+    // 4. Gas Station #2 Pull-Off Side Lane (Total Energies at z = 520 on Left +X side)
+    if (z >= 492 && z <= 548) {
+      maxX = Math.max(maxX, 20.5);
+    }
+    // 5. Branching Shortcut #2: Mushin / Surulere Right-Turn Shortcut Block (z = 1150..1700 on Right -X side)
+    if (z >= 1135 && z <= 1715) {
+      minX = Math.min(minX, -24.5);
+    }
+    // 6. Gas Station #3 Pull-Off Side Lane (Oando Mega Petrol at z = 1750 on Left +X side)
+    if (z >= 1722 && z <= 1778) {
+      maxX = Math.max(maxX, 20.5);
+    }
+
+    return { minX, maxX };
+  }
+
+  /**
+   * Checks if the player's 3D Danfo bus bounding box (THREE.Box3) intersects any static Gas Station Zone (THREE.Box3)
+   */
+  public getIntersectingGasStationZone(): {
+    id: string;
+    name: string;
+    brand: string;
+    stationZ: number;
+    pricePerLiter: number;
+  } | null {
+    if (!this.busRoot) return null;
+    const busBox = new THREE.Box3().setFromCenterAndSize(
+      this.busRoot.position,
+      new THREE.Vector3(2.4, 2.6, 5.4)
+    );
+    for (const zone of this.gasStationZones) {
+      if (zone.box.intersectsBox(busBox)) {
+        return {
+          id: zone.id,
+          name: zone.name,
+          brand: zone.brand,
+          stationZ: zone.stationZ,
+          pricePerLiter: zone.pricePerLiter,
+        };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Returns true when the player is actively driving along one of the off-highway branching shortcut streets
+   */
+  public isOnShortcutBranch(): boolean {
+    if (!this.busRoot) return false;
+    const x = this.busRoot.position.x;
+    const z = this.busRoot.position.z;
+    const inShortcut1 = z >= 335 && z <= 845 && x < -10.2;
+    const inShortcut2 = z >= 1145 && z <= 1705 && x < -10.2;
+    return inShortcut1 || inShortcut2;
   }
 
   public consumeCollisionMessage(): string | null {
@@ -305,14 +437,30 @@ export class ThreeDrivingEngine {
     this.world.addBody(this.groundBody);
     this.groundBody.updateAABB();
 
-    // Road side physical safety barriers along expressway shoulders (curbs)
+    // 2b. Explicit Cannon-es static ground slabs under Branching Shortcut Coordinates & Gas Station Pull-Off Bays
+    // so the vehicle's RaycastVehicle wheels always have solid ground support and never fall through the map!
+    const shortcutGroundCoords: Array<[number, number, number, number]> = [
+      [-18.5, 590, 16, 540],  // Shortcut #1 (z = 340..840, x = -10..-26)
+      [-18.5, 1425, 16, 590], // Shortcut #2 (z = 1150..1700, x = -10..-26)
+      [-14.5, 210, 14, 60],   // Gas Station #1 Pull-Off Bay (z = 210)
+      [14.5, 520, 14, 60],    // Gas Station #2 Pull-Off Bay (z = 520)
+      [14.5, 1750, 14, 60],   // Gas Station #3 Pull-Off Bay (z = 1750)
+    ];
+    shortcutGroundCoords.forEach(([gx, gz, widthX, lengthZ]) => {
+      const slabShape = new CANNON.Box(new CANNON.Vec3(widthX / 2, 0.25, lengthZ / 2));
+      const slabBody = new CANNON.Body({ mass: 0, type: CANNON.Body.STATIC, shape: slabShape });
+      slabBody.position.set(gx, -0.25, gz);
+      this.world.addBody(slabBody);
+    });
+
+    // Outer safety barriers placed outside the shortcut and gas station corridors
     const barrierShape = new CANNON.Box(new CANNON.Vec3(1.2, 2.5, 50000));
     const leftBarrier = new CANNON.Body({ mass: 0, type: CANNON.Body.STATIC, shape: barrierShape });
-    leftBarrier.position.set(-28.5, 2.0, 0);
+    leftBarrier.position.set(-30.5, 2.0, 0);
     this.world.addBody(leftBarrier);
 
     const rightBarrier = new CANNON.Body({ mass: 0, type: CANNON.Body.STATIC, shape: barrierShape });
-    rightBarrier.position.set(11.5, 2.0, 0);
+    rightBarrier.position.set(30.5, 2.0, 0);
     this.world.addBody(rightBarrier);
 
     // 3. Implement a CANNON.RaycastVehicle setup for our Danfo bus
@@ -471,52 +619,52 @@ export class ThreeDrivingEngine {
         }
       });
 
-      // 2. Curbs & Sidewalks (wider Lagos-style)
+      // 2. Curbs & Sidewalks (grouped into rightSideProps [-X] and leftSideProps [+X] so shortcuts & gas bays open cleanly!)
       const rightSideProps = new THREE.Group();
       rightSideProps.visible = i > 0; // Hidden at segment 0 so the starting Bus Park connects cleanly to the expressway!
       group.add(rightSideProps);
       group.userData.rightSideProps = rightSideProps;
+
+      const leftSideProps = new THREE.Group();
+      group.add(leftSideProps);
+      group.userData.leftSideProps = leftSideProps;
 
       [-10.5, 10.5].forEach((curbX, idx) => {
         const curb = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.3, roadLength), new THREE.MeshStandardMaterial({ map: curbTex, roughness: 0.7 }));
         curb.position.set(curbX, 0.15, 0);
         curb.receiveShadow = true;
         if (idx === 0) rightSideProps.add(curb);
-        else group.add(curb);
+        else leftSideProps.add(curb);
 
         // Sidewalk
         const walk = new THREE.Mesh(new THREE.BoxGeometry(7, 0.25, roadLength), new THREE.MeshStandardMaterial({ color: 0x3a3732, roughness: 0.95 }));
         walk.position.set(idx === 0 ? -14.5 : 14.5, 0.12, 0);
         if (idx === 0) rightSideProps.add(walk);
-        else group.add(walk);
+        else leftSideProps.add(walk);
       });
 
       // 2.5 Diverse Road Scenery (Trees & Pedestrian Bridges)
       if (i % 2 === 1) {
-        // Add a pedestrian bridge every other segment
         const bridgeGroup = new THREE.Group();
         const bridgePillarMat = new THREE.MeshStandardMaterial({ color: 0x9ca3af, roughness: 0.8 });
         const bridgeSpanMat = new THREE.MeshStandardMaterial({ color: 0x1e3a8a, metalness: 0.4, roughness: 0.6 });
-        
-        // Pillars
+
         [-11, 11].forEach(px => {
           const pillar = new THREE.Mesh(new THREE.BoxGeometry(1.5, 7, 1.5), bridgePillarMat);
           pillar.position.set(px, 3.5, 0);
           pillar.castShadow = true;
           bridgeGroup.add(pillar);
         });
-        
-        // Span
+
         const span = new THREE.Mesh(new THREE.BoxGeometry(24, 1, 3), bridgeSpanMat);
         span.position.set(0, 7.5, 0);
         span.castShadow = true;
         bridgeGroup.add(span);
-        
-        // Bridge Signboard
+
         const sign = new THREE.Mesh(new THREE.PlaneGeometry(16, 1.5), new THREE.MeshBasicMaterial({ color: 0x15803d }));
         sign.position.set(0, 7.5, 1.55);
         bridgeGroup.add(sign);
-        
+
         group.add(bridgeGroup);
       }
 
@@ -525,21 +673,21 @@ export class ThreeDrivingEngine {
       const trunkGeo = new THREE.CylinderGeometry(0.4, 0.4, 2);
       const leafMat = new THREE.MeshStandardMaterial({ color: 0x166534, roughness: 0.9 });
       const trunkMat = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.9 });
-      
+
       for (let t = -roadLength / 2; t < roadLength / 2; t += 30) {
         if (Math.random() > 0.5) {
           [-12.5, 12.5].forEach(tx => {
             if (Math.random() > 0.3) {
-               const tree = new THREE.Group();
-               const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-               trunk.position.y = 1;
-               const leaves = new THREE.Mesh(treeGeo, leafMat);
-               leaves.position.y = 4;
-               tree.add(trunk, leaves);
-               tree.position.set(tx, 0, t + Math.random() * 10);
-               tree.castShadow = true;
-               if (tx < 0) rightSideProps.add(tree);
-               else group.add(tree);
+              const tree = new THREE.Group();
+              const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+              trunk.position.y = 1;
+              const leaves = new THREE.Mesh(treeGeo, leafMat);
+              leaves.position.y = 4;
+              tree.add(trunk, leaves);
+              tree.position.set(tx, 0, t + Math.random() * 10);
+              tree.castShadow = true;
+              if (tx < 0) rightSideProps.add(tree);
+              else leftSideProps.add(tree);
             }
           });
         }
@@ -574,7 +722,7 @@ export class ThreeDrivingEngine {
         const bMeshR = new THREE.Mesh(new THREE.BoxGeometry(11, hR, shopR[3]), new THREE.MeshStandardMaterial({ map: bTexR, roughness: 0.85 }));
         bMeshR.position.set(20, hR / 2, s);
         bMeshR.castShadow = true;
-        group.add(bMeshR);
+        leftSideProps.add(bMeshR);
 
         // Street lamp post with glow bulb
         [-11, 11].forEach((lx) => {
@@ -585,7 +733,7 @@ export class ThreeDrivingEngine {
           if (lx < 0) {
             rightSideProps.add(pole, bulb);
           } else {
-            group.add(pole, bulb);
+            leftSideProps.add(pole, bulb);
           }
         });
       }
@@ -624,12 +772,163 @@ export class ThreeDrivingEngine {
     }
 
     // ================================================
-    // STARTING MOTOR PARK & MAJOR LANDMARK AREAS
+    // STARTING MOTOR PARK, BRANCHING SHORTCUTS & MAJOR LANDMARKS
     // ================================================
     this.buildBusPark();
+    this.buildBranchingShortcuts();
     this.buildIkejaArea();
     this.buildOshodiArea();
     this.buildSurulereArea();
+  }
+
+  /**
+   * Builds 3D 90-Degree Intersecting Road Shortcuts & Branching Bypass Lanes
+   * cutting through procedural buildings and looping back onto the main expressway!
+   */
+  private buildBranchingShortcuts() {
+    const asphaltTex = createAsphaltTexture();
+    const shortcutMat = new THREE.MeshStandardMaterial({ map: asphaltTex, roughness: 0.8, metalness: 0.08 });
+    const yellowLineMat = new THREE.MeshBasicMaterial({ color: 0xfacc15 });
+    const greenNeonMat = new THREE.MeshBasicMaterial({ color: 0x22c55e });
+
+    const shortcutConfigs = [
+      {
+        name: 'ALLEN AVE SHORTCUT BYPASS',
+        subtitle: 'TURN RIGHT • BYPASS GO-SLOW TRAFFIC (+35% SPEED)',
+        startZ: 340,
+        endZ: 840,
+        laneCenterX: -18.5,
+      },
+      {
+        name: 'MUSHIN EXPRESS SHORTCUT',
+        subtitle: 'TURN RIGHT • FAST INNER-STREET BYPASS (+35% SPEED)',
+        startZ: 1150,
+        endZ: 1700,
+        laneCenterX: -18.5,
+      },
+    ];
+
+    shortcutConfigs.forEach((sc) => {
+      const group = new THREE.Group();
+      const lengthZ = sc.endZ - sc.startZ;
+      const midZ = (sc.startZ + sc.endZ) / 2;
+
+      // 1. Entry 90-Degree Right-Turn Intersection Box at startZ (x = -9 to -23.5)
+      const entryRoad = new THREE.Mesh(new THREE.PlaneGeometry(16, 24), shortcutMat);
+      entryRoad.rotation.x = -Math.PI / 2;
+      entryRoad.position.set(-16.5, 0.02, sc.startZ);
+      group.add(entryRoad);
+
+      // 2. Main Parallel Shortcut Street Box cutting through procedural buildings (z = startZ..endZ)
+      const bypassRoad = new THREE.Mesh(new THREE.PlaneGeometry(10, lengthZ), shortcutMat);
+      bypassRoad.rotation.x = -Math.PI / 2;
+      bypassRoad.position.set(sc.laneCenterX, 0.02, midZ);
+      group.add(bypassRoad);
+
+      // 3. Exit 90-Degree Left-Turn Intersection Box looping back onto main road at endZ
+      const exitRoad = new THREE.Mesh(new THREE.PlaneGeometry(16, 24), shortcutMat);
+      exitRoad.rotation.x = -Math.PI / 2;
+      exitRoad.position.set(-16.5, 0.02, sc.endZ);
+      group.add(exitRoad);
+
+      // 4. Center Dashed Yellow Line & Mini-Map Layer-1 Highlight Strip along Shortcut
+      for (let z = sc.startZ; z <= sc.endZ; z += 14) {
+        const dash = new THREE.Mesh(new THREE.PlaneGeometry(0.25, 7), yellowLineMat);
+        dash.rotation.x = -Math.PI / 2;
+        dash.position.set(sc.laneCenterX, 0.04, z);
+        group.add(dash);
+      }
+
+      // Layer-1 Mini-Map bright emerald path strip so shortcut pops on satellite Mini-Map!
+      const miniMapPath = new THREE.Mesh(
+        new THREE.PlaneGeometry(3.2, lengthZ),
+        new THREE.MeshBasicMaterial({ color: 0x10b981 })
+      );
+      miniMapPath.rotation.x = -Math.PI / 2;
+      miniMapPath.position.set(sc.laneCenterX, 0.2, midZ);
+      miniMapPath.layers.set(1);
+      group.add(miniMapPath);
+
+      const miniMapEntry = new THREE.Mesh(
+        new THREE.PlaneGeometry(14, 4.5),
+        new THREE.MeshBasicMaterial({ color: 0x10b981 })
+      );
+      miniMapEntry.rotation.x = -Math.PI / 2;
+      miniMapEntry.position.set(-14.5, 0.2, sc.startZ);
+      miniMapEntry.layers.set(1);
+      group.add(miniMapEntry);
+
+      const miniMapExit = new THREE.Mesh(
+        new THREE.PlaneGeometry(14, 4.5),
+        new THREE.MeshBasicMaterial({ color: 0x10b981 })
+      );
+      miniMapExit.rotation.x = -Math.PI / 2;
+      miniMapExit.position.set(-14.5, 0.2, sc.endZ);
+      miniMapExit.layers.set(1);
+      group.add(miniMapExit);
+
+      // 5. Glowing Entry & Exit Guidance Chevrons on the road surface
+      [-10.5, -13.5, -16.5].forEach((cx, idx) => {
+        const entryChev = new THREE.Mesh(new THREE.ConeGeometry(0.9, 2.2, 3), idx % 2 === 0 ? greenNeonMat : yellowLineMat);
+        entryChev.rotation.x = Math.PI / 2;
+        entryChev.rotation.z = Math.PI / 4; // Pointing right-forward into shortcut
+        entryChev.position.set(cx, 0.08, sc.startZ - 4 + idx * 3);
+        group.add(entryChev);
+
+        const exitChev = new THREE.Mesh(new THREE.ConeGeometry(0.9, 2.2, 3), idx % 2 === 0 ? greenNeonMat : yellowLineMat);
+        exitChev.rotation.x = Math.PI / 2;
+        exitChev.rotation.z = -Math.PI / 4; // Pointing left-forward back onto expressway
+        exitChev.position.set(cx, 0.08, sc.endZ - 4 + idx * 3);
+        group.add(exitChev);
+      });
+
+      // 6. Overhead Shortcut Entrance & Rejoin Signboards
+      const entrySignTex = createSignboardTexture(`↪ ${sc.name}`, sc.subtitle, '#15803d');
+      const entrySign = new THREE.Mesh(
+        new THREE.BoxGeometry(11, 2.2, 0.3),
+        new THREE.MeshStandardMaterial({ map: entrySignTex, roughness: 0.3 })
+      );
+      entrySign.position.set(-13.5, 6.2, sc.startZ - 10);
+      group.add(entrySign);
+
+      const exitSignTex = createSignboardTexture('↩ REJOIN MAIN EXPRESSWAY', 'MERGE LEFT ONTO LAGOS CORRIDOR', '#0284c7');
+      const exitSign = new THREE.Mesh(
+        new THREE.BoxGeometry(9.5, 2.0, 0.3),
+        new THREE.MeshStandardMaterial({ map: exitSignTex, roughness: 0.3 })
+      );
+      exitSign.position.set(-16.5, 5.8, sc.endZ - 6);
+      group.add(exitSign);
+
+      // 7. Procedural Shortcut Block Buildings lining the outer edge (x = -27.5) and inner island (x = -11.8)
+      const shortcutBuildings = [
+        ['ALLEN ROUNDABOUT PLAZA', '#0f766e'],
+        ['BALA SUYA & SHAWARMA SPOT', '#b91c1c'],
+        ['LAGOS ISLAND MICROFINANCE', '#1d4ed8'],
+        ['MAMA CHINEDU BUKKA JOINT', '#b45309'],
+      ];
+      for (let bz = sc.startZ + 38; bz < sc.endZ - 35; bz += 45) {
+        const bInfo = shortcutBuildings[Math.abs(Math.round(bz)) % shortcutBuildings.length];
+        const bTex = createBuildingFacadeTexture(bInfo[0], bInfo[1]);
+        const bHeight = 14 + (bz % 8);
+        // Outer shortcut building
+        const outerB = new THREE.Mesh(
+          new THREE.BoxGeometry(8, bHeight, 22),
+          new THREE.MeshStandardMaterial({ map: bTex, roughness: 0.85 })
+        );
+        outerB.position.set(-28.0, bHeight / 2, bz);
+        group.add(outerB);
+
+        // Inner island building separating shortcut from main highway
+        const innerB = new THREE.Mesh(
+          new THREE.BoxGeometry(3.0, 11, 20),
+          new THREE.MeshStandardMaterial({ map: bTex, roughness: 0.85 })
+        );
+        innerB.position.set(-11.8, 5.5, bz);
+        group.add(innerB);
+      }
+
+      this.scene.add(group);
+    });
   }
 
   /**
@@ -938,40 +1237,88 @@ export class ThreeDrivingEngine {
 
 
   /**
-   * Builds the 3D Gas Station (Total Energies / Oando Plaza) on the right shoulder
+   * Builds the 3D Zuuks-Style Gas Stations with Paved Pull-Off Side Lanes
+   * and static THREE.Box3 Refueling Bounding Zones!
    */
   private setupGasStations() {
-    [520, 1750].forEach((stationZ, idx) => {
-      const group = new THREE.Group();
-      group.position.set(15, 0, stationZ);
+    this.gasStationZones = [];
+    const stationSpecs = [
+      { id: 'gas-0', name: 'Conoil Express Service Bay', brand: 'CONOIL', z: 210, x: -14.5, color: 0x16a34a },
+      { id: 'gas-1', name: 'Total Energies Express Plaza', brand: 'TOTAL', z: 520, x: 14.5, color: 0xdc2626 },
+      { id: 'gas-2', name: 'Oando Mega Petrol Station', brand: 'OANDO', z: 1750, x: 14.5, color: 0x0284c7 },
+    ];
 
-      // Station Canopy Roof
+    stationSpecs.forEach((st) => {
+      const group = new THREE.Group();
+      group.position.set(st.x, 0, st.z);
+
+      // 1. Paved Pull-Off Side Lane Apron connecting highway to fuel pumps
+      const bayAsphalt = new THREE.Mesh(
+        new THREE.PlaneGeometry(14, 46),
+        new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 0.85 })
+      );
+      bayAsphalt.rotation.x = -Math.PI / 2;
+      bayAsphalt.position.set(0, 0.02, 0);
+      group.add(bayAsphalt);
+
+      // Glowing Yellow/Green Zuuks Refueling Zone Box painted on the ground
+      const zoneBorder = new THREE.Mesh(
+        new THREE.PlaneGeometry(8.5, 22),
+        new THREE.MeshBasicMaterial({ color: 0x22c55e, transparent: true, opacity: 0.28 })
+      );
+      zoneBorder.rotation.x = -Math.PI / 2;
+      zoneBorder.position.set(st.x < 0 ? 1.5 : -1.5, 0.05, 0);
+      group.add(zoneBorder);
+
+      // Layer-1 Mini-Map Fuel Station Beacon so it's unmistakable on the satellite Mini-Map!
+      const miniMapFuelPad = new THREE.Mesh(
+        new THREE.PlaneGeometry(10, 22),
+        new THREE.MeshBasicMaterial({ color: 0xf97316 })
+      );
+      miniMapFuelPad.rotation.x = -Math.PI / 2;
+      miniMapFuelPad.position.set(0, 6.2, 0);
+      miniMapFuelPad.layers.set(1);
+      group.add(miniMapFuelPad);
+
+      // 2. Station Canopy Roof
       const canopy = new THREE.Mesh(
-        new THREE.BoxGeometry(14, 0.5, 22),
-        new THREE.MeshStandardMaterial({ color: idx === 0 ? 0xdc2626 : 0x0284c7, roughness: 0.4 })
+        new THREE.BoxGeometry(14, 0.5, 24),
+        new THREE.MeshStandardMaterial({ color: st.color, roughness: 0.4 })
       );
       canopy.position.set(0, 5.2, 0);
       group.add(canopy);
 
-      // Station Brand Signboard
-      const signTex = createSignboardTexture(idx === 0 ? 'TOTAL ENERGIES' : 'OANDO MEGA PETROL', 'DIESEL ₦950/L • CAR WASH', '#facc15');
-      const sign = new THREE.Mesh(new THREE.BoxGeometry(13.8, 1.2, 0.2), new THREE.MeshStandardMaterial({ map: signTex }));
-      sign.position.set(0, 5.2, 10.9);
-      group.add(sign);
+      // 3. Station Brand Signboard (Front & Back)
+      const signTex = createSignboardTexture(
+        `${st.brand} FUEL STATION`,
+        'PULL IN • STOP • CUT ENGINE (K) • ₦500/L',
+        '#facc15'
+      );
+      [-11.9, 11.9].forEach((sz) => {
+        const sign = new THREE.Mesh(
+          new THREE.BoxGeometry(13.8, 1.3, 0.25),
+          new THREE.MeshStandardMaterial({ map: signTex })
+        );
+        sign.position.set(0, 5.2, sz);
+        group.add(sign);
+      });
 
       // Canopy Pillars
-      [-5, 5].forEach((px) => {
-        [-8, 8].forEach((pz) => {
-          const col = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 5.2), new THREE.MeshStandardMaterial({ color: 0xffffff }));
+      [-5.2, 5.2].forEach((px) => {
+        [-9, 9].forEach((pz) => {
+          const col = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.25, 0.25, 5.2),
+            new THREE.MeshStandardMaterial({ color: 0xffffff })
+          );
           col.position.set(px, 2.6, pz);
           group.add(col);
         });
       });
 
       // Fuel Pump Dispensers
-      [-3, 3].forEach((px) => {
+      [-3.2, 3.2].forEach((px) => {
         const pump = new THREE.Mesh(
-          new THREE.BoxGeometry(1.2, 2.2, 2.5),
+          new THREE.BoxGeometry(1.1, 2.2, 2.4),
           new THREE.MeshStandardMaterial({ color: 0xf1f5f9, metalness: 0.5 })
         );
         pump.position.set(px, 1.1, 0);
@@ -991,6 +1338,23 @@ export class ThreeDrivingEngine {
 
       this.scene.add(group);
       this.gasStationMeshes.push(group);
+
+      // 4. Static 3D Bounding Box (THREE.Box3) representing the Gas Station Refueling Zone!
+      // Covers the pull-off side lane and outer shoulder next to the pumps so pulling into the station triggers it cleanly.
+      const minX = st.x < 0 ? -21.5 : 4.2;
+      const maxX = st.x < 0 ? -4.2 : 21.5;
+      const zoneBox = new THREE.Box3(
+        new THREE.Vector3(minX, -1.0, st.z - 19),
+        new THREE.Vector3(maxX, 6.0, st.z + 19)
+      );
+      this.gasStationZones.push({
+        id: st.id,
+        name: st.name,
+        brand: st.brand,
+        box: zoneBox,
+        stationZ: st.z,
+        pricePerLiter: 500,
+      });
     });
   }
 
@@ -2750,18 +3114,20 @@ export class ThreeDrivingEngine {
     }
 
     // NATURAL ACKERMANN / BICYCLE VEHICLE TURNING KINEMATICS (Zero Lateral Sliding!)
-    // At the start of the shift (z < 48m), allow driving inside and out of the Danfo Bus Park (x down to -26.5m)!
+    // Dynamically expand lateral road bounds for Oshodi Bus Park, Gas Station Pull-Off Bays & Branching Shortcuts!
     const turnDir = gear === 'R' ? -1 : 1;
-    const minRoadX = roadDistanceTraveled < 48 ? -26.5 : -8.8;
-    const targetX = Math.max(minRoadX, Math.min(8.8, laneOffsetMeters));
+    const roadBounds = this.getAllowedRoadBounds(roadDistanceTraveled);
+    const minRoadX = roadBounds.minX;
+    const maxRoadX = roadBounds.maxX;
+    const targetX = Math.max(minRoadX, Math.min(maxRoadX, laneOffsetMeters));
 
     // Direct synchronization of physics chassis & visual 3D bus
     this.chassisBody.position.x = targetX;
     this.busRoot.position.x = targetX;
     this.chassisBody.position.z = roadDistanceTraveled;
     this.busRoot.position.z = roadDistanceTraveled;
-    this.chassisBody.velocity.z = speedMps * Math.cos(this.busHeadingYaw);
-    this.chassisBody.velocity.x = speedMps * Math.sin(this.busHeadingYaw);
+    this.chassisBody.velocity.z = isEngineRunning ? speedMps * Math.cos(this.busHeadingYaw) : 0;
+    this.chassisBody.velocity.x = isEngineRunning ? speedMps * Math.sin(this.busHeadingYaw) : 0;
 
     // Strict upright stabilization for chassis height
     if (this.chassisBody.position.y < 0.4 || isNaN(this.chassisBody.position.y)) {
@@ -3182,9 +3548,22 @@ export class ThreeDrivingEngine {
       while (seg.position.z > busZ + 360) {
         seg.position.z -= 480;
       }
-      // Keep right-side props hidden around z = 0 so the starting Danfo Bus Park apron stays clear!
+      const sz = seg.position.z;
+      // Open right-side (-X) curbs/buildings at Oshodi Park (z < 60), Conoil Gas Bay (z ~ 210), and Shortcuts (z = 340..840, 1150..1700)
       if (seg.userData && seg.userData.rightSideProps) {
-        seg.userData.rightSideProps.visible = seg.position.z > 60 || seg.position.z < -60;
+        const hideRight =
+          (sz >= -60 && sz <= 60) ||
+          (sz >= 150 && sz <= 270) ||
+          (sz >= 290 && sz <= 890) ||
+          (sz >= 1100 && sz <= 1750);
+        seg.userData.rightSideProps.visible = !hideRight;
+      }
+      // Open left-side (+X) curbs/buildings at Total Energies (z ~ 520) and Oando (z ~ 1750)
+      if (seg.userData && seg.userData.leftSideProps) {
+        const hideLeft =
+          (sz >= 460 && sz <= 580) ||
+          (sz >= 1690 && sz <= 1810);
+        seg.userData.leftSideProps.visible = !hideLeft;
       }
     });
 
@@ -3246,9 +3625,11 @@ export class ThreeDrivingEngine {
     });
 
     // 14. Gas Station Positioning along Road
-    const gasDistances = [520, 1750];
+    const gasDistances = [210, 520, 1750];
     this.gasStationMeshes.forEach((gMesh, idx) => {
-      gMesh.position.z = gasDistances[idx];
+      if (gasDistances[idx] !== undefined) {
+        gMesh.position.z = gasDistances[idx];
+      }
     });
 
     // 14b. Overhead Highway Billboards Positioning
@@ -3521,10 +3902,17 @@ export class ThreeDrivingEngine {
     }
 
     // ========================================================
-    // 17. LIVE REAR-VIEW SIDE MIRRORS & MAIN VIEWPORT RENDER
+    // 17. LIVE REAR-VIEW SIDE MIRRORS, ORTHOGRAPHIC MINI-MAP & MAIN VIEWPORT RENDER
     // ========================================================
     const fullW = this.container.clientWidth || window.innerWidth;
     const fullH = this.container.clientHeight || window.innerHeight;
+
+    // 17a. Update Top-Down Orthographic Mini-Map Camera to track Danfo's exact X and Z position!
+    this.miniMapCamera.position.x = this.busRoot.position.x;
+    this.miniMapCamera.position.y = 200;
+    this.miniMapCamera.position.z = this.busRoot.position.z;
+    this.miniMapCamera.up.set(0, 0, 1);
+    this.miniMapCamera.lookAt(this.busRoot.position.x, 0, this.busRoot.position.z);
 
     if (
       !isSteppedDown &&
@@ -3561,7 +3949,7 @@ export class ThreeDrivingEngine {
         const ctxL = this.leftMirrorCanvas.getContext('2d');
         if (ctxL) {
           ctxL.save();
-          ctxL.scale(-1, 1); // Mirror horizontal reflection
+          ctxL.scale(-1, 1);
           ctxL.drawImage(
             this.renderer.domElement,
             0,
@@ -3584,7 +3972,7 @@ export class ThreeDrivingEngine {
         const ctxR = this.rightMirrorCanvas.getContext('2d');
         if (ctxR) {
           ctxR.save();
-          ctxR.scale(-1, 1); // Mirror horizontal reflection
+          ctxR.scale(-1, 1);
           ctxR.drawImage(
             this.renderer.domElement,
             0,
@@ -3603,9 +3991,42 @@ export class ThreeDrivingEngine {
       this.renderer.setScissorTest(false);
     }
 
-    // Restore full viewport & render main camera scene
-    // In FIRST_PERSON driving mode, hide the 3D bus exterior mesh during the main forward render pass
-    // so the 3D roof/signboard/tinted glass NEVER blocks or darkens the road view!
+    // 17b. Render Top-Down Orthographic Mini-Map Pass (using renderer.setViewport & copying to Top-Right Mini-Map HUD)
+    if (this.miniMapCanvas && fullW > 200 && fullH > 200) {
+      const mmSize = 180;
+      const dpr = this.renderer.getPixelRatio();
+      const srcMm = Math.round(mmSize * dpr);
+      const srcMmY = Math.max(0, Math.round(fullH * dpr) - srcMm);
+
+      const savedFog = this.scene.fog;
+      this.scene.fog = null; // Disable fog for Y=200 satellite OrthographicCamera so road & shortcuts are crystal clear!
+      this.busBody.visible = true;
+
+      this.renderer.setScissorTest(true);
+      this.renderer.setViewport(0, 0, mmSize, mmSize);
+      this.renderer.setScissor(0, 0, mmSize, mmSize);
+      this.renderer.render(this.scene, this.miniMapCamera);
+      this.renderer.setScissorTest(false);
+
+      this.scene.fog = savedFog;
+
+      const ctxM = this.miniMapCanvas.getContext('2d');
+      if (ctxM) {
+        ctxM.drawImage(
+          this.renderer.domElement,
+          0,
+          srcMmY,
+          srcMm,
+          srcMm,
+          0,
+          0,
+          this.miniMapCanvas.width,
+          this.miniMapCanvas.height
+        );
+      }
+    }
+
+    // 17c. Restore full viewport & render main camera scene across full window
     const hide3DBusInCockpit = params.cameraMode === 'FIRST_PERSON' && !isSteppedDown;
     if (hide3DBusInCockpit) {
       this.busBody.visible = false;
@@ -3615,6 +4036,22 @@ export class ThreeDrivingEngine {
     this.renderer.setViewport(0, 0, fullW, fullH);
     this.renderer.render(this.scene, this.camera);
     this.busBody.visible = true;
+
+    // 17d. Also render live Orthographic Mini-Map square box directly in the top-right viewport corner via setViewport!
+    if (fullW > 320 && fullH > 260) {
+      const boxSize = fullW < 640 ? 104 : 132;
+      const boxX = fullW - boxSize - 10;
+      const boxY = fullH - boxSize - 44; // Top-right corner directly below top HUD bar
+      const savedFog = this.scene.fog;
+      this.scene.fog = null;
+      this.renderer.setScissorTest(true);
+      this.renderer.setViewport(boxX, boxY, boxSize, boxSize);
+      this.renderer.setScissor(boxX, boxY, boxSize, boxSize);
+      this.renderer.render(this.scene, this.miniMapCamera);
+      this.renderer.setScissorTest(false);
+      this.scene.fog = savedFog;
+      this.renderer.setViewport(0, 0, fullW, fullH);
+    }
   }
 
   /**

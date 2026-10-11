@@ -60,6 +60,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
   const engineRef = useRef<ThreeDrivingEngine | null>(null);
   const leftMirrorCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const rightMirrorCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const miniMapCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const lookRef = useRef({ yaw: 0, pitch: 0, isDragging: false, startX: 0, startY: 0, startYaw: 0, startPitch: 0 });
   const wheelDragRef = useRef({ startPointerAngle: 0, startSteeringAngle: 0 });
 
@@ -81,6 +82,28 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
   const [isBoarding, setIsBoarding] = useState<boolean>(false);
   const [cameraMode, setCameraMode] = useState<CameraViewMode>('FIRST_PERSON');
   const cameraModeRef = useRef<CameraViewMode>('FIRST_PERSON');
+
+  // Zuuks Gas Station Continuous Refueling, Shortcut Bypass, & Danfo Core Loop States
+  const [isRefueling, setIsRefueling] = useState<boolean>(false);
+  const [refuelLitersPumped, setRefuelLitersPumped] = useState<number>(0);
+  const [refuelCostNaira, setRefuelCostNaira] = useState<number>(0);
+  const refuelStatsRef = useRef<{ liters: number; cost: number }>({ liters: 0, cost: 0 });
+  const [isOnShortcut, setIsOnShortcut] = useState<boolean>(false);
+  const wasOnShortcutRef = useRef<boolean>(false);
+  const [fareBargainMode, setFareBargainMode] = useState<'STANDARD' | 'SURGE_BARGAIN'>('STANDARD');
+  const fareBargainModeRef = useRef<'STANDARD' | 'SURGE_BARGAIN'>('STANDARD');
+  const [dramaChallenge, setDramaChallenge] = useState<{
+    passengerName: string;
+    tapsLeft: number;
+    changeAmount: number;
+  } | null>(null);
+  const [conductorShoutText, setConductorShoutText] = useState<string>('');
+  const [isBoosting, setIsBoosting] = useState<boolean>(false);
+  const boostTimerRef = useRef<number>(0);
+
+  useEffect(() => {
+    fareBargainModeRef.current = fareBargainMode;
+  }, [fareBargainMode]);
 
   useEffect(() => {
     cameraModeRef.current = cameraMode;
@@ -186,12 +209,16 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
     simRef.current.isSteppedDown = isSteppedDown;
   }, [gear, isEngineRunning, turnSignal, hazardLights, wipersActive, gyroEnabled, doorState, isSteppedDown]);
 
-  // Initialize Three.js Engine on mount & connect live rear-view mirror canvases
+  // Initialize Three.js Engine on mount & connect live rear-view mirror + orthographic mini-map canvases
   useEffect(() => {
     if (!mountRef.current) return;
     const engine = new ThreeDrivingEngine(mountRef.current, gameState.bus.id);
     engineRef.current = engine;
-    engine.setMirrorCanvases(leftMirrorCanvasRef.current, rightMirrorCanvasRef.current);
+    engine.setMirrorCanvases(
+      leftMirrorCanvasRef.current,
+      rightMirrorCanvasRef.current,
+      miniMapCanvasRef.current
+    );
 
     return () => {
       engine.dispose();
@@ -199,28 +226,83 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
     };
   }, [gameState.bus.id]);
 
-  // Keep mirror canvases synced if camera mode or step-down state changes
+  // Keep mirror & mini-map canvases synced if camera mode or step-down state changes
   useEffect(() => {
     if (engineRef.current) {
-      engineRef.current.setMirrorCanvases(leftMirrorCanvasRef.current, rightMirrorCanvasRef.current);
+      engineRef.current.setMirrorCanvases(
+        leftMirrorCanvasRef.current,
+        rightMirrorCanvasRef.current,
+        miniMapCanvasRef.current
+      );
     }
   }, [cameraMode, isSteppedDown]);
 
-  const toggleEngine = () => {
-    const nextState = !isEngineRunning;
+  const toggleEngine = useCallback(() => {
+    const nextState = !inputsRef.current.isEngineRunning;
     setIsEngineRunning(nextState);
     inputsRef.current.isEngineRunning = nextState;
     soundEngine.playEngineIgnition(nextState);
     if (nextState) {
+      setIsRefueling(false);
       if (gear === 'N' || gear === 'P' || inputsRef.current.gear === 'N' || inputsRef.current.gear === 'P') {
         setGear('D');
         inputsRef.current.gear = 'D';
       }
-      addFeedMessage('🔑 IGNITION ON: Diesel engine rumbles to life! Drive out of the Bus Park onto the expressway.');
+      addFeedMessage('🔑 ENGINE ON: Diesel engine rumbles to life! Ready to drive.');
     } else {
-      addFeedMessage('🛑 ENGINE STOPPED: Ignition key turned off.');
+      simRef.current.speed = 0;
+      addFeedMessage('🛑 ENGINE OFF: Ignition cut. Vehicle locked from moving until engine is restarted.');
     }
-  };
+  }, [gear, addFeedMessage]);
+
+  // AI Conductor Shouting Destinations Out the Door ("Oshodi, Oshodi, enter!")
+  const triggerConductorShout = useCallback(() => {
+    const nextStop = gameState.junctions[simRef.current.activeJunctionIndex];
+    const destName = nextStop ? nextStop.name : 'CMS Marina';
+    const pidginShouts = [
+      `📢 "${destName}! ${destName}! Enter with your change o!"`,
+      `📢 "${destName} straight! Smart people enter fast, no waste time!"`,
+      `📢 "Oya ${destName} dey go! Market women, students, enter o!"`,
+      `📢 "Hold your ₦500 change o! ${destName} express!"`,
+    ];
+    const chosen = pidginShouts[Math.floor(Math.random() * pidginShouts.length)];
+    setConductorShoutText(chosen);
+    soundEngine.playHorn(false);
+    addFeedMessage(`🗣️ CONDUCTOR SHOUTING: ${chosen}`);
+    // Boost waiting commuters at upcoming stop when conductor shouts!
+    setGameState((prev) => {
+      const updated = prev.junctions.map((j, idx) =>
+        idx === simRef.current.activeJunctionIndex && !j.cleared
+          ? { ...j, waitingPassengersCount: Math.min(14, j.waitingPassengersCount + 2) }
+          : j
+      );
+      return { ...prev, junctions: updated };
+    });
+    setTimeout(() => {
+      setConductorShoutText('');
+    }, 4200);
+  }, [gameState.junctions, addFeedMessage, setGameState]);
+
+  // Overtake / Boost Move with Funny Pidgin Quotes
+  const triggerOvertakeBoost = useCallback(() => {
+    if (!inputsRef.current.isEngineRunning) {
+      addFeedMessage('🔑 Turn ON Engine (E / K) before using Overtake Boost!');
+      return;
+    }
+    if (simRef.current.fuel < 5) {
+      addFeedMessage('⛽ Fuel too low for Overtake Boost!');
+      return;
+    }
+    boostTimerRef.current = 3.5;
+    setIsBoosting(true);
+    soundEngine.playHorn(true);
+    const pidginBoostQuotes = [
+      '⚡ OVERTAKE BOOST: "Comot for road! Danfo wan fly!" 🚌💨',
+      '⚡ OVERTAKE BOOST: "No Condition Is Permanent! Hold your seat o!" 🔥',
+      '⚡ OVERTAKE BOOST: "Clear road for Lagos King! Waka fast!" 🚀',
+    ];
+    addFeedMessage(pidginBoostQuotes[Math.floor(Math.random() * pidginBoostQuotes.length)]);
+  }, [addFeedMessage]);
 
   const toggleDoor = () => {
     const nextDoor: DoorState = doorState === 'CLOSED' ? 'OPEN' : 'CLOSED';
@@ -598,15 +680,20 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
     inputsRef.current.isDraggingWheel = false;
   };
 
-  // Keyboard controls (Supports both Driving Mode and On-Foot Walk Mode!)
+  // Keyboard controls (Supports Driving Mode, Zuuks Engine Toggle 'E'/'K', Overtake Boost 'Shift', and Walk Mode 'F')
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      // Key 'E' toggles Engine when inside a Gas Station Zone or when Engine is OFF; otherwise toggles Walk Mode (or 'F' always toggles Walk Mode)
       if (e.key === 'e' || e.key === 'E') {
-        if (!inputsRef.current.isEngineRunning && !simRef.current.isSteppedDown) {
+        if (activeGasStationRef.current || (!inputsRef.current.isEngineRunning && !simRef.current.isSteppedDown)) {
           toggleEngine();
         } else {
           toggleStepDown();
         }
+        return;
+      }
+      if (e.key === 'f' || e.key === 'F') {
+        toggleStepDown();
         return;
       }
 
@@ -636,14 +723,25 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         return;
       }
 
-      // Toggle / Start Engine Ignition
+      // Toggle / Start Engine Ignition (Key K or X)
       if (e.key === 'k' || e.key === 'K' || e.key === 'x' || e.key === 'X') {
         toggleEngine();
         return;
       }
+
+      // Overtake / Boost Move (Shift Key)
+      if (e.key === 'Shift') {
+        triggerOvertakeBoost();
+        return;
+      }
+
+      // ZUUKS ENGINE-OFF LOCKOUT: Prevent moving or auto-starting when pressing gas or shifting gears while Engine is OFF!
       if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
         if (!inputsRef.current.isEngineRunning) {
-          toggleEngine();
+          inputsRef.current.gas = false;
+          setIsGasPressed(false);
+          addFeedMessage('🔑 ENGINE IS OFF! Press Engine Toggle (E or K) to turn on the engine before driving!');
+          return;
         }
         if (inputsRef.current.gear === 'R' && simRef.current.speed < 2) {
           setGear('D');
@@ -656,6 +754,12 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         setIsGasPressed(true);
       }
       if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
+        if (!inputsRef.current.isEngineRunning) {
+          inputsRef.current.brake = true;
+          setIsBrakePressed(true);
+          addFeedMessage('🔑 ENGINE IS OFF! Turn on the engine (E or K) before reversing.');
+          return;
+        }
         if (inputsRef.current.gear === 'D' && simRef.current.speed < 2) {
           setGear('R');
           inputsRef.current.gear = 'R';
@@ -681,6 +785,9 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         inputsRef.current.steerRight = true;
       }
       if (e.key === 'g' || e.key === 'G') {
+        if (!inputsRef.current.isEngineRunning) {
+          addFeedMessage('🔑 Engine is OFF! Start the engine (E / K) to engage gear and move.');
+        }
         setGear((prev) => (prev === 'D' ? 'R' : prev === 'R' ? 'N' : 'D'));
       }
       if (e.key === 'r' || e.key === 'R') {
@@ -697,7 +804,10 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       if (e.key === 'b' || e.key === 'B') toggleBoot();
       if (e.key === 'p' || e.key === 'P') onOpenPhone();
       if (e.key === 'i' || e.key === 'I') onOpenInventory();
-      if (e.key === 'q' || e.key === 'Q') onConductorAction('CALLING');
+      if (e.key === 'q' || e.key === 'Q') {
+        triggerConductorShout();
+        onConductorAction('CALLING');
+      }
       if (e.key === 'c' || e.key === 'C') handleCollectFares();
       if (e.key === 'v' || e.key === 'V') cycleCameraMode();
     };
@@ -777,16 +887,26 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       }
       const steerFactor = sim.steeringAngle / 90;
 
-      // 2. Acceleration & Braking Physics
+      // 2. Acceleration, Overtake Boost & Strict Engine-Off Lockout Physics
+      if (boostTimerRef.current > 0) {
+        boostTimerRef.current = Math.max(0, boostTimerRef.current - dt);
+        if (boostTimerRef.current === 0) {
+          setIsBoosting(false);
+        }
+      }
+      const boostAddSpeed = boostTimerRef.current > 0 ? 25 : 0;
+      const boostAccelMult = boostTimerRef.current > 0 ? 1.65 : 1.0;
+
       if (!inp.isEngineRunning || sim.isSteppedDown) {
-        sim.speed = Math.max(0, sim.speed - 30 * dt);
+        // STRICT ZUUKS ENGINE-OFF LOCKOUT: Bus cannot move while Engine is OFF!
+        sim.speed = Math.max(0, sim.speed - 45 * dt);
+        if (sim.speed < 0.4) sim.speed = 0;
       } else {
         if (inp.gear === 'D') {
-          // DRIVE GEAR (Forward Motion)
-          if (inp.gas) {
-            sim.speed = Math.min(85, sim.speed + 19 * dt);
-            sim.heat = Math.min(100, sim.heat + 3.0 * dt);
-            sim.fuel = Math.max(0, sim.fuel - 0.03 * dt);
+          if (inp.gas || boostTimerRef.current > 0) {
+            sim.speed = Math.min(85 + boostAddSpeed, sim.speed + 19 * boostAccelMult * dt);
+            sim.heat = Math.min(100, sim.heat + (boostTimerRef.current > 0 ? 5.2 : 3.0) * dt);
+            sim.fuel = Math.max(0, sim.fuel - (boostTimerRef.current > 0 ? 0.06 : 0.03) * dt);
           } else if (inp.brake) {
             sim.speed = Math.max(0, sim.speed - 60 * dt);
             sim.comfort = Math.max(20, sim.comfort - 10 * dt);
@@ -794,7 +914,6 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
             sim.speed = Math.max(0, sim.speed - 9 * dt);
           }
         } else if (inp.gear === 'R') {
-          // REVERSE GEAR (Reverse Motion)
           if (inp.gas) {
             sim.speed = Math.min(25, sim.speed + 15 * dt);
             sim.fuel = Math.max(0, sim.fuel - 0.04 * dt);
@@ -827,36 +946,52 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         sim.heat = Math.max(10, sim.heat - 4.5 * fanMult * dt);
       }
 
-      // True Ackermann / Bicycle Vehicle Turning Kinematics (Zero Lateral Sliding!)
+      // True Ackermann / Bicycle Vehicle Turning Kinematics + Dynamic Shortcut & Gas Bay Bounds
       if (sim.isSteppedDown) {
         sim.speed = 0;
       } else if (sim.speed > 0.05) {
         const speedMps = (sim.speed * 1000) / 3600;
         const turnDir = inp.gear === 'R' ? -1 : 1;
 
-        // Front wheel steer angle in radians (Steer Left -> steerFactor < 0 -> wheelAngleRad > 0 -> turns toward +X Left)
         const wheelAngleRad = -steerFactor * 0.46;
         const wheelbase = 3.45;
         const effectiveTurnSpeed = Math.min(speedMps, 14.5);
         const yawRate = turnDir * (effectiveTurnSpeed / wheelbase) * Math.tan(wheelAngleRad) * 1.38;
 
-        // Natural self-aligning road follow as driver centers the wheel
         const selfAlignRate = (1 - Math.abs(steerFactor) * 0.65) * (0.9 + speedMps * 0.12);
         sim.headingYaw += (yawRate - sim.headingYaw * selfAlignRate) * dt;
-        sim.headingYaw = Math.max(-0.45, Math.min(0.45, sim.headingYaw));
+        sim.headingYaw = Math.max(-0.52, Math.min(0.52, sim.headingYaw));
 
-        // Lateral & longitudinal motion driven strictly by the bus's nose heading (Math.sin / Math.cos)
         sim.laneOffset += Math.sin(sim.headingYaw) * speedMps * dt;
-        const minLaneX = sim.distanceTraveled < 48 ? -26.5 : -8.5;
-        if (sim.laneOffset <= minLaneX) {
-          sim.laneOffset = minLaneX;
+        const allowedBounds = engineRef.current
+          ? engineRef.current.getAllowedRoadBounds(sim.distanceTraveled)
+          : { minX: sim.distanceTraveled < 48 ? -26.5 : -8.8, maxX: 8.8 };
+
+        if (sim.laneOffset <= allowedBounds.minX) {
+          sim.laneOffset = allowedBounds.minX;
           if (sim.headingYaw < 0) sim.headingYaw *= Math.pow(0.04, dt);
-        } else if (sim.laneOffset >= 8.5) {
-          sim.laneOffset = 8.5;
+        } else if (sim.laneOffset >= allowedBounds.maxX) {
+          sim.laneOffset = allowedBounds.maxX;
           if (sim.headingYaw > 0) sim.headingYaw *= Math.pow(0.04, dt);
         }
 
-        const forwardDeltaM = Math.cos(sim.headingYaw) * speedMps * dt;
+        // Check if driving on a 90-degree Branching Shortcut Bypass Lane (+35% route progress!)
+        const currentlyOnShortcut = engineRef.current ? engineRef.current.isOnShortcutBranch() : false;
+        if (currentlyOnShortcut !== wasOnShortcutRef.current) {
+          wasOnShortcutRef.current = currentlyOnShortcut;
+          setIsOnShortcut(currentlyOnShortcut);
+          if (currentlyOnShortcut) {
+            soundEngine.playHorn(false);
+            addFeedMessage('🛣️ SHORTCUT BYPASS ENTERED: Cutting through side street! (+35% Route Progress & Zero Highway Traffic!)');
+          } else {
+            soundEngine.playCoin();
+            triggerCashToast(350, '+₦350 Shortcut Time-Saver Bonus!');
+            addFeedMessage('↩ REJOINED MAIN EXPRESSWAY: +₦350 Shortcut Time-Saver Bonus earned!');
+          }
+        }
+
+        const shortcutMult = currentlyOnShortcut ? 1.35 : 1.0;
+        const forwardDeltaM = Math.cos(sim.headingYaw) * speedMps * shortcutMult * dt;
         if (inp.gear === 'R') {
           sim.distanceTraveled = Math.max(0, sim.distanceTraveled - forwardDeltaM);
         } else {
@@ -864,13 +999,72 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         }
       }
 
-      // 3. Gas Station Detection
+      // 3. ZUUKS-STYLE GAS STATION LOGIC (THREE.Box3 Zone Intersection + Velocity === 0 + isEngineOn === false)
+      const boxGasZone = engineRef.current ? engineRef.current.getIntersectingGasStationZone() : null;
       const gasBays = gameState.gasStations || [];
-      const nearGas = gasBays.find((g) => Math.abs(g.distanceMarkerMeters - sim.distanceTraveled) < 18 && Math.abs(sim.laneOffset) > 2.5);
-      if (nearGas && sim.speed < 5) {
-        if (!activeGasStationRef.current) { activeGasStationRef.current = nearGas; setActiveGasStation(nearGas); }
-      } else if (activeGasStation) {
-        setActiveGasStation(null);
+      const matchedGasBay = boxGasZone
+        ? gasBays.find((g) => g.id === boxGasZone.id) || {
+            id: boxGasZone.id,
+            name: boxGasZone.name,
+            brand: boxGasZone.brand,
+            distanceMarkerMeters: boxGasZone.stationZ,
+            fuelPricePerLiter: 500,
+            isInBay: true,
+          }
+        : gasBays.find(
+            (g) =>
+              Math.abs(g.distanceMarkerMeters - sim.distanceTraveled) < 19 &&
+              Math.abs(sim.laneOffset) > 4.2
+          ) || null;
+
+      if (matchedGasBay) {
+        if (!activeGasStationRef.current || activeGasStationRef.current.id !== matchedGasBay.id) {
+          activeGasStationRef.current = matchedGasBay;
+          setActiveGasStation(matchedGasBay);
+          refuelStatsRef.current = { liters: 0, cost: 0 };
+          setRefuelLitersPumped(0);
+          setRefuelCostNaira(0);
+        }
+
+        // ZUUKS INTERSECTION RULE:
+        // 1. Bus is inside Gas Station Zone AND velocity is completely 0 (speed < 0.5)
+        // 2. Check if isEngineRunning === false
+        // 3. Slowly increment state.fuel while deducting state.money at ₦500 per Liter!
+        if (sim.speed < 0.5 && !inp.isEngineRunning) {
+          setIsRefueling(true);
+          if (sim.fuel < 100) {
+            const litersDelta = 3.2 * dt; // 3.2 Liters per second smooth pumping
+            const costDelta = Math.round(litersDelta * 500); // ₦500 per Liter
+            const fuelPercentDelta = litersDelta * 2.0; // 50L tank = 100%
+            sim.fuel = Math.min(100, sim.fuel + fuelPercentDelta);
+            refuelStatsRef.current.liters += litersDelta;
+            refuelStatsRef.current.cost += costDelta;
+
+            if (Math.random() < 0.18) {
+              soundEngine.playCoin();
+            }
+
+            setGameState((prev) => {
+              const nextWallet = Math.max(0, prev.walletNaira - costDelta);
+              return {
+                ...prev,
+                walletNaira: nextWallet,
+                bus: {
+                  ...prev.bus,
+                  fuelPercent: Math.round(sim.fuel),
+                },
+              };
+            });
+          }
+        } else {
+          setIsRefueling(false);
+        }
+      } else {
+        if (activeGasStationRef.current) {
+          activeGasStationRef.current = null;
+          setActiveGasStation(null);
+          setIsRefueling(false);
+        }
       }
 
       // 4. Roadside Shop Detection (Pulling up near shop curb)
@@ -878,7 +1072,8 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       const nearShop = shops.find((s) => Math.abs(s.distanceMarkerMeters - sim.distanceTraveled) < 18 && Math.abs(sim.laneOffset) > 2.5);
       if (nearShop && sim.speed < 6) {
         if (!activeShopRef.current) { activeShopRef.current = nearShop; setActiveShop(nearShop); }
-      } else if (activeShop) {
+      } else if (activeShopRef.current && (!nearShop || sim.speed >= 6)) {
+        activeShopRef.current = null;
         setActiveShop(null);
       }
 
@@ -890,192 +1085,235 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         }
       }
 
-      
-        // NPC honk when player is blocking their lane
-        if (Math.random() < 0.0015) {
-          const hornMessages = [
-            '📢 "Driver move na! You dey block road!" 🚗💨',
-            '🚕 "Oga park well! Area boys go vex!" 😤',
-            '📯 "PAMPAMPAM! Werey driver!" 🤦',
-            '🚌 "Driver! Comot for my lane abeg!" 🙏',
-            '😡 "You go pay for this traffic!" 💸',
-          ];
-          addFeedMessage(hornMessages[Math.floor(Math.random() * hornMessages.length)]);
-          soundEngine.playHorn(false);
-        }
+      // NPC honk when player is blocking their lane
+      if (Math.random() < 0.0015) {
+        const hornMessages = [
+          '📢 "Driver move na! You dey block road!" 🚗💨',
+          '🚕 "Oga park well! Area boys go vex!" 😤',
+          '📯 "PAMPAMPAM! Werey driver!" 🤦',
+          '🚌 "Driver! Comot for my lane abeg!" 🙏',
+          '😡 "You go pay for this traffic!" 💸',
+        ];
+        addFeedMessage(hornMessages[Math.floor(Math.random() * hornMessages.length)]);
+        soundEngine.playHorn(false);
+      }
 
-        // Periodic NPC Waybill Delivery Offer (every ~32s if no delivery is active or offered)
-        waybillTimer += dt;
-        if (waybillTimer >= 32 && !gameState.activeDelivery && !gameState.availableDelivery && sim.distanceTraveled > 100) {
-          waybillTimer = 0;
-          const downstreamJobs = SAMPLE_DELIVERY_JOBS.filter(
-            (j) => j.destinationMarkerMeters > sim.distanceTraveled + 250
-          );
-          if (downstreamJobs.length > 0) {
-            const randomJob = downstreamJobs[Math.floor(Math.random() * downstreamJobs.length)];
+      // Periodic NPC Waybill Delivery Offer
+      waybillTimer += dt;
+      if (waybillTimer >= 32 && !gameState.activeDelivery && !gameState.availableDelivery && sim.distanceTraveled > 100) {
+        waybillTimer = 0;
+        const downstreamJobs = SAMPLE_DELIVERY_JOBS.filter(
+          (j) => j.destinationMarkerMeters > sim.distanceTraveled + 250
+        );
+        if (downstreamJobs.length > 0) {
+          const randomJob = downstreamJobs[Math.floor(Math.random() * downstreamJobs.length)];
+          setGameState((prev) => {
+            if (prev.activeDelivery || prev.availableDelivery) return prev;
+            return {
+              ...prev,
+              availableDelivery: { ...randomJob, accepted: false, completed: false },
+            };
+          });
+          soundEngine.playHorn(false);
+          addFeedMessage(`📦 WAYBILL CALL: ${randomJob.senderName} (${randomJob.senderRole}) needs parcel delivered to ${randomJob.destinationName}! (₦${randomJob.rewardNaira.toLocaleString()})`);
+        }
+      }
+
+      // 5. Junction Bus Stop Detection, AI Conductor Shouting & 5 Passenger Archetypes Boarding/Alighting
+      const juncs = gameState.junctions;
+      const nearJunc = juncs.find((j) => Math.abs(j.distanceMarkerMeters - sim.distanceTraveled) <= 55);
+
+      const upcomingIdx = juncs.findIndex((j) => j.distanceMarkerMeters > sim.distanceTraveled - 16);
+      if (upcomingIdx !== -1 && upcomingIdx !== sim.activeJunctionIndex) {
+        sim.activeJunctionIndex = upcomingIdx;
+      }
+
+      if (nearJunc) {
+        const distToJunc = nearJunc.distanceMarkerMeters - sim.distanceTraveled;
+        const isAtStop = Math.abs(distToJunc) <= 28 && sim.speed < 16;
+
+        // Check if this stop has an active Waybill Delivery destination!
+        if (isAtStop && (sim.doorState === 'OPEN' || bootState === 'OPEN') && gameState.activeDelivery) {
+          const delJob = gameState.activeDelivery;
+          const isDeliveryMatch =
+            delJob.destinationJunctionUid === nearJunc.uid ||
+            delJob.destinationName.toLowerCase().includes(nearJunc.name.toLowerCase());
+          if (isDeliveryMatch) {
+            soundEngine.playCoin();
+            soundEngine.playHorn(true);
+            triggerCashToast(delJob.rewardNaira, `+₦${delJob.rewardNaira.toLocaleString()} Waybill Delivered!`);
+            addFeedMessage(`🎉 WAYBILL DELIVERED: ${delJob.itemName} handed over safely at ${nearJunc.name}! (+₦${delJob.rewardNaira.toLocaleString()} Cash Reward!)`);
             setGameState((prev) => {
-              if (prev.activeDelivery || prev.availableDelivery) return prev;
+              const nextWallet = prev.walletNaira + delJob.rewardNaira;
+              const nextCred = prev.streetCred + 30;
+              onUpdateSave?.({ walletNaira: nextWallet, streetCred: nextCred });
               return {
                 ...prev,
-                availableDelivery: { ...randomJob, accepted: false, completed: false },
+                walletNaira: nextWallet,
+                streetCred: nextCred,
+                activeDelivery: null,
               };
             });
-            soundEngine.playHorn(false);
-            addFeedMessage(`📦 WAYBILL CALL: ${randomJob.senderName} (${randomJob.senderRole}) needs parcel delivered to ${randomJob.destinationName}! (₦${randomJob.rewardNaira.toLocaleString()})`);
           }
         }
 
-        // 5. Junction Bus Stop Detection & Passenger Alighting / Boarding
-        const juncs = gameState.junctions;
-        const nearJunc = juncs.find((j) => Math.abs(j.distanceMarkerMeters - sim.distanceTraveled) <= 55);
+        // Faster boarding when AI Conductor is hired!
+        const boardingInterval = gameState.conductor.hasConductor ? 0.38 : 0.58;
 
-        // Keep active junction pointing to next upcoming stop
-        const upcomingIdx = juncs.findIndex((j) => j.distanceMarkerMeters > sim.distanceTraveled - 16);
-        if (upcomingIdx !== -1 && upcomingIdx !== sim.activeJunctionIndex) {
-          sim.activeJunctionIndex = upcomingIdx;
-        }
+        if (isAtStop && sim.doorState === 'OPEN' && !nearJunc.cleared) {
+          boardingTimer += dt;
+          sim.isBoarding = true;
 
-        if (nearJunc) {
-          const distToJunc = nearJunc.distanceMarkerMeters - sim.distanceTraveled;
-          const isAtStop = Math.abs(distToJunc) <= 28 && sim.speed < 16;
+          if (boardingTimer >= boardingInterval) {
+            boardingTimer = 0;
 
-          // Check if this stop has an active Waybill Delivery destination!
-          if (isAtStop && (sim.doorState === 'OPEN' || bootState === 'OPEN') && gameState.activeDelivery) {
-            const delJob = gameState.activeDelivery;
-            const isDeliveryMatch = 
-              delJob.destinationJunctionUid === nearJunc.uid ||
-              delJob.destinationName.toLowerCase().includes(nearJunc.name.toLowerCase());
-            if (isDeliveryMatch) {
-              soundEngine.playCoin();
-              soundEngine.playHorn(true);
-              triggerCashToast(delJob.rewardNaira, `+₦${delJob.rewardNaira.toLocaleString()} Waybill Delivered!`);
-              addFeedMessage(`🎉 WAYBILL DELIVERED: ${delJob.itemName} handed over safely at ${nearJunc.name}! (+₦${delJob.rewardNaira.toLocaleString()} Cash Reward!)`);
+            setTimeout(() => {
               setGameState((prev) => {
-                const nextWallet = prev.walletNaira + delJob.rewardNaira;
-                const nextCred = prev.streetCred + 30;
-                onUpdateSave?.({ walletNaira: nextWallet, streetCred: nextCred });
+                const updatedJuncs = [...prev.junctions];
+                const activeJ = updatedJuncs.find((j) => j.uid === nearJunc.uid);
+                if (!activeJ || activeJ.cleared) return prev;
+
+                let currentPassengers = [...(prev.bus.passengers || [])];
+                let cashCollected = 0;
+                let alightedCount = 0;
+
+                // 1. NPC ALIGHTING: Commuters drop off at this stop + pay Fast/Smooth Ride Tips!
+                const remainingPassengers: Passenger[] = [];
+                for (const p of currentPassengers) {
+                  const isDropOffHere =
+                    (p.destinationUid && p.destinationUid === activeJ.uid) ||
+                    (p.destination && p.destination === activeJ.destinationTag) ||
+                    (p.destination && activeJ.name.toLowerCase().includes(p.destination.toLowerCase()));
+
+                  if (isDropOffHere) {
+                    alightedCount++;
+                    let tipBonus = 0;
+                    if (p.archetype === 'CORPORATE' && p.patience >= 55) {
+                      tipBonus = 500; // Impatient office worker fast tip!
+                      addFeedMessage(`💼 FAST DROP TIP: Office Worker ${p.name} tipped +₦500 for arriving on time!`);
+                    } else if (p.archetype === 'PREACHER' && sim.comfort >= 70) {
+                      tipBonus = 900; // VIP / Pregnant Mama smooth ride bonus!
+                      addFeedMessage(`🤰 SMOOTH RIDE BONUS: VIP Mama ${p.name} tipped +₦900 for a smooth ride!`);
+                    }
+                    const totalPaid = p.fare + tipBonus;
+                    cashCollected += totalPaid;
+                    addFeedMessage(`🚶 ALIGHTED: ${p.name} (${p.archetypeLabel || p.archetype}) dropped at ${activeJ.name}! (+₦${totalPaid.toLocaleString()})`);
+                  } else {
+                    remainingPassengers.push(p);
+                  }
+                }
+
+                if (alightedCount > 0) {
+                  soundEngine.playCoin();
+                }
+
+                // 2. NPC BOARDING: 5 Distinct Passenger Archetypes with Seat Counts & Fare Rules
+                const busCapacity = prev.bus.capacity || 14;
+                const seatsUsed = remainingPassengers.reduce((acc, p) => acc + (p.seatsTaken || 1), 0);
+                let remainingWaiting = activeJ.waitingPassengersCount;
+
+                if (seatsUsed < busCapacity && remainingWaiting > 0) {
+                  const currIndexInList = updatedJuncs.findIndex((j) => j.uid === activeJ.uid);
+                  const downstreamStops = updatedJuncs.slice(currIndexInList + 1);
+                  const targetStop = downstreamStops.length > 0
+                    ? downstreamStops[Math.floor(Math.random() * downstreamStops.length)]
+                    : updatedJuncs[updatedJuncs.length - 1];
+
+                  const archetypes: PassengerArchetype[] = ['CORPORATE', 'MARKET_WOMAN', 'STUDENT', 'AGBERO_TOUT', 'PREACHER'];
+                  const chosenArch = archetypes[Math.floor(Math.random() * archetypes.length)];
+                  const randomName = PASSENGER_NAMES[Math.floor(Math.random() * PASSENGER_NAMES.length)];
+                  const baseFare = (targetStop.averageFare || activeJ.averageFare) * (fareBargainModeRef.current === 'SURGE_BARGAIN' ? 1.4 : 1.0);
+
+                  let fareToCharge = Math.round(baseFare);
+                  let seatsTaken = 1;
+                  let archLabel = 'Commuter';
+
+                  if (chosenArch === 'CORPORATE') {
+                    archLabel = '💼 Impatient Office Worker';
+                    fareToCharge = Math.round(baseFare * 1.2);
+                  } else if (chosenArch === 'MARKET_WOMAN') {
+                    archLabel = '🧺 Market Woman (2 Seats)';
+                    seatsTaken = Math.min(2, Math.max(1, busCapacity - seatsUsed));
+                    fareToCharge = Math.round(baseFare * 1.8);
+                  } else if (chosenArch === 'STUDENT') {
+                    archLabel = '🎒 Student';
+                    fareToCharge = Math.round(baseFare * 0.65);
+                  } else if (chosenArch === 'AGBERO_TOUT') {
+                    archLabel = '🗣️ Drama Passenger';
+                    fareToCharge = Math.round(baseFare);
+                    // Trigger Quick-Tap Change-Giving Challenge!
+                    setDramaChallenge({
+                      passengerName: randomName,
+                      tapsLeft: 3,
+                      changeAmount: 200,
+                    });
+                  } else if (chosenArch === 'PREACHER') {
+                    archLabel = '🤰 VIP / Pregnant Mama';
+                    fareToCharge = Math.round(baseFare * 1.25);
+                  }
+
+                  const newPassenger: Passenger = {
+                    id: `p-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                    name: randomName,
+                    archetype: chosenArch,
+                    archetypeLabel: archLabel,
+                    destination: targetStop.destinationTag,
+                    destinationUid: targetStop.uid,
+                    fare: fareToCharge,
+                    seatsTaken,
+                    paid: true,
+                    patience: chosenArch === 'CORPORATE' ? 80 : 100,
+                    maxPatience: 100,
+                    hasBigBill: chosenArch === 'AGBERO_TOUT',
+                    changeNeeded: chosenArch === 'AGBERO_TOUT' ? 200 : 0,
+                    seatedAt: remainingPassengers.length,
+                    satisfaction: 'HAPPY',
+                  };
+
+                  remainingPassengers.push(newPassenger);
+                  remainingWaiting = Math.max(0, remainingWaiting - 1);
+                  cashCollected += fareToCharge;
+                  soundEngine.playPassengerBoarding();
+                  soundEngine.playCoin();
+                  addFeedMessage(`🎟️ ${archLabel}: ${newPassenger.name} boarded → "${targetStop.name}!" (+₦${fareToCharge.toLocaleString()})`);
+                }
+
+                const newSeatsUsed = remainingPassengers.reduce((acc, p) => acc + (p.seatsTaken || 1), 0);
+                activeJ.waitingPassengersCount = remainingWaiting;
+                const isCleared = remainingWaiting === 0 || newSeatsUsed >= busCapacity;
+                activeJ.cleared = isCleared;
+                activeJ.stopReached = true;
+
+                const nextWallet = prev.walletNaira + cashCollected;
+                const nextCred = prev.streetCred + alightedCount * 5 + (isCleared ? 15 : 0);
+                if (cashCollected > 0 || alightedCount > 0) {
+                  onUpdateSave?.({ walletNaira: nextWallet, streetCred: nextCred });
+                  triggerCashToast(cashCollected, `+₦${cashCollected.toLocaleString()} Fares & Tips!`);
+                }
+
                 return {
                   ...prev,
+                  bus: {
+                    ...prev.bus,
+                    passengers: remainingPassengers,
+                  },
+                  conductor: {
+                    ...prev.conductor,
+                    collectedCash: prev.conductor.collectedCash + cashCollected,
+                  },
                   walletNaira: nextWallet,
                   streetCred: nextCred,
-                  activeDelivery: null,
+                  junctions: updatedJuncs,
                 };
               });
-            }
-          }
-
-          if (isAtStop && sim.doorState === 'OPEN' && !nearJunc.cleared) {
-            boardingTimer += dt;
-            sim.isBoarding = true;
-
-            if (boardingTimer >= 0.55) {
-              boardingTimer = 0;
-
-              setTimeout(() => {
-                setGameState((prev) => {
-                  const updatedJuncs = [...prev.junctions];
-                  const activeJ = updatedJuncs.find((j) => j.uid === nearJunc.uid);
-                  if (!activeJ || activeJ.cleared) return prev;
-
-                  let currentPassengers = [...(prev.bus.passengers || [])];
-                  let cashCollected = 0;
-                  let alightedCount = 0;
-
-                  // 1. NPC ALIGHTING: Commuters drop off at this stop and pay fare!
-                  const remainingPassengers: Passenger[] = [];
-                  for (const p of currentPassengers) {
-                    const isDropOffHere = 
-                      (p.destinationUid && p.destinationUid === activeJ.uid) ||
-                      (p.destination && p.destination === activeJ.destinationTag) ||
-                      (p.destination && activeJ.name.toLowerCase().includes(p.destination.toLowerCase()));
-
-                    if (isDropOffHere) {
-                      alightedCount++;
-                      cashCollected += p.fare;
-                      addFeedMessage(`🚶 ALIGHTED: ${p.name} dropped off at ${activeJ.name}! (+₦${p.fare.toLocaleString()} fare paid)`);
-                    } else {
-                      remainingPassengers.push(p);
-                    }
-                  }
-
-                  if (alightedCount > 0) {
-                    soundEngine.playCoin();
-                  }
-
-                  // 2. NPC BOARDING: Waiting commuters board up to bus capacity!
-                  const busCapacity = prev.bus.capacity || 14;
-                  let remainingWaiting = activeJ.waitingPassengersCount;
-
-                  if (remainingPassengers.length < busCapacity && remainingWaiting > 0) {
-                    const currIndexInList = updatedJuncs.findIndex((j) => j.uid === activeJ.uid);
-                    const downstreamStops = updatedJuncs.slice(currIndexInList + 1);
-                    const targetStop = downstreamStops.length > 0
-                      ? downstreamStops[Math.floor(Math.random() * downstreamStops.length)]
-                      : updatedJuncs[updatedJuncs.length - 1];
-
-                    const archetypes: PassengerArchetype[] = ['CORPORATE', 'MARKET_WOMAN', 'STUDENT', 'AGBERO_TOUT', 'PREACHER'];
-                    const randomName = PASSENGER_NAMES[Math.floor(Math.random() * PASSENGER_NAMES.length)];
-                    const fareToCharge = targetStop.averageFare || activeJ.averageFare;
-
-                    const newPassenger: Passenger = {
-                      id: `p-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-                      name: randomName,
-                      archetype: archetypes[Math.floor(Math.random() * archetypes.length)],
-                      destination: targetStop.destinationTag,
-                      destinationUid: targetStop.uid,
-                      fare: fareToCharge,
-                      paid: true,
-                      patience: 100,
-                      maxPatience: 100,
-                      hasBigBill: Math.random() < 0.2,
-                      changeNeeded: 0,
-                      seatedAt: remainingPassengers.length,
-                      satisfaction: 'HAPPY',
-                    };
-
-                    remainingPassengers.push(newPassenger);
-                    remainingWaiting = Math.max(0, remainingWaiting - 1);
-                    cashCollected += fareToCharge;
-                    soundEngine.playPassengerBoarding();
-                    soundEngine.playCoin();
-                    addFeedMessage(`🎟️ BOARDED: ${newPassenger.name} entered bus -> Destination: ${targetStop.name} (+₦${fareToCharge.toLocaleString()})`);
-                  }
-
-                  activeJ.waitingPassengersCount = remainingWaiting;
-                  const isCleared = remainingWaiting === 0 || remainingPassengers.length >= busCapacity;
-                  activeJ.cleared = isCleared;
-                  activeJ.stopReached = true;
-
-                  const nextWallet = prev.walletNaira + cashCollected;
-                  const nextCred = prev.streetCred + alightedCount * 5 + (isCleared ? 15 : 0);
-                  if (cashCollected > 0 || alightedCount > 0) {
-                    onUpdateSave?.({ walletNaira: nextWallet, streetCred: nextCred });
-                    triggerCashToast(cashCollected, `+₦${cashCollected.toLocaleString()} Fares Collected!`);
-                  }
-
-                  return {
-                    ...prev,
-                    bus: {
-                      ...prev.bus,
-                      passengers: remainingPassengers,
-                    },
-                    conductor: {
-                      ...prev.conductor,
-                      collectedCash: prev.conductor.collectedCash + cashCollected,
-                    },
-                    walletNaira: nextWallet,
-                    streetCred: nextCred,
-                    junctions: updatedJuncs,
-                  };
-                });
-              }, 0);
-            }
-          } else {
-            sim.isBoarding = false;
+            }, 0);
           }
         } else {
           sim.isBoarding = false;
         }
+      } else {
+        sim.isBoarding = false;
+      }
 
       // Terminal reached
       if (sim.targetDistance && sim.targetDistance > 100 && sim.distanceTraveled >= sim.targetDistance && !sim.finished) {
@@ -1152,8 +1390,12 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         setHudFuel(Math.round(sim.fuel));
         setHudComfort(Math.round(sim.comfort));
         setCurrentDist(sim.distanceTraveled);
-        setActiveJuncIndex(gameState.activeJunctionIndex);
+        setActiveJuncIndex(sim.activeJunctionIndex);
         setIsBoarding(sim.isBoarding);
+        if (activeGasStationRef.current) {
+          setRefuelLitersPumped(Number(refuelStatsRef.current.liters.toFixed(1)));
+          setRefuelCostNaira(Math.round(refuelStatsRef.current.cost));
+        }
       }
 
       animId = requestAnimationFrame(loop);
@@ -1253,59 +1495,93 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
 
       {/* ═══════ TOP BAR ═══════ */}
       <div className={`absolute top-0 left-0 right-0 z-40 pointer-events-auto transition-transform duration-300 ${showTopHUD ? 'translate-y-0' : '-translate-y-full'}`}>
-        <div className="flex items-stretch h-9 bg-stone-950/85 backdrop-blur-md border-b border-stone-700/60 shadow-xl">
-          {/* MiniMap pinned top-left */}
-          <div className="w-[88px] h-[88px] shrink-0 absolute top-0 left-0 pointer-events-auto z-10 origin-top-left" style={{ transform: 'scale(0.75)' }}>
-            <MiniMap
-              currentDistanceMeters={currentDist}
-              totalDistanceMeters={gameState.targetDistanceMeters}
-              laneOffset={simRef.current.laneOffset}
-              junctions={gameState.junctions}
-              activeJunctionIndex={activeJuncIndex}
-              speedKmH={hudSpeed}
-            />
+        <div className="flex items-stretch h-9 bg-stone-950/90 backdrop-blur-md border-b border-stone-700/60 shadow-xl px-2">
+          {/* Left Brand & Route Progress */}
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-[10px] font-['Bungee'] text-amber-400 tracking-wide hidden sm:inline">DANFO EXPRESS</span>
+            <span className="text-[9px] font-mono text-stone-300">
+              📍 {Math.round(currentDist)}m / {gameState.targetDistanceMeters}m
+            </span>
           </div>
-          {/* Centre strip */}
-          <div className="ml-[66px] flex-1 flex items-center justify-center gap-2.5 px-2 text-[10px] font-mono">
-            <span className="text-stone-400">SPD</span><span className="font-black text-white tabular-nums">{hudSpeed}</span><span className="text-stone-500 text-[8px]">km/h</span>
+
+          {/* Centre Telemetry Strip */}
+          <div className="flex-1 flex items-center justify-center gap-2 px-2 text-[10px] font-mono">
+            <span className="text-stone-400">SPD</span>
+            <span className="font-black text-white tabular-nums">{hudSpeed}</span>
+            <span className="text-stone-500 text-[8px]">km/h</span>
             <div className="w-px h-4 bg-stone-700" />
             <Fuel className="w-2.5 h-2.5 text-amber-400" />
-            <div className="w-10 h-1.5 bg-stone-800 rounded-full overflow-hidden"><div className={`h-full transition-all ${hudFuel < 20 ? 'bg-rose-500 animate-pulse' : 'bg-emerald-400'}`} style={{ width: `${hudFuel}%` }} /></div>
-            <span className={hudFuel < 20 ? 'text-rose-400' : 'text-stone-400'}>{hudFuel}%</span>
+            <div className="w-10 h-1.5 bg-stone-800 rounded-full overflow-hidden">
+              <div
+                className={`h-full transition-all ${hudFuel < 20 ? 'bg-rose-500 animate-pulse' : 'bg-emerald-400'}`}
+                style={{ width: `${hudFuel}%` }}
+              />
+            </div>
+            <span className={hudFuel < 20 ? 'text-rose-400 font-bold' : 'text-stone-300'}>{hudFuel}%</span>
+            <div className="w-px h-4 bg-stone-700 hidden sm:block" />
+            <span className={`hidden sm:inline ${hudHeat > 80 ? 'text-rose-400 font-bold' : 'text-stone-300'}`}>🌡️{hudHeat}°</span>
             <div className="w-px h-4 bg-stone-700" />
-            <span className={hudHeat > 80 ? 'text-rose-400 font-bold' : 'text-stone-300'}>🌡️{hudHeat}°</span>
+            <Coins className="w-2.5 h-2.5 text-emerald-400" />
+            <span className="text-emerald-400 font-black tabular-nums">₦{gameState.walletNaira.toLocaleString()}</span>
             <div className="w-px h-4 bg-stone-700" />
-            <Coins className="w-2.5 h-2.5 text-emerald-400" /><span className="text-emerald-400 font-black tabular-nums">₦{gameState.conductor.collectedCash.toLocaleString()}</span>
-            <div className="w-px h-4 bg-stone-700" />
-            <span className={`font-black text-sm ${gear === 'D' ? 'text-amber-400' : gear === 'R' ? 'text-rose-400' : gear === 'P' ? 'text-sky-400' : 'text-stone-300'}`}>{gear}</span>
+            <span className={`font-black text-sm ${gear === 'D' ? 'text-amber-400' : gear === 'R' ? 'text-rose-400' : gear === 'P' ? 'text-sky-400' : 'text-stone-300'}`}>
+              {gear}
+            </span>
           </div>
-          {/* Right buttons */}
-          <div className="flex items-center gap-1 px-1.5 shrink-0">
-            <button 
-              onClick={cycleCameraMode} 
-              title={isSteppedDown ? 'Walking Outside' : `Camera: ${cameraMode} (Press V)`}
-              className={`p-1.5 rounded border font-mono font-black text-[9px] transition-colors ${
-                isSteppedDown 
-                  ? 'bg-amber-500/20 border-amber-500/50 text-amber-300' 
-                  : 'bg-sky-950/80 border-sky-500/70 text-sky-300 hover:text-white hover:bg-sky-900'
+
+          {/* Right Action & Engine Toggle Buttons */}
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              onClick={toggleEngine}
+              title="Toggle Engine Ignition ON/OFF (Key E at Gas Station or Key K)"
+              className={`px-2 py-1 rounded border font-mono font-black text-[9px] flex items-center gap-1 transition-all ${
+                isEngineRunning
+                  ? 'bg-emerald-950/90 border-emerald-500/70 text-emerald-300 hover:bg-rose-950 hover:border-rose-500 hover:text-rose-200'
+                  : 'bg-rose-600 border-rose-300 text-white animate-pulse shadow-[0_0_12px_rgba(244,63,94,0.8)]'
               }`}
             >
-              {isSteppedDown ? '🚶 FOOT' : cameraMode === 'FIRST_PERSON' ? '🎥 1ST' : cameraMode === 'THIRD_PERSON' ? '🚗 3RD' : cameraMode === 'TOP_DOWN' ? '🦅 TOP' : '🔄 360'}
+              <Power className="w-3 h-3" />
+              <span>{isEngineRunning ? 'ENG: ON (K)' : 'ENG: OFF (E/K)'}</span>
             </button>
-            <button onClick={toggleDoor} className={`p-1.5 rounded border font-bold transition-colors ${doorState === 'OPEN' ? 'bg-amber-400 border-amber-300 text-stone-950' : 'bg-stone-800/80 border-stone-600 text-stone-300'}`}>
+            <button
+              onClick={triggerOvertakeBoost}
+              title="Overtake Turbo Boost (Shift Key)"
+              className={`px-2 py-1 rounded border font-mono font-black text-[9px] transition-all ${
+                isBoosting
+                  ? 'bg-amber-400 text-stone-950 border-amber-200 animate-pulse'
+                  : 'bg-stone-900 border-amber-500/60 text-amber-300 hover:bg-amber-950'
+              }`}
+            >
+              ⚡ BOOST
+            </button>
+            <button
+              onClick={triggerConductorShout}
+              title="AI Conductor Shout Route (Key Q)"
+              className="px-2 py-1 rounded border border-emerald-500/60 bg-emerald-950/80 text-emerald-300 hover:text-white font-mono font-black text-[9px] hidden md:flex items-center gap-1"
+            >
+              📢 SHOUT (Q)
+            </button>
+            <button
+              onClick={toggleDoor}
+              className={`p-1.5 rounded border font-bold transition-colors ${
+                doorState === 'OPEN' ? 'bg-amber-400 border-amber-300 text-stone-950' : 'bg-stone-800/80 border-stone-600 text-stone-300'
+              }`}
+              title="Open/Close Passenger Door (O)"
+            >
               {doorState === 'OPEN' ? <DoorOpen className="w-3.5 h-3.5" /> : <DoorClosed className="w-3.5 h-3.5" />}
             </button>
-            <button onClick={toggleEngine} className={`p-1.5 rounded border font-bold transition-colors ${isEngineRunning ? 'bg-rose-900/80 border-rose-600 text-rose-300' : 'bg-emerald-900/80 border-emerald-400 text-emerald-300 animate-pulse'}`}>
-              <Power className="w-3.5 h-3.5" />
-            </button>
-            <button onClick={toggleStepDown} title={isSteppedDown ? 'Get Back In' : 'Exit Bus'}
-              className={`p-1.5 rounded border font-bold transition-colors ${isSteppedDown ? 'bg-amber-400 border-amber-300 text-stone-950' : 'bg-stone-800/80 border-stone-600 text-stone-300'}`}>
-              <Footprints className="w-3.5 h-3.5" />
-            </button>
-            <button onClick={onOpenPhone} className="p-1.5 rounded border border-indigo-500/50 bg-indigo-950/70 text-indigo-300">
+            <button
+              onClick={onOpenPhone}
+              className="p-1.5 rounded border border-indigo-500/50 bg-indigo-950/70 text-indigo-300"
+              title="Open Driver Phone (P)"
+            >
               <Smartphone className="w-3.5 h-3.5" />
             </button>
-            <button onClick={() => onFinishShift(false)} className="p-1.5 rounded border border-stone-600 bg-stone-800/80 text-stone-400 hover:text-rose-400 transition-colors">
+            <button
+              onClick={() => onFinishShift(false)}
+              className="p-1.5 rounded border border-stone-600 bg-stone-800/80 text-stone-400 hover:text-rose-400 transition-colors"
+              title="End Shift"
+            >
               <LogOut className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -1393,19 +1669,170 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         </div>
       )}
 
+      {/* ⛽ ZUUKS-STYLE GAS STATION LOGIC & 2D HTML REFUELING SCREEN */}
       {activeGasStation && (
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-40 bg-stone-950/95 border-2 border-emerald-400 rounded-2xl px-3 py-2 shadow-2xl flex items-center gap-3 pointer-events-auto">
-          <Fuel className="w-5 h-5 text-emerald-400 shrink-0" />
-          <div>
-            <div className="text-[9px] font-mono font-black text-emerald-400">⛽ {activeGasStation.name}</div>
-            <div className="text-[10px] text-white">₦{activeGasStation.fuelPricePerLiter}/L · Fuel: {hudFuel}%</div>
-          </div>
-          <div className="flex gap-1.5">
-            <button onClick={() => handleFillGas(false)} className="px-2 py-1 bg-stone-800 text-stone-200 font-bold text-[9px] rounded-xl">15L</button>
-            <button onClick={() => handleFillGas(true)} className="px-2.5 py-1 bg-emerald-400 text-stone-950 font-black text-[9px] font-['Bungee'] rounded-xl">FULL</button>
-          </div>
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-50 pointer-events-auto w-[92vw] max-w-md">
+          {hudSpeed > 0 ? (
+            <div className="bg-stone-950/95 border-2 border-amber-400 rounded-2xl px-4 py-2.5 shadow-2xl flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <Fuel className="w-5 h-5 text-amber-400 animate-bounce shrink-0" />
+                <div>
+                  <div className="text-[10px] font-mono font-black text-amber-400">
+                    ⛽ ENTERING {activeGasStation.name.toUpperCase()}
+                  </div>
+                  <div className="text-[11px] text-stone-200 font-semibold">
+                    Brake to a complete stop (0 km/h) beside the pump to refuel!
+                  </div>
+                </div>
+              </div>
+              <span className="text-xs font-mono font-black text-amber-300">{hudSpeed} km/h</span>
+            </div>
+          ) : isEngineRunning ? (
+            /* STEP 1: Stopped inside Gas Station Zone, but Engine is still ON */
+            <div className="bg-stone-950/95 border-2 border-rose-500 rounded-2xl p-3.5 shadow-2xl flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <Power className="w-6 h-6 text-rose-400 animate-pulse shrink-0" />
+                <div>
+                  <div className="text-[10px] font-mono font-black text-rose-400">
+                    ⛽ ALIGNED AT PUMP • {activeGasStation.name.toUpperCase()}
+                  </div>
+                  <div className="text-xs text-white font-bold">
+                    Turn OFF your engine (Key E or K) to begin refueling!
+                  </div>
+                  <div className="text-[10px] text-stone-400 font-mono">
+                    Zuuks Safety Rule: Pump will not dispense while engine is running.
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={toggleEngine}
+                className="px-3.5 py-2 bg-rose-500 hover:bg-rose-400 active:scale-95 text-white font-black text-[10px] font-['Bungee'] rounded-xl shadow-lg shrink-0"
+              >
+                🔑 CUT ENGINE (E)
+              </button>
+            </div>
+          ) : (
+            /* STEP 2: Engine is OFF & Velocity is 0 -> 2D HTML ZUUKS REFUELING SCREEN ('Refueling... ₦500 per Liter') */
+            <div className="bg-stone-950/98 border-2 border-emerald-400 rounded-2xl p-4 shadow-[0_12px_36px_rgba(0,0,0,0.95)] flex flex-col gap-2.5 backdrop-blur-md">
+              <div className="flex items-center justify-between border-b border-stone-800 pb-2">
+                <div className="flex items-center gap-2">
+                  <Fuel className="w-5 h-5 text-emerald-400 animate-pulse" />
+                  <div>
+                    <div className="text-xs font-black font-['Bungee'] text-emerald-400 tracking-wide">
+                      {hudFuel >= 100 ? '✅ TANK FULL (100%)' : '⛽ REFUELING... ₦500 PER LITER'}
+                    </div>
+                    <div className="text-[10px] font-mono text-stone-400">
+                      {activeGasStation.name} • Engine OFF • Automatic Pump Active
+                    </div>
+                  </div>
+                </div>
+                <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/50 text-[10px] font-mono font-black text-emerald-300">
+                  ₦500 / L
+                </span>
+              </div>
+
+              {/* Live Digital Pump Readout */}
+              <div className="grid grid-cols-3 gap-2 bg-stone-900/90 border border-stone-800 rounded-xl p-2 text-center font-mono">
+                <div>
+                  <div className="text-[8px] text-stone-400">LITERS PUMPED</div>
+                  <div className="text-sm font-black text-white tabular-nums">{refuelLitersPumped.toFixed(1)} L</div>
+                </div>
+                <div className="border-x border-stone-800">
+                  <div className="text-[8px] text-stone-400">TOTAL COST</div>
+                  <div className="text-sm font-black text-amber-400 tabular-nums">₦{refuelCostNaira.toLocaleString()}</div>
+                </div>
+                <div>
+                  <div className="text-[8px] text-stone-400">WALLET BALANCE</div>
+                  <div className="text-sm font-black text-emerald-400 tabular-nums">₦{gameState.walletNaira.toLocaleString()}</div>
+                </div>
+              </div>
+
+              {/* Tank Level Progress Bar */}
+              <div className="flex flex-col gap-1">
+                <div className="flex justify-between text-[10px] font-mono font-bold">
+                  <span className="text-stone-300">DIESEL TANK LEVEL</span>
+                  <span className="text-emerald-400 font-black">{hudFuel}%</span>
+                </div>
+                <div className="w-full h-3 bg-stone-900 rounded-full overflow-hidden border border-stone-700">
+                  <div
+                    className="h-full bg-gradient-to-r from-amber-400 to-emerald-400 transition-all duration-150"
+                    style={{ width: `${hudFuel}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-2 pt-1">
+                <span className="text-[9px] font-mono text-stone-400">
+                  Start engine (Key E or K) when ready to depart
+                </span>
+                <button
+                  onClick={toggleEngine}
+                  className="px-4 py-2 bg-amber-400 hover:bg-amber-300 active:scale-95 text-stone-950 font-black text-[10px] font-['Bungee'] rounded-xl shadow-lg flex items-center gap-1.5"
+                >
+                  <Power className="w-3.5 h-3.5" />
+                  <span>START ENGINE & DRIVE (E)</span>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
+
+      {/* 🛣️ ACTIVE SHORTCUT BYPASS BANNER */}
+      {isOnShortcut && !activeGasStation && (
+        <div className="absolute top-11 left-1/2 -translate-x-1/2 z-40 pointer-events-none bg-emerald-950/90 border-2 border-emerald-400 rounded-full px-3.5 py-1 shadow-xl flex items-center gap-2">
+          <span className="text-xs">🛣️</span>
+          <span className="text-[10px] font-mono font-black text-emerald-300">
+            SHORTCUT BYPASS LANE • 1.35x ROUTE SPEED • ZERO HIGHWAY TRAFFIC
+          </span>
+        </div>
+      )}
+
+      {/* 📢 AI CONDUCTOR SHOUTING BUBBLE ("Oshodi, Oshodi, enter!") */}
+      {conductorShoutText && !activeGasStation && (
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-40 pointer-events-none bg-amber-400 text-stone-950 border-2 border-stone-950 rounded-2xl px-3.5 py-1 shadow-xl font-mono font-black text-[10px] animate-bounce">
+          {conductorShoutText}
+        </div>
+      )}
+
+      {/* 🗣️ DRAMA PASSENGER QUICK-TAP CHANGE-GIVING MINI-GAME */}
+      {dramaChallenge && (
+        <div className="absolute top-28 left-1/2 -translate-x-1/2 z-50 pointer-events-auto bg-stone-950/95 border-2 border-rose-400 rounded-2xl px-4 py-2.5 shadow-2xl flex items-center gap-3 max-w-sm w-[90vw]">
+          <span className="text-xl">🗣️</span>
+          <div className="flex-1 min-w-0">
+            <div className="text-[9px] font-mono font-black text-rose-400">
+              DRAMA PASSENGER • {dramaChallenge.passengerName.toUpperCase()}
+            </div>
+            <div className="text-[11px] text-white font-bold">
+              "Conductor! Complete my ₦{dramaChallenge.changeAmount} change o!"
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              soundEngine.playCoin();
+              if (dramaChallenge.tapsLeft <= 1) {
+                setDramaChallenge(null);
+                triggerCashToast(300, '+₦300 Fast Change Tip!');
+                addFeedMessage(`🪙 CHANGE SETTLED: ${dramaChallenge.passengerName} calmed down and tipped +₦300!`);
+                setGameState((prev) => ({
+                  ...prev,
+                  walletNaira: prev.walletNaira + 300,
+                  streetCred: prev.streetCred + 10,
+                }));
+              } else {
+                setDramaChallenge({
+                  ...dramaChallenge,
+                  tapsLeft: dramaChallenge.tapsLeft - 1,
+                });
+              }
+            }}
+            className="px-3 py-1.5 bg-emerald-400 hover:bg-emerald-300 active:scale-95 text-stone-950 font-black text-[10px] font-['Bungee'] rounded-xl shadow shrink-0"
+          >
+            🪙 TAP CHANGE ({dramaChallenge.tapsLeft})
+          </button>
+        </div>
+      )}
+
       {activeShop && (
         <div className="absolute top-20 left-1/2 -translate-x-1/2 z-40 bg-stone-950/95 border-2 border-amber-400 rounded-2xl px-3 py-2 shadow-2xl flex items-center gap-3 pointer-events-auto max-w-xs w-full">
           <Store className="w-5 h-5 text-amber-400 shrink-0" />
@@ -1421,90 +1848,117 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           </div>
         </div>
       )}
-      {/* 🔑 COMPACT NON-INTRUSIVE ENGINE STARTER PILL (Never blocks the windshield!) */}
-      {!isEngineRunning && !isSteppedDown && (
-        <div className="absolute top-11 left-1/2 -translate-x-1/2 z-50 pointer-events-auto flex items-center gap-2 bg-stone-950/95 border-2 border-amber-400 rounded-full px-3 py-1 shadow-[0_6px_20px_rgba(0,0,0,0.85)] backdrop-blur-md">
+
+      {/* 🔑 COMPACT NON-INTRUSIVE ENGINE STARTER PILL (When Engine is OFF outside Gas Station) */}
+      {!isEngineRunning && !isSteppedDown && !activeGasStation && (
+        <div className="absolute top-11 left-1/2 -translate-x-1/2 z-50 pointer-events-auto flex items-center gap-2 bg-stone-950/95 border-2 border-amber-400 rounded-full px-3.5 py-1 shadow-[0_6px_20px_rgba(0,0,0,0.85)] backdrop-blur-md">
           <span className="text-xs animate-pulse">🔑</span>
           <span className="text-[10px] font-mono font-black text-amber-300">
-            ENGINE OFF
+            ENGINE OFF (BUS LOCKED)
           </span>
           <button
             onClick={toggleEngine}
             className="px-2.5 py-0.5 bg-amber-400 hover:bg-amber-300 active:scale-95 text-stone-950 font-black text-[10px] font-['Bungee'] rounded-full shadow flex items-center gap-1"
           >
             <Power className="w-3 h-3 text-stone-950" />
-            START (K)
+            START ENGINE (E / K)
           </button>
         </div>
       )}
 
-      {/* 🚏 Upcoming Bus Stop Alert (30m to 70m ahead) */}
+      {/* 🚏 Upcoming Bus Stop Alert with Passenger Destination Bubbles (28m to 75m ahead) */}
       {(() => {
         const upcomingJ = gameState.junctions.find(
-          (j) => j.distanceMarkerMeters - currentDist > 28 && j.distanceMarkerMeters - currentDist <= 70
+          (j) => j.distanceMarkerMeters - currentDist > 28 && j.distanceMarkerMeters - currentDist <= 75
         );
         if (!upcomingJ || activeGasStation || activeShop || isSteppedDown || !isEngineRunning) return null;
         const distAhead = Math.round(upcomingJ.distanceMarkerMeters - currentDist);
         return (
-          <div className="absolute top-20 left-1/2 -translate-x-1/2 z-40 bg-stone-950/90 border border-amber-400/70 rounded-full px-4 py-1.5 shadow-xl flex items-center gap-2 pointer-events-auto backdrop-blur-sm animate-pulse">
+          <div className="absolute top-20 left-1/2 -translate-x-1/2 z-40 bg-stone-950/90 border border-amber-400/70 rounded-full px-4 py-1.5 shadow-xl flex items-center gap-2 pointer-events-auto backdrop-blur-sm">
             <span className="text-xs">🚏</span>
-            <span className="text-[10px] font-mono font-black text-amber-400">UPCOMING STOP: {upcomingJ.name}</span>
-            <span className="text-[9px] font-mono text-stone-300">({distAhead}m ahead • {upcomingJ.side} CURB)</span>
+            <span className="text-[10px] font-mono font-black text-amber-400">STOP AHEAD: {upcomingJ.name} ({distAhead}m)</span>
+            <span className="text-[9px] font-mono text-emerald-300 font-bold">
+              💬 "{upcomingJ.destinationTag}!" ({upcomingJ.waitingPassengersCount} waiting)
+            </span>
           </div>
         );
       })()}
 
-      {/* 🚏 At Bus Stop: Boarding & Alighting Hub */}
+      {/* 🚏 At Bus Stop: Boarding, Destination Bubbles & Fare Bargaining Hub */}
       {(() => {
         const nearJ = gameState.junctions.find((j) => Math.abs(j.distanceMarkerMeters - currentDist) <= 28);
         if (!nearJ || activeGasStation || activeShop || isSteppedDown) return null;
 
         const dropOffsCount = (gameState.bus.passengers || []).filter(
-          p => (p.destinationUid && p.destinationUid === nearJ.uid) ||
-               (p.destination && p.destination === nearJ.destinationTag) ||
-               (p.destination && nearJ.name.toLowerCase().includes(p.destination.toLowerCase()))
+          (p) =>
+            (p.destinationUid && p.destinationUid === nearJ.uid) ||
+            (p.destination && p.destination === nearJ.destinationTag) ||
+            (p.destination && nearJ.name.toLowerCase().includes(p.destination.toLowerCase()))
         ).length;
 
-        const isDeliveryDropOff = gameState.activeDelivery && (
-          gameState.activeDelivery.destinationJunctionUid === nearJ.uid ||
-          gameState.activeDelivery.destinationName.toLowerCase().includes(nearJ.name.toLowerCase())
-        );
+        const isDeliveryDropOff =
+          gameState.activeDelivery &&
+          (gameState.activeDelivery.destinationJunctionUid === nearJ.uid ||
+            gameState.activeDelivery.destinationName.toLowerCase().includes(nearJ.name.toLowerCase()));
+
+        const seatsUsedCount = (gameState.bus.passengers || []).reduce((acc, p) => acc + (p.seatsTaken || 1), 0);
 
         return (
-          <div className="absolute top-20 left-1/2 -translate-x-1/2 z-40 bg-stone-950/95 border-2 border-amber-400 rounded-2xl px-4 py-2.5 shadow-2xl flex items-center gap-3.5 pointer-events-auto max-w-md w-full">
-            <MapPin className="w-5 h-5 text-amber-400 animate-pulse shrink-0" />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[11px] font-mono font-black text-amber-400">🚏 {nearJ.name}</span>
-                {nearJ.side && (
-                  <span className={`text-[8px] font-mono font-bold px-1.5 py-0.5 rounded ${nearJ.side === 'LEFT' ? 'bg-sky-500/20 text-sky-300 border border-sky-400/40' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/40'}`}>
-                    {nearJ.side} CURB
-                  </span>
-                )}
-              </div>
-              <div className="text-[10px] text-stone-300 flex items-center gap-2 mt-0.5 flex-wrap">
-                <span className={dropOffsCount > 0 ? "text-emerald-400 font-bold" : "text-stone-400"}>
-                  🎯 {dropOffsCount} alighting
-                </span>
-                <span>•</span>
-                <span className="text-amber-300 font-bold">
-                  🚪 {nearJ.waitingPassengersCount} waiting
-                </span>
-                <span>•</span>
-                <span className="text-sky-300">
-                  👥 {gameState.bus.passengers?.length || 0}/{gameState.bus.capacity} seats
+          <div className="absolute top-16 left-1/2 -translate-x-1/2 z-40 bg-stone-950/95 border-2 border-amber-400 rounded-2xl px-3.5 py-2 shadow-2xl flex flex-col gap-1.5 pointer-events-auto max-w-md w-[92vw]">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <MapPin className="w-4 h-4 text-amber-400 animate-pulse shrink-0" />
+                <span className="text-[11px] font-mono font-black text-amber-400 truncate">🚏 {nearJ.name}</span>
+                <span className="text-[9px] font-mono text-emerald-300 font-bold">
+                  💬 "{nearJ.destinationTag}!"
                 </span>
               </div>
-              {isDeliveryDropOff && (
-                <div className="mt-1 text-[9px] font-mono font-bold text-emerald-400 flex items-center gap-1">
-                  <span>📦 WAYBILL DESTINATION:</span>
-                  <span>{gameState.activeDelivery?.itemName} (+₦{gameState.activeDelivery?.rewardNaira.toLocaleString()})</span>
-                </div>
-              )}
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  onClick={() =>
+                    setFareBargainMode((m) => (m === 'STANDARD' ? 'SURGE_BARGAIN' : 'STANDARD'))
+                  }
+                  className={`px-2 py-0.5 rounded-lg text-[8px] font-mono font-black border ${
+                    fareBargainMode === 'SURGE_BARGAIN'
+                      ? 'bg-amber-400 text-stone-950 border-amber-200'
+                      : 'bg-stone-900 text-stone-300 border-stone-700'
+                  }`}
+                  title="Bargain Fares at Stop"
+                >
+                  {fareBargainMode === 'SURGE_BARGAIN' ? '🔥 BARGAIN 1.4x' : '💵 FARE 1.0x'}
+                </button>
+                <button
+                  onClick={toggleDoor}
+                  className={`px-2.5 py-1 font-black text-[9px] font-['Bungee'] rounded-xl transition-transform active:scale-95 shadow shrink-0 ${
+                    doorState === 'CLOSED'
+                      ? 'bg-amber-400 text-stone-950 hover:bg-amber-300'
+                      : 'bg-rose-500 text-white'
+                  }`}
+                >
+                  {doorState === 'CLOSED' ? 'OPEN DOOR (O)' : 'CLOSE DOOR'}
+                </button>
+              </div>
             </div>
-            <button onClick={toggleDoor} className={`px-3 py-1.5 font-black text-[10px] font-['Bungee'] rounded-xl transition-transform active:scale-95 shadow-md shrink-0 ${doorState === 'CLOSED' ? 'bg-amber-400 text-stone-950 hover:bg-amber-300' : 'bg-rose-500 text-white'}`}>
-              {doorState === 'CLOSED' ? 'OPEN DOOR' : 'CLOSE DOOR'}
-            </button>
+
+            <div className="text-[9px] text-stone-300 flex items-center justify-between font-mono">
+              <span className={dropOffsCount > 0 ? 'text-emerald-400 font-bold' : 'text-stone-400'}>
+                🎯 {dropOffsCount} alighting
+              </span>
+              <span className="text-amber-300 font-bold">🚪 {nearJ.waitingPassengersCount} waiting</span>
+              <span className="text-sky-300">
+                👥 {seatsUsedCount}/{gameState.bus.capacity} seats
+              </span>
+              <span className="text-stone-400">💼🧺🎒🗣️🤰</span>
+            </div>
+
+            {isDeliveryDropOff && (
+              <div className="text-[9px] font-mono font-bold text-emerald-400 flex items-center gap-1">
+                <span>📦 WAYBILL DROP-OFF:</span>
+                <span>
+                  {gameState.activeDelivery?.itemName} (+₦{gameState.activeDelivery?.rewardNaira.toLocaleString()})
+                </span>
+              </div>
+            )}
           </div>
         );
       })()}
@@ -1566,7 +2020,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         </div>
       )}
 
-      {/* ═══════ LIVE REAR-VIEW SIDE MIRRORS (COMPACT, PINNED TO UPPER EDGES FOR CLEAR ROAD VIEW) ═══════ */}
+      {/* ═══════ LIVE REAR-VIEW SIDE MIRRORS & TOP-RIGHT ORTHOGRAPHIC SATELLITE MINI-MAP ═══════ */}
       {!isSteppedDown && (
         <>
           {/* LEFT SIDE MIRROR (Accurate Live Rear View) */}
@@ -1575,7 +2029,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
               <div className="w-2 sm:w-3 h-5 bg-gradient-to-r from-amber-500 via-stone-800 to-stone-900 border-y border-stone-700" />
             )}
             <div className="relative rounded-r-xl rounded-l-md bg-stone-950 p-0.5 sm:p-1 border-2 border-stone-700 shadow-[0_6px_18px_rgba(0,0,0,0.9)] ring-1 ring-amber-400/70 overflow-hidden">
-              <div className="relative w-[82px] h-[46px] sm:w-[122px] sm:h-[68px] rounded-md overflow-hidden bg-stone-900 border border-stone-600/80">
+              <div className="relative w-[82px] h-[46px] sm:w-[116px] sm:h-[64px] rounded-md overflow-hidden bg-stone-900 border border-stone-600/80">
                 <canvas
                   ref={leftMirrorCanvasRef}
                   width={220}
@@ -1595,10 +2049,10 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
             </div>
           </div>
 
-          {/* RIGHT SIDE MIRROR (Accurate Live Rear View) */}
-          <div className="absolute right-0 top-10 z-30 pointer-events-none flex items-center">
-            <div className="relative rounded-l-xl rounded-r-md bg-stone-950 p-0.5 sm:p-1 border-2 border-stone-700 shadow-[0_6px_18px_rgba(0,0,0,0.9)] ring-1 ring-amber-400/70 overflow-hidden">
-              <div className="relative w-[82px] h-[46px] sm:w-[122px] sm:h-[68px] rounded-md overflow-hidden bg-stone-900 border border-stone-600/80">
+          {/* RIGHT SIDE MIRROR (Positioned cleanly beside the Top-Right Orthographic Mini-Map) */}
+          <div className="absolute right-[112px] sm:right-[142px] top-10 z-30 pointer-events-none flex items-center">
+            <div className="relative rounded-xl bg-stone-950 p-0.5 sm:p-1 border-2 border-stone-700 shadow-[0_6px_18px_rgba(0,0,0,0.9)] ring-1 ring-amber-400/70 overflow-hidden">
+              <div className="relative w-[82px] h-[46px] sm:w-[116px] sm:h-[64px] rounded-md overflow-hidden bg-stone-900 border border-stone-600/80">
                 <canvas
                   ref={rightMirrorCanvasRef}
                   width={220}
@@ -1616,12 +2070,35 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                 ) : null}
               </div>
             </div>
-            {cameraMode === 'FIRST_PERSON' && (
-              <div className="w-2 sm:w-3 h-5 bg-gradient-to-l from-amber-500 via-stone-800 to-stone-900 border-y border-stone-700" />
-            )}
           </div>
         </>
       )}
+
+      {/* 🗺️ TOP-RIGHT LIVE 3D ORTHOGRAPHIC CAMERA MINI-MAP (100% Real-Time Satellite Feed!) */}
+      <div className="absolute top-10 right-2 z-40 pointer-events-auto flex flex-col items-end">
+        <div
+          onClick={onOpenMap}
+          className="relative w-[104px] h-[104px] sm:w-[132px] sm:h-[132px] rounded-xl overflow-hidden bg-stone-950 border-2 border-amber-400 shadow-[0_8px_24px_rgba(0,0,0,0.95)] cursor-pointer group"
+          title="Live 3D Satellite Mini-Map (Click for Full Corridor Map)"
+        >
+          <canvas
+            ref={miniMapCanvasRef}
+            width={180}
+            height={180}
+            className="w-full h-full object-cover block"
+          />
+          {/* North Compass Badge */}
+          <div className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-stone-950/85 border border-stone-700 text-[7px] font-mono font-black text-amber-400 flex items-center gap-1">
+            <span>🧭 N</span>
+            <span className="text-emerald-400">LIVE SAT</span>
+          </div>
+          {/* Coordinate & Shortcut Indicator */}
+          <div className="absolute bottom-0 inset-x-0 bg-stone-950/85 px-1.5 py-0.5 flex items-center justify-between text-[7px] font-mono">
+            <span className="text-emerald-300 font-bold">🟢 BUS</span>
+            <span className="text-amber-300 font-bold">{Math.round(currentDist)}m</span>
+          </div>
+        </div>
+      </div>
 
       {/* ═══════ FIRST-PERSON DR. DRIVING SLEEK LOW-PROFILE BUS COCKPIT DASHBOARD ═══════ */}
       {/* When visible: takes ~20% height at bottom. When hidden: slides 100% down off-screen & disappears! */}
@@ -1877,7 +2354,11 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                         onClick={() => {
                           setGear(g);
                           inputsRef.current.gear = g;
-                          if (g === 'R') soundEngine.playReverseBeep();
+                          if (!inputsRef.current.isEngineRunning) {
+                            addFeedMessage('🔑 Engine is OFF! Start the engine (E / K) before driving.');
+                          } else if (g === 'R') {
+                            soundEngine.playReverseBeep();
+                          }
                         }}
                         className={`w-full h-3.5 sm:h-4.5 rounded font-mono font-black text-[8px] sm:text-[10px] flex items-center justify-center transition-all ${
                           isActive
@@ -1925,12 +2406,13 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                   <div className="w-full h-1 bg-stone-950/80 rounded-full" />
                 </button>
 
-                {/* GAS / ACCELERATOR PEDAL */}
+                {/* GAS / ACCELERATOR PEDAL (Strict Zuuks Engine-Off Lockout!) */}
                 <button
                   onPointerDown={(e) => {
                     try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch {}
                     if (!inputsRef.current.isEngineRunning) {
-                      toggleEngine();
+                      addFeedMessage('🔑 ENGINE IS OFF! Press Engine Start/Stop (E or K) to turn on engine first!');
+                      return;
                     }
                     inputsRef.current.gas = true;
                     setIsGasPressed(true);
@@ -2157,6 +2639,9 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                         onClick={() => {
                           setGear(g);
                           inputsRef.current.gear = g;
+                          if (!inputsRef.current.isEngineRunning) {
+                            addFeedMessage('🔑 Engine is OFF! Start the engine (E / K) before driving.');
+                          }
                         }}
                         className={`w-7 h-5.5 rounded-lg font-mono font-black text-[10px] transition-all flex items-center justify-center my-0.5 ${
                           gear === g
@@ -2198,7 +2683,8 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                       onPointerDown={(e) => {
                         try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch {}
                         if (!inputsRef.current.isEngineRunning) {
-                          toggleEngine();
+                          addFeedMessage('🔑 ENGINE IS OFF! Press Engine Start/Stop (E or K) to turn on engine first!');
+                          return;
                         }
                         inputsRef.current.gas = true;
                         setIsGasPressed(true);
