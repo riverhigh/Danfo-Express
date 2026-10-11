@@ -1,170 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import * as THREE from 'three';
 import {
+  Bed,
+  Eye,
+  EyeOff,
   Home,
-  Sofa,
-  Map as MapIcon,
-  Smartphone,
-  Volume2,
-  VolumeX,
-  Plus,
-  Gift,
-  Gem,
-  ChevronUp,
-  ChevronDown,
-  RotateCcw,
-  Bus,
-  Check,
   Lock,
+  RotateCcw,
+  Smartphone,
   Sparkles,
+  Tv,
+  Unlock,
+  Utensils,
+  Zap,
 } from 'lucide-react';
 import { GameState } from '../types/game';
-import { soundEngine } from '../audio/soundEngine';
-
-export interface HomeUpgradeState {
-  roomTier: 1 | 2 | 3; // 1 = Small Starter Room, 2 = Self-Contain (2 Rooms), 3 = Full Luxury Flat (4 Rooms like reference image)
-  ownedFurniture: string[];
-  needs: {
-    hunger: number;   // 🍛
-    energy: number;   // ⚡
-    fun: number;      // 🎉
-    social: number;   // 💬
-    hygiene: number;  // 🫧
-    toilet: number;   // 🚽
-  };
-  dailyRewardClaimed: boolean;
-  gemsFound: number;
-}
-
-interface FurnitureItem {
-  id: string;
-  name: string;
-  price: number;
-  category: 'STARTER' | 'LIVING' | 'KITCHEN_BATH' | 'LUXURY';
-  minTier: 1 | 2 | 3;
-  needBoost: keyof HomeUpgradeState['needs'];
-  boostLabel: string;
-  description: string;
-}
-
-export const HOME_FURNITURE_CATALOG: FurnitureItem[] = [
-  {
-    id: 'bed_mattress',
-    name: 'Purple Foam Bed & Frame',
-    price: 0,
-    category: 'STARTER',
-    minTier: 1,
-    needBoost: 'energy',
-    boostLabel: '+100% Energy (Sleep)',
-    description: 'Included in your small starter room. Tap bed to sleep and restore stamina.',
-  },
-  {
-    id: 'study_desk',
-    name: 'Wooden Desk & Pink Chair',
-    price: 450,
-    category: 'STARTER',
-    minTier: 1,
-    needBoost: 'social',
-    boostLabel: '+35% Social & Focus',
-    description: 'Compact desk with laptop for checking Lagos route manifests.',
-  },
-  {
-    id: 'ring_light',
-    name: 'Creator Ring Light Stand',
-    price: 350,
-    category: 'STARTER',
-    minTier: 1,
-    needBoost: 'fun',
-    boostLabel: '+30% Fun & Street Cred',
-    description: 'Bright LED tripod ring light in your bedroom.',
-  },
-  {
-    id: 'red_sofa_rug',
-    name: 'Red Velvet Sofa & Orange Rug',
-    price: 850,
-    category: 'LIVING',
-    minTier: 1,
-    needBoost: 'energy',
-    boostLabel: '+45% Rest & Comfort',
-    description: 'Plush crimson two-seater couch with circular orange center rug.',
-  },
-  {
-    id: 'tv_console',
-    name: 'Wide Flat-Screen TV & Shelf',
-    price: 1200,
-    category: 'LIVING',
-    minTier: 1,
-    needBoost: 'fun',
-    boostLabel: '+60% Fun (Watch Super Eagles)',
-    description: 'Flat-screen television on oak media cabinet with side bookshelf.',
-  },
-  {
-    id: 'bathroom_set',
-    name: 'Tiled Shower & White Bathtub',
-    price: 1500,
-    category: 'KITCHEN_BATH',
-    minTier: 2,
-    needBoost: 'hygiene',
-    boostLabel: '+100% Hygiene & Toilet',
-    description: 'Glass corner shower stall, porcelain bathtub, and sink.',
-  },
-  {
-    id: 'dining_kitchen',
-    name: 'Round Dining Table, Fridge & Microwave',
-    price: 1800,
-    category: 'KITCHEN_BATH',
-    minTier: 2,
-    needBoost: 'hunger',
-    boostLabel: '+100% Hunger (Hot Jollof)',
-    description: 'Full kitchen counter with fridge, microwave, and 3-chair round dining set.',
-  },
-  {
-    id: 'pool_table',
-    name: 'Championship Green Snooker Table',
-    price: 2800,
-    category: 'LUXURY',
-    minTier: 3,
-    needBoost: 'fun',
-    boostLabel: '+100% Fun & Morale',
-    description: 'Full-size green felt billiards table with cues in the back lounge.',
-  },
-  {
-    id: 'house_cat',
-    name: 'Lagos House Cat ("Milo")',
-    price: 600,
-    category: 'LIVING',
-    minTier: 1,
-    needBoost: 'social',
-    boostLabel: '+50% Happiness',
-    description: 'Friendly pet cat hanging out on the checkered floor.',
-  },
-];
-
-export const ROOM_TIERS = [
-  {
-    tier: 1 as const,
-    name: 'Small Single Room (Starter)',
-    subtitle: 'Face-Me-I-Face-You Compact Room',
-    price: 0,
-    dimensionsLabel: '1 Compact Cutaway Room',
-    description: 'Every Lagos Danfo driver starts humble! A cozy single room with checkered floor, window blinds, and your bed.',
-  },
-  {
-    tier: 2 as const,
-    name: 'Self-Contain Suite',
-    price: 3500,
-    subtitle: 'Bedroom + Tiled Bathroom + Kitchenette',
-    dimensionsLabel: '3 Cutaway Zones',
-    description: 'Unlocks the tiled bathroom with shower & bathtub plus the bright kitchen and dining room!',
-  },
-  {
-    tier: 3 as const,
-    name: 'Full 4-Room Executive Flat',
-    price: 8500,
-    subtitle: 'Bedroom + Living Lounge + Kitchen + Bath + Snooker Room',
-    dimensionsLabel: 'Full Multi-Room Cutaway Mansion',
-    description: 'The ultimate Lagos boss apartment! Full open-plan living lounge, bedroom studio, dining kitchen, bath & billiards room.',
-  },
-];
 
 interface PlayerHome2DProps {
   gameState: GameState;
@@ -174,849 +24,1259 @@ interface PlayerHome2DProps {
   onBackToMenu: () => void;
 }
 
-const STORAGE_KEY_HOME = 'danfo_express_home_2d_v1';
+const HOME_UPGRADE_TIERS = [
+  {
+    id: 'starter_minor',
+    name: 'Mushin Starter Room & Bath',
+    location: 'Minor Bedroom + Minor Bath',
+    purchaseCostNaira: 0,
+  },
+  {
+    id: 'living_kitchen',
+    name: 'Oshodi Pool Lounge & Dining Flat',
+    location: 'Unlocks Main Living Room + Kitchen/Dining',
+    purchaseCostNaira: 35000,
+  },
+  {
+    id: 'studio_master',
+    name: 'Ikeja Full 7-Room Studio Penthouse',
+    location: 'Unlocks Major Studio Bedroom + Master Bath',
+    purchaseCostNaira: 95000,
+  },
+];
+
+type RoomId =
+  | 'bedroom_minor'
+  | 'bathroom_minor'
+  | 'entrance_area'
+  | 'kitchen_dining_area'
+  | 'main_living_recreation_room'
+  | 'bedroom_major_studio'
+  | 'bathroom_major';
+
+interface RoomDef {
+  id: RoomId;
+  name: string;
+  tierRequired: number;
+  bounds: { minX: number; maxX: number; minZ: number; maxZ: number };
+  center: { x: number; z: number };
+  description: string;
+}
+
+const APARTMENT_ROOMS: RoomDef[] = [
+  {
+    id: 'bedroom_minor',
+    name: 'Minor Bedroom (Starter Room)',
+    tierRequired: 0,
+    bounds: { minX: -11, maxX: -4, minZ: 2.5, maxZ: 9.5 },
+    center: { x: -7.5, z: 6.0 },
+    description: 'Single bed with simplified bedding, nightstand & wall globe light',
+  },
+  {
+    id: 'bathroom_minor',
+    name: 'Minor Bathroom',
+    tierRequired: 0,
+    bounds: { minX: -11, maxX: -6, minZ: -2.5, maxZ: 2.5 },
+    center: { x: -8.5, z: 0.0 },
+    description: 'Standing toilet, sink & small trash bin on patterned square tile',
+  },
+  {
+    id: 'entrance_area',
+    name: 'Entrance Foyer',
+    tierRequired: 0,
+    bounds: { minX: -6, maxX: -2, minZ: -2.5, maxZ: 2.5 },
+    center: { x: -4.0, z: 0.0 },
+    description: 'Simplified welcome mat & clean wall hooks',
+  },
+  {
+    id: 'kitchen_dining_area',
+    name: 'Kitchen & Dining Area',
+    tierRequired: 1,
+    bounds: { minX: -11, maxX: -2, minZ: -9.5, maxZ: -2.5 },
+    center: { x: -6.5, z: -6.0 },
+    description: 'Circular dining table with 4 chairs & microwave on stand',
+  },
+  {
+    id: 'main_living_recreation_room',
+    name: 'Main Living & Recreation Room',
+    tierRequired: 1,
+    bounds: { minX: -2, maxX: 11, minZ: -9.5, maxZ: 1.5 },
+    center: { x: 4.5, z: -4.0 },
+    description: 'Pool table with green felt, black multi-seater sofa, flat-screen TV & concentric round rug',
+  },
+  {
+    id: 'bedroom_major_studio',
+    name: 'Major Studio Bedroom',
+    tierRequired: 2,
+    bounds: { minX: -4, maxX: 6.5, minZ: 1.5, maxZ: 9.5 },
+    center: { x: 1.2, z: 5.5 },
+    description: 'Double bed with purple bedding, modern PC work desk & standing circular ring light',
+  },
+  {
+    id: 'bathroom_major',
+    name: 'Master Bathroom',
+    tierRequired: 2,
+    bounds: { minX: 6.5, maxX: 11, minZ: 1.5, maxZ: 9.5 },
+    center: { x: 8.75, z: 5.5 },
+    description: 'White bathtub, standing toilet & sink unit on patterned square tile',
+  },
+];
+
+function createCheckeredTexture(
+  colorA: string,
+  colorB: string,
+  repeatsX: number,
+  repeatsY: number,
+  withSubtleGrid = false
+): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = colorA;
+  ctx.fillRect(0, 0, 128, 128);
+  ctx.fillStyle = colorB;
+  ctx.fillRect(0, 0, 64, 64);
+  ctx.fillRect(64, 64, 64, 64);
+
+  if (withSubtleGrid) {
+    ctx.strokeStyle = 'rgba(15, 23, 42, 0.25)';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(0, 0, 64, 64);
+    ctx.strokeRect(64, 0, 64, 64);
+    ctx.strokeRect(0, 64, 64, 64);
+    ctx.strokeRect(64, 64, 64, 64);
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+  tex.repeat.set(repeatsX, repeatsY);
+  tex.needsUpdate = true;
+  return tex;
+}
+
+function createConcentricRugTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d')!;
+  const cx = 128;
+  const cy = 128;
+  const rings = [
+    { r: 126, color: '#4a3525' },
+    { r: 108, color: '#2d6a4f' },
+    { r: 86, color: '#7f5539' },
+    { r: 64, color: '#40916c' },
+    { r: 42, color: '#9c6644' },
+    { r: 22, color: '#52b788' },
+  ];
+  rings.forEach((ring) => {
+    ctx.beginPath();
+    ctx.arc(cx, cy, ring.r, 0, Math.PI * 2);
+    ctx.fillStyle = ring.color;
+    ctx.fill();
+  });
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.needsUpdate = true;
+  return tex;
+}
 
 export const PlayerHome2D: React.FC<PlayerHome2DProps> = ({
   gameState,
   onUpdateWalletAndCred,
   onGoToDrive,
   onOpenPhone,
-  onBackToMenu,
 }) => {
-  const [homeState, setHomeState] = useState<HomeUpgradeState>(() => {
+  const walletNaira = gameState.walletNaira || 0;
+  const energy = gameState.needs?.energy ?? 85;
+  const maxEnergy = 100;
+
+  const mountRef = useRef<HTMLDivElement | null>(null);
+  const [cleanModelOnly, setCleanModelOnly] = useState<boolean>(false);
+  const [showAllRoomsUnveiled, setShowAllRoomsUnveiled] = useState<boolean>(true);
+  const [activeRoom, setActiveRoom] = useState<RoomId>('bedroom_minor');
+  const [statusToast, setStatusToast] = useState<string>(
+    '🏠 Welcome home! Drag to orbit the 3D isometric apartment or click any room floor to walk.'
+  );
+  const [showUpgradeDrawer, setShowUpgradeDrawer] = useState<boolean>(false);
+  const [unlockedTierIndex, setUnlockedTierIndex] = useState<number>(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY_HOME);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return {
-          roomTier: parsed.roomTier || 1,
-          ownedFurniture: parsed.ownedFurniture || ['bed_mattress'],
-          needs: parsed.needs || {
-            hunger: Math.max(40, gameState.needs?.hunger || 65),
-            energy: Math.max(45, gameState.needs?.energy || 70),
-            fun: 78,
-            social: 82,
-            hygiene: 85,
-            toilet: 75,
-          },
-          dailyRewardClaimed: Boolean(parsed.dailyRewardClaimed),
-          gemsFound: parsed.gemsFound ?? 2,
-        };
-      }
-    } catch {}
-    // Default: Player starts in a SMALL SINGLE ROOM (Tier 1) with basic bed!
-    return {
-      roomTier: 1,
-      ownedFurniture: ['bed_mattress'],
-      needs: {
-        hunger: 62,
-        energy: 65,
-        fun: 78,
-        social: 82,
-        hygiene: 85,
-        toilet: 74,
-      },
-      dailyRewardClaimed: false,
-      gemsFound: 2,
-    };
+      return Number(localStorage.getItem('danfo_home_3d_tier') || '0') || 0;
+    } catch {
+      return 0;
+    }
   });
 
+  const playerTargetRef = useRef<{ x: number; z: number }>({ x: -7.5, z: 6.0 });
+  const playerPosRef = useRef<{ x: number; z: number; yaw: number }>({ x: -7.5, z: 6.0, yaw: 0 });
+  const orbitRef = useRef<{ azimuth: number; polar: number; zoom: number }>({
+    azimuth: Math.PI / 4, // 45 deg true isometric angle
+    polar: 0.88, // high-angle 3/4 top-down dimetric tilt
+    zoom: 1.05,
+  });
+  const roomVeilMeshesRef = useRef<Record<string, THREE.Mesh>>({});
+
+  // Sync room lock veils when showAllRoomsUnveiled or unlockedTierIndex changes
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_HOME, JSON.stringify(homeState));
-    } catch {}
-  }, [homeState]);
+    Object.entries(roomVeilMeshesRef.current).forEach(([roomId, mesh]) => {
+      const roomDef = APARTMENT_ROOMS.find((r) => r.id === roomId);
+      if (!roomDef) return;
+      const isLocked = roomDef.tierRequired > unlockedTierIndex;
+      mesh.visible = !showAllRoomsUnveiled && isLocked;
+    });
+  }, [showAllRoomsUnveiled, unlockedTierIndex]);
 
-  const [activeBottomTab, setActiveBottomTab] = useState<'HOME' | 'BUY' | 'MAP' | 'PHONE'>('HOME');
-  const [cleanScreen, setCleanScreen] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
-  const [roomRotation, setRoomRotation] = useState(0); // Slight isometric angle toggle
-  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  useEffect(() => {
+    const container = mountRef.current;
+    if (!container) return;
 
-  // Player character position inside the 2D isometric room (in SVG coordinates 0..800, 0..620)
-  const [playerPos, setPlayerPos] = useState<{ x: number; y: number }>({ x: 385, y: 385 });
-  const [playerActionLabel, setPlayerActionLabel] = useState<string | null>(null);
+    const width = container.clientWidth || window.innerWidth;
+    const height = container.clientHeight || window.innerHeight;
 
-  const showToast = (msg: string) => {
-    setToastMsg(msg);
-    setTimeout(() => {
-      setToastMsg((prev) => (prev === msg ? null : prev));
-    }, 3200);
-  };
+    // 1. SCENE & VOID BACKGROUND
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color('#090b10'); // Clean, dark, non-descript void background
 
-  const hasItem = (id: string) => homeState.ownedFurniture.includes(id);
+    // 2. HIGH-ANGLE DIMETRIC / ISOMETRIC ORTHOGRAPHIC CAMERA (3/4 Top-Down)
+    const aspect = width / height;
+    const frustumSize = 27;
+    const camera = new THREE.OrthographicCamera(
+      (-frustumSize * aspect) / 2,
+      (frustumSize * aspect) / 2,
+      frustumSize / 2,
+      -frustumSize / 2,
+      -100,
+      200
+    );
 
-  // Compute overall mood label like "Very Happy" in the reference image
-  const avgNeed = Math.round(
-    (homeState.needs.hunger +
-      homeState.needs.energy +
-      homeState.needs.fun +
-      homeState.needs.social +
-      homeState.needs.hygiene +
-      homeState.needs.toilet) /
-      6
-  );
-  const moodText =
-    avgNeed >= 75 ? 'Very Happy' : avgNeed >= 50 ? 'Doing Okay' : 'Needs Rest';
+    const updateCameraTransform = () => {
+      const { azimuth, polar, zoom } = orbitRef.current;
+      const radius = 36;
+      camera.position.set(
+        Math.sin(azimuth) * Math.sin(polar) * radius,
+        Math.cos(polar) * radius,
+        Math.cos(azimuth) * Math.sin(polar) * radius
+      );
+      camera.lookAt(0, 0.8, 0);
+      camera.zoom = zoom;
+      camera.updateProjectionMatrix();
+    };
+    updateCameraTransform();
 
-  // Interact with furniture or needs
-  const triggerNeedAction = (
-    needKey: keyof HomeUpgradeState['needs'],
-    targetX: number,
-    targetY: number,
-    actionTitle: string
-  ) => {
-    soundEngine.playCoin();
-    setPlayerPos({ x: targetX, y: targetY });
-    setPlayerActionLabel(actionTitle);
-    setHomeState((prev) => ({
-      ...prev,
-      needs: {
-        ...prev.needs,
-        [needKey]: Math.min(100, prev.needs[needKey] + 35),
-      },
-    }));
-    if (needKey === 'energy' || needKey === 'hunger') {
-      onUpdateWalletAndCred(0, 0, 100);
+    // 3. RENDERER
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setSize(width, height);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
+    container.innerHTML = '';
+    container.appendChild(renderer.domElement);
+
+    // 4. LIGHTING SETUP: Dim stylized night-time indoor ambient base + focused room point lights
+    const ambientLight = new THREE.AmbientLight('#273045', 0.95);
+    scene.add(ambientLight);
+
+    const hemiLight = new THREE.HemisphereLight('#3b4968', '#141a24', 0.55);
+    scene.add(hemiLight);
+
+    const dirLight = new THREE.DirectionalLight('#64748b', 0.45);
+    dirLight.position.set(16, 28, 18);
+    dirLight.castShadow = true;
+    dirLight.shadow.mapSize.set(1024, 1024);
+    dirLight.shadow.camera.left = -20;
+    dirLight.shadow.camera.right = 20;
+    dirLight.shadow.camera.top = 20;
+    dirLight.shadow.camera.bottom = -20;
+    scene.add(dirLight);
+
+    const flatMat = (color: string, roughness = 0.85, metalness = 0.05) =>
+      new THREE.MeshStandardMaterial({
+        color,
+        roughness,
+        metalness,
+        flatShading: true,
+      });
+
+    // 5. MODEL BASE: Simplified flat green circular grass patch directly below the model
+    const grassGroup = new THREE.Group();
+    const grassGeo = new THREE.CylinderGeometry(16.8, 17.3, 0.5, 48);
+    const grassMat = flatMat('#2d6a3e', 0.95, 0);
+    const grassMesh = new THREE.Mesh(grassGeo, grassMat);
+    grassMesh.position.y = -0.35;
+    grassMesh.receiveShadow = true;
+    grassGroup.add(grassMesh);
+
+    const soilRimGeo = new THREE.CylinderGeometry(17.3, 17.5, 0.25, 48);
+    const soilRimMesh = new THREE.Mesh(soilRimGeo, flatMat('#1e293b', 0.9, 0));
+    soilRimMesh.position.y = -0.62;
+    grassGroup.add(soilRimMesh);
+
+    // Concrete foundation slab under the apartment
+    const slabGeo = new THREE.BoxGeometry(22.4, 0.22, 19.4);
+    const slabMesh = new THREE.Mesh(slabGeo, flatMat('#334155', 0.9, 0));
+    slabMesh.position.set(0, -0.09, 0);
+    slabMesh.receiveShadow = true;
+    grassGroup.add(slabMesh);
+    scene.add(grassGroup);
+
+    // 6. PROCEDURAL CHECKERED FLOOR TILES (Matching JSON Spec)
+    const texturesToDispose: THREE.Texture[] = [];
+    const bwCheckerLiving = createCheckeredTexture('#1e1e24', '#e4e4e7', 6.5, 5.5);
+    const bwCheckerEntrance = createCheckeredTexture('#1e1e24', '#e4e4e7', 2, 2.5);
+    const brownCheckerKitchen = createCheckeredTexture('#a67c52', '#d4b483', 4.5, 3.5);
+    const brownCheckerMajorBed = createCheckeredTexture('#a67c52', '#d4b483', 5.2, 4);
+    const brownCheckerMinorBed = createCheckeredTexture('#a67c52', '#d4b483', 3.5, 3.5);
+    const bathTileMajor = createCheckeredTexture('#94a3b8', '#cbd5e1', 3, 5, true);
+    const bathTileMinor = createCheckeredTexture('#94a3b8', '#cbd5e1', 3, 3, true);
+    const rugTex = createConcentricRugTexture();
+    texturesToDispose.push(
+      bwCheckerLiving,
+      bwCheckerEntrance,
+      brownCheckerKitchen,
+      brownCheckerMajorBed,
+      brownCheckerMinorBed,
+      bathTileMajor,
+      bathTileMinor,
+      rugTex
+    );
+
+    const floorMeshes: THREE.Mesh[] = [];
+    const addRoomFloor = (
+      minX: number,
+      maxX: number,
+      minZ: number,
+      maxZ: number,
+      tex: THREE.CanvasTexture,
+      roomId: RoomId
+    ) => {
+      const w = maxX - minX;
+      const d = maxZ - minZ;
+      const geo = new THREE.PlaneGeometry(w, d);
+      const mat = new THREE.MeshStandardMaterial({
+        map: tex,
+        roughness: 0.8,
+        metalness: 0.05,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.position.set((minX + maxX) / 2, 0.02, (minZ + maxZ) / 2);
+      mesh.receiveShadow = true;
+      mesh.userData = { roomId };
+      scene.add(mesh);
+      floorMeshes.push(mesh);
+    };
+
+    // Build all 7 room floors
+    addRoomFloor(-2, 11, -9.5, 1.5, bwCheckerLiving, 'main_living_recreation_room');
+    addRoomFloor(-6, -2, -2.5, 2.5, bwCheckerEntrance, 'entrance_area');
+    addRoomFloor(-11, -2, -9.5, -2.5, brownCheckerKitchen, 'kitchen_dining_area');
+    addRoomFloor(-4, 6.5, 1.5, 9.5, brownCheckerMajorBed, 'bedroom_major_studio');
+    addRoomFloor(-11, -4, 2.5, 9.5, brownCheckerMinorBed, 'bedroom_minor');
+    addRoomFloor(6.5, 11, 1.5, 9.5, bathTileMajor, 'bathroom_major');
+    addRoomFloor(-11, -6, -2.5, 2.5, bathTileMinor, 'bathroom_minor');
+
+    // 7. CLEAN SIMPLIFIED WALL DIVISIONS (Unroofed for full interior visibility)
+    const wallHeight = 3.1;
+    const wallThickness = 0.24;
+    const wallMat = flatMat('#64748b', 0.85, 0.05);
+    const wallTopCapMat = flatMat('#334155', 0.9, 0.05);
+
+    const addWallSegment = (x1: number, z1: number, x2: number, z2: number, height = wallHeight) => {
+      const dx = x2 - x1;
+      const dz = z2 - z1;
+      const len = Math.hypot(dx, dz);
+      const angle = Math.atan2(dx, dz);
+
+      const group = new THREE.Group();
+      const wallGeo = new THREE.BoxGeometry(wallThickness, height, len + wallThickness * 0.5);
+      const wallMesh = new THREE.Mesh(wallGeo, wallMat);
+      wallMesh.position.y = height / 2;
+      wallMesh.castShadow = true;
+      wallMesh.receiveShadow = true;
+      group.add(wallMesh);
+
+      // Crisp clean top trim edge
+      const capGeo = new THREE.BoxGeometry(wallThickness + 0.04, 0.08, len + wallThickness * 0.6);
+      const capMesh = new THREE.Mesh(capGeo, wallTopCapMat);
+      capMesh.position.y = height + 0.04;
+      group.add(capMesh);
+
+      group.position.set((x1 + x2) / 2, 0, (z1 + z2) / 2);
+      group.rotation.y = angle;
+      scene.add(group);
+    };
+
+    // Outer Perimeter Walls
+    addWallSegment(-11, -9.5, 11, -9.5); // North wall
+    addWallSegment(11, -9.5, 11, 9.5); // East wall
+    addWallSegment(-11, 9.5, 11, 9.5); // South wall
+    addWallSegment(-11, -9.5, -11, -1.2); // West wall upper
+    addWallSegment(-11, 0.8, -11, 9.5); // West wall lower
+
+    // Interior Partition Walls with Doorway Gaps
+    // Between Kitchen (-11..-2) and Entrance/Minor Bath (z = -2.5)
+    addWallSegment(-11, -2.5, -5.2, -2.5);
+    addWallSegment(-3.4, -2.5, -2, -2.5);
+
+    // Between Kitchen/Entrance and Main Living Room (x = -2, z = -9.5..1.5)
+    addWallSegment(-2, -9.5, -2, -5.8);
+    addWallSegment(-2, -3.8, -2, -1.2);
+    addWallSegment(-2, 0.6, -2, 1.5);
+
+    // Between Minor Bath (-11..-6) and Entrance (-6..-2) at x = -6
+    addWallSegment(-6, -2.5, -6, -0.7);
+    addWallSegment(-6, 0.7, -6, 2.5);
+
+    // Between Minor Bedroom and Entrance/Minor Bath (z = 2.5, x = -11..-4)
+    addWallSegment(-11, 2.5, -5.8, 2.5);
+
+    // Between Minor Bedroom and Major Studio Bedroom (x = -4, z = 2.5..9.5)
+    addWallSegment(-4, 1.5, -4, 9.5);
+
+    // Between Main Living Room and Major Studio / Master Bath (z = 1.5, x = -4..11)
+    addWallSegment(-4, 1.5, 0.2, 1.5);
+    addWallSegment(2.2, 1.5, 7.6, 1.5);
+    addWallSegment(9.2, 1.5, 11, 1.5);
+
+    // Between Major Studio Bedroom and Master Bathroom (x = 6.5, z = 1.5..9.5)
+    addWallSegment(6.5, 1.5, 6.5, 4.6);
+    addWallSegment(6.5, 6.2, 6.5, 9.5);
+
+    // 8. WALL-MOUNTED POINT LIGHT FIXTURES (Globes on arm in all rooms)
+    const addWallGlobeLight = (
+      x: number,
+      z: number,
+      armDirX: number,
+      armDirZ: number,
+      color = '#ffedd5',
+      intensity = 6.5,
+      distance = 11
+    ) => {
+      const fixtureGroup = new THREE.Group();
+      fixtureGroup.position.set(x, 2.35, z);
+
+      // Wall backplate
+      const plate = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.24, 0.18), flatMat('#1e293b'));
+      fixtureGroup.add(plate);
+
+      // Horizontal arm
+      const arm = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.035, 0.035, 0.38, 8),
+        flatMat('#0f172a', 0.4, 0.6)
+      );
+      arm.rotation.z = armDirX !== 0 ? Math.PI / 2 : 0;
+      arm.rotation.x = armDirZ !== 0 ? Math.PI / 2 : 0;
+      arm.position.set(armDirX * 0.2, 0.05, armDirZ * 0.2);
+      fixtureGroup.add(arm);
+
+      // Glowing Low-Poly Globe Bulb
+      const bulbMat = new THREE.MeshStandardMaterial({
+        color: '#fffbeb',
+        emissive: color,
+        emissiveIntensity: 2.2,
+        roughness: 0.2,
+        flatShading: true,
+      });
+      const bulb = new THREE.Mesh(new THREE.IcosahedronGeometry(0.16, 1), bulbMat);
+      bulb.position.set(armDirX * 0.38, 0.05, armDirZ * 0.38);
+      fixtureGroup.add(bulb);
+
+      const ptLight = new THREE.PointLight(color, intensity, distance, 1.5);
+      ptLight.position.set(armDirX * 0.45, -0.05, armDirZ * 0.45);
+      fixtureGroup.add(ptLight);
+
+      scene.add(fixtureGroup);
+    };
+
+    // Place wall-mounted point lights in every room per JSON specification
+    addWallGlobeLight(4.5, -9.3, 0, 1, '#fde68a', 9.5, 14); // Main living room north wall
+    addWallGlobeLight(10.8, -3.5, -1, 0, '#fef3c7', 7.5, 12); // Main living room east wall
+    addWallGlobeLight(-6.5, -9.3, 0, 1, '#fde68a', 7.5, 11); // Kitchen dining area
+    addWallGlobeLight(-10.8, 6.0, 1, 0, '#fde68a', 6.5, 10); // Minor bedroom
+    addWallGlobeLight(-10.8, 0.0, 1, 0, '#e0f2fe', 5.0, 8); // Minor bathroom
+    addWallGlobeLight(-4.0, 2.35, 0, -1, '#fef3c7', 5.0, 8); // Entrance area
+    addWallGlobeLight(1.5, 9.3, 0, -1, '#f3e8ff', 7.5, 12); // Major studio bedroom
+    addWallGlobeLight(10.8, 5.5, -1, 0, '#e0f2fe', 6.5, 9); // Major bathroom
+
+    // 9. ROOM 1: ENTRANCE AREA (Simplified welcome mat + clean wall hooks)
+    {
+      const matMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(1.1, 0.04, 1.6),
+        flatMat('#78350f')
+      );
+      matMesh.position.set(-5.2, 0.03, 0);
+      scene.add(matMesh);
+
+      // Wall hook rack
+      const rack = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.14, 0.08), flatMat('#451a03'));
+      rack.position.set(-3.8, 1.65, 2.34);
+      scene.add(rack);
+      [-4.2, -3.8, -3.4].forEach((hx) => {
+        const hook = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.18, 0.12), flatMat('#94a3b8'));
+        hook.position.set(hx, 1.6, 2.28);
+        scene.add(hook);
+      });
     }
-    showToast(`${actionTitle} (+35% ${needKey.toUpperCase()})`);
-    setTimeout(() => setPlayerActionLabel(null), 2200);
-  };
 
-  // Buy room expansion tier
-  const handleUpgradeRoomTier = (targetTier: 1 | 2 | 3, price: number, name: string) => {
-    if (homeState.roomTier >= targetTier) return;
-    if (gameState.walletNaira < price) {
-      showToast(`Need ₦${price.toLocaleString()} to unlock ${name}! Drive more trips to earn cash.`);
-      return;
+    // 10. ROOM 2: MAIN LIVING & RECREATION ROOM
+    {
+      // (a) Full-sized Pool Table with green felt, cues, and balls
+      const poolGroup = new THREE.Group();
+      poolGroup.position.set(2.2, 0, -5.6);
+
+      // Wooden Cabinet Body
+      const body = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.38, 2.1), flatMat('#5c3a21'));
+      body.position.y = 0.68;
+      body.castShadow = true;
+      poolGroup.add(body);
+
+      // 4 sturdy low-poly legs
+      [
+        [-1.6, -0.8],
+        [1.6, -0.8],
+        [-1.6, 0.8],
+        [1.6, 0.8],
+      ].forEach(([lx, lz]) => {
+        const leg = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.14, 0.1, 0.55, 6),
+          flatMat('#3b2313')
+        );
+        leg.position.set(lx, 0.28, lz);
+        leg.castShadow = true;
+        poolGroup.add(leg);
+      });
+
+      // Green Felt Playing Surface
+      const felt = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.06, 1.8), flatMat('#15803d', 0.9));
+      felt.position.y = 0.89;
+      poolGroup.add(felt);
+
+      // Wooden Cushions / Rails
+      const railH = new THREE.Mesh(new THREE.BoxGeometry(3.84, 0.12, 0.16), flatMat('#451a03'));
+      const railNorth = railH.clone();
+      railNorth.position.set(0, 0.93, -0.98);
+      const railSouth = railH.clone();
+      railSouth.position.set(0, 0.93, 0.98);
+      const railV = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.12, 1.84), flatMat('#451a03'));
+      const railWest = railV.clone();
+      railWest.position.set(-1.84, 0.93, 0);
+      const railEast = railV.clone();
+      railEast.position.set(1.84, 0.93, 0);
+      poolGroup.add(railNorth, railSouth, railWest, railEast);
+
+      // 6 Corner/Side Pockets
+      [
+        [-1.72, -0.88],
+        [0, -0.9],
+        [1.72, -0.88],
+        [-1.72, 0.88],
+        [0, 0.9],
+        [1.72, 0.88],
+      ].forEach(([px, pz]) => {
+        const pocket = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.11, 0.11, 0.14, 8),
+          flatMat('#09090b')
+        );
+        pocket.position.set(px, 0.94, pz);
+        poolGroup.add(pocket);
+      });
+
+      // Billiard Balls (Cue ball + colorful rack)
+      const ballColors = ['#f8fafc', '#facc15', '#ef4444', '#3b82f6', '#a855f7', '#f97316', '#10b981', '#18181b'];
+      const ballPositions = [
+        [-0.9, 0.05],
+        [0.55, 0],
+        [0.7, -0.09],
+        [0.7, 0.09],
+        [0.85, -0.17],
+        [0.85, 0],
+        [0.85, 0.17],
+        [0.1, -0.35],
+      ];
+      ballPositions.forEach(([bx, bz], i) => {
+        const ball = new THREE.Mesh(
+          new THREE.IcosahedronGeometry(0.065, 1),
+          flatMat(ballColors[i % ballColors.length], 0.3, 0.1)
+        );
+        ball.position.set(bx, 0.98, bz);
+        poolGroup.add(ball);
+      });
+
+      // 2 Pool Cues resting on table
+      const cueGeo = new THREE.CylinderGeometry(0.015, 0.028, 2.1, 6);
+      const cue1 = new THREE.Mesh(cueGeo, flatMat('#d97706'));
+      cue1.rotation.z = Math.PI / 2;
+      cue1.rotation.y = 0.18;
+      cue1.position.set(-0.3, 0.99, 0.45);
+      const cue2 = new THREE.Mesh(cueGeo, flatMat('#b45309'));
+      cue2.rotation.z = Math.PI / 2;
+      cue2.rotation.y = -0.12;
+      cue2.position.set(-0.2, 0.99, -0.52);
+      poolGroup.add(cue1, cue2);
+
+      scene.add(poolGroup);
+
+      // (b) Concentric Patterned Round Rug (Green & Brown)
+      const rugMesh = new THREE.Mesh(
+        new THREE.CylinderGeometry(2.35, 2.35, 0.03, 32),
+        new THREE.MeshStandardMaterial({ map: rugTex, roughness: 0.95 })
+      );
+      rugMesh.position.set(7.2, 0.035, -3.6);
+      rugMesh.receiveShadow = true;
+      scene.add(rugMesh);
+
+      // (c) Large Black Multi-Seater Sofa (L-Shaped Modern Low-Poly)
+      const sofaGroup = new THREE.Group();
+      sofaGroup.position.set(6.8, 0, -1.1);
+      const sofaMat = flatMat('#18181b', 0.85, 0.05);
+      const cushionMat = flatMat('#27272a', 0.8, 0.05);
+
+      const baseMain = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.38, 1.25), sofaMat);
+      baseMain.position.set(0, 0.22, 0);
+      baseMain.castShadow = true;
+      sofaGroup.add(baseMain);
+
+      const backMain = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.65, 0.28), sofaMat);
+      backMain.position.set(0, 0.62, 0.48);
+      backMain.castShadow = true;
+      sofaGroup.add(backMain);
+
+      // Chaise lounge extension
+      const chaise = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.38, 1.3), sofaMat);
+      chaise.position.set(-1.27, 0.22, -1.15);
+      chaise.castShadow = true;
+      sofaGroup.add(chaise);
+
+      // Seat cushions
+      [-1.2, 0, 1.2].forEach((cx) => {
+        const cush = new THREE.Mesh(new THREE.BoxGeometry(1.12, 0.14, 0.95), cushionMat);
+        cush.position.set(cx, 0.45, -0.05);
+        sofaGroup.add(cush);
+      });
+      scene.add(sofaGroup);
+
+      // (d) Large Flat-Screen TV on Modern Wooden Console Unit (against East wall)
+      const tvGroup = new THREE.Group();
+      tvGroup.position.set(10.25, 0, -3.6);
+
+      const consoleUnit = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.55, 3.2), flatMat('#78350f'));
+      consoleUnit.position.y = 0.3;
+      consoleUnit.castShadow = true;
+      tvGroup.add(consoleUnit);
+
+      const tvPanel = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.35, 2.5), flatMat('#09090b', 0.3, 0.4));
+      tvPanel.position.set(-0.05, 1.4, 0);
+      tvGroup.add(tvPanel);
+
+      const tvScreen = new THREE.Mesh(
+        new THREE.BoxGeometry(0.04, 1.22, 2.36),
+        new THREE.MeshStandardMaterial({
+          color: '#1e293b',
+          emissive: '#0ea5e9',
+          emissiveIntensity: 0.35,
+          roughness: 0.2,
+        })
+      );
+      tvScreen.position.set(-0.1, 1.4, 0);
+      tvGroup.add(tvScreen);
+      scene.add(tvGroup);
+
+      // (e) Open Wall Shelving with Simplified Props (North Wall)
+      const shelfGroup = new THREE.Group();
+      shelfGroup.position.set(7.5, 1.5, -9.15);
+      [0, 0.55].forEach((sy) => {
+        const plank = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.08, 0.35), flatMat('#78350f'));
+        plank.position.y = sy;
+        shelfGroup.add(plank);
+      });
+      const propA = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.35, 0.22), flatMat('#10b981'));
+      propA.position.set(-0.6, 0.22, 0);
+      const propB = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 0.34, 7), flatMat('#f59e0b'));
+      propB.position.set(0.4, 0.75, 0);
+      shelfGroup.add(propA, propB);
+      scene.add(shelfGroup);
     }
-    soundEngine.playCoin();
-    soundEngine.playHorn(true);
-    onUpdateWalletAndCred(-price, 25, 100);
-    setHomeState((prev) => ({
-      ...prev,
-      roomTier: targetTier,
-    }));
-    showToast(`🏠 UPGRADED HOME: Welcome to your ${name}!`);
-  };
 
-  // Buy furniture item
-  const handleBuyFurniture = (item: FurnitureItem) => {
-    if (hasItem(item.id)) return;
-    if (homeState.roomTier < item.minTier) {
-      showToast(`Upgrade to Room Tier ${item.minTier} first to fit ${item.name}!`);
-      return;
+    // 11. ROOM 3: KITCHEN & DINING AREA (Circular dining table with 4 chairs + microwave on stand)
+    {
+      const diningGroup = new THREE.Group();
+      diningGroup.position.set(-5.8, 0, -6.2);
+
+      // Circular Dining Table
+      const tableTop = new THREE.Mesh(
+        new THREE.CylinderGeometry(1.35, 1.35, 0.1, 20),
+        flatMat('#e2e8f0', 0.7)
+      );
+      tableTop.position.y = 0.82;
+      tableTop.castShadow = true;
+      diningGroup.add(tableTop);
+
+      const tablePedestal = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.16, 0.22, 0.78, 10),
+        flatMat('#334155')
+      );
+      tablePedestal.position.y = 0.4;
+      diningGroup.add(tablePedestal);
+
+      // 4 Low-Poly Dining Chairs around the table
+      [
+        [0, -1.75, 0],
+        [0, 1.75, Math.PI],
+        [-1.75, 0, Math.PI / 2],
+        [1.75, 0, -Math.PI / 2],
+      ].forEach(([cx, cz, rotY]) => {
+        const chair = new THREE.Group();
+        chair.position.set(cx, 0, cz);
+        chair.rotation.y = rotY;
+        const seat = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.08, 0.62), flatMat('#475569'));
+        seat.position.y = 0.48;
+        seat.castShadow = true;
+        chair.add(seat);
+        const backrest = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.55, 0.08), flatMat('#334155'));
+        backrest.position.set(0, 0.78, -0.27);
+        chair.add(backrest);
+        const chairBase = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.22, 0.46, 6), flatMat('#1e293b'));
+        chairBase.position.y = 0.23;
+        chair.add(chairBase);
+        diningGroup.add(chair);
+      });
+      scene.add(diningGroup);
+
+      // Microwave on a Separate Stand (North-West Kitchen Corner)
+      const mwGroup = new THREE.Group();
+      mwGroup.position.set(-9.6, 0, -8.4);
+      const stand = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.88, 0.85), flatMat('#475569'));
+      stand.position.y = 0.44;
+      stand.castShadow = true;
+      mwGroup.add(stand);
+
+      const microwave = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.46, 0.55), flatMat('#e2e8f0'));
+      microwave.position.set(0, 1.12, 0);
+      mwGroup.add(microwave);
+
+      const mwWindow = new THREE.Mesh(
+        new THREE.BoxGeometry(0.52, 0.3, 0.04),
+        new THREE.MeshStandardMaterial({ color: '#0f172a', emissive: '#38bdf8', emissiveIntensity: 0.4 })
+      );
+      mwWindow.position.set(-0.1, 1.12, 0.27);
+      mwGroup.add(mwWindow);
+      scene.add(mwGroup);
     }
-    if (gameState.walletNaira < item.price) {
-      showToast(`Need ₦${item.price.toLocaleString()} for ${item.name}!`);
-      return;
+
+    // 12. ROOM 4: BEDROOM MAJOR STUDIO (Double bed with purple bedding, PC work desk, circular ring light)
+    {
+      // (a) Double Bed with Specific Purple Bedding and Brown Frame
+      const bedGroup = new THREE.Group();
+      bedGroup.position.set(-1.3, 0, 6.7);
+
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(2.7, 0.38, 3.2), flatMat('#5c3a21'));
+      frame.position.y = 0.22;
+      frame.castShadow = true;
+      bedGroup.add(frame);
+
+      const headboard = new THREE.Mesh(new THREE.BoxGeometry(2.7, 1.15, 0.22), flatMat('#451a03'));
+      headboard.position.set(0, 0.65, 1.5);
+      bedGroup.add(headboard);
+
+      // Purple mattress & duvet
+      const mattress = new THREE.Mesh(new THREE.BoxGeometry(2.48, 0.28, 2.95), flatMat('#9333ea'));
+      mattress.position.set(0, 0.52, -0.02);
+      bedGroup.add(mattress);
+
+      const blanket = new THREE.Mesh(new THREE.BoxGeometry(2.52, 0.3, 2.05), flatMat('#6b21a8'));
+      blanket.position.set(0, 0.54, -0.45);
+      bedGroup.add(blanket);
+
+      // Two pillows
+      [-0.62, 0.62].forEach((px) => {
+        const pillow = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.16, 0.55), flatMat('#e9d5ff'));
+        pillow.position.set(px, 0.72, 1.05);
+        bedGroup.add(pillow);
+      });
+      scene.add(bedGroup);
+
+      // (b) Modern Work Desk with Office Chair, Computer, Monitor & Small Details
+      const deskGroup = new THREE.Group();
+      deskGroup.position.set(4.1, 0, 7.8);
+
+      const deskTop = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.1, 1.1), flatMat('#78350f'));
+      deskTop.position.y = 0.82;
+      deskTop.castShadow = true;
+      deskGroup.add(deskTop);
+
+      const deskLegL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.8, 1.0), flatMat('#1e293b'));
+      deskLegL.position.set(-1.08, 0.4, 0);
+      const deskLegR = deskLegL.clone();
+      deskLegR.position.set(1.08, 0.4, 0);
+      deskGroup.add(deskLegL, deskLegR);
+
+      // Monitor
+      const monitor = new THREE.Mesh(
+        new THREE.BoxGeometry(1.05, 0.62, 0.08),
+        new THREE.MeshStandardMaterial({ color: '#0f172a', emissive: '#38bdf8', emissiveIntensity: 0.65 })
+      );
+      monitor.position.set(-0.15, 1.28, 0.25);
+      deskGroup.add(monitor);
+
+      // PC Tower
+      const pcTower = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.58, 0.55), flatMat('#09090b'));
+      pcTower.position.set(0.82, 1.16, 0.15);
+      deskGroup.add(pcTower);
+
+      // Office Chair
+      const officeChair = new THREE.Group();
+      officeChair.position.set(-0.15, 0, -0.85);
+      const cSeat = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.1, 0.68), flatMat('#1e293b'));
+      cSeat.position.y = 0.5;
+      const cBack = new THREE.Mesh(new THREE.BoxGeometry(0.64, 0.72, 0.1), flatMat('#1e293b'));
+      cBack.position.set(0, 0.88, -0.3);
+      const cPost = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.28, 0.48, 6), flatMat('#09090b'));
+      cPost.position.y = 0.24;
+      officeChair.add(cSeat, cBack, cPost);
+      deskGroup.add(officeChair);
+      scene.add(deskGroup);
+
+      // (c) Large Professional Circular Ring Light on a Black Tripod Stand
+      const ringGroup = new THREE.Group();
+      ringGroup.position.set(2.3, 0, 5.2);
+
+      // 3 Black Tripod Legs
+      for (let i = 0; i < 3; i++) {
+        const angle = (i * Math.PI * 2) / 3;
+        const leg = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.03, 0.03, 0.95, 6),
+          flatMat('#09090b')
+        );
+        leg.position.set(Math.cos(angle) * 0.28, 0.4, Math.sin(angle) * 0.28);
+        leg.rotation.z = -Math.cos(angle) * 0.35;
+        leg.rotation.x = Math.sin(angle) * 0.35;
+        ringGroup.add(leg);
+      }
+
+      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.04, 1.45, 8), flatMat('#09090b'));
+      stem.position.y = 1.15;
+      ringGroup.add(stem);
+
+      const ringTorus = new THREE.Mesh(
+        new THREE.TorusGeometry(0.42, 0.055, 8, 24),
+        new THREE.MeshStandardMaterial({
+          color: '#ffffff',
+          emissive: '#e0f2fe',
+          emissiveIntensity: 3.0,
+          roughness: 0.1,
+        })
+      );
+      ringTorus.position.y = 2.15;
+      ringTorus.rotation.y = -0.5;
+      ringGroup.add(ringTorus);
+
+      const ringPointLight = new THREE.PointLight('#e0f2fe', 8.0, 10, 1.4);
+      ringPointLight.position.set(0, 2.15, 0);
+      ringGroup.add(ringPointLight);
+      scene.add(ringGroup);
     }
-    soundEngine.playCoin();
-    onUpdateWalletAndCred(-item.price, 10);
-    setHomeState((prev) => ({
-      ...prev,
-      ownedFurniture: [...prev.ownedFurniture, item.id],
-      needs: {
-        ...prev.needs,
-        [item.needBoost]: Math.min(100, prev.needs[item.needBoost] + 25),
-      },
-    }));
-    showToast(`🛋️ Placed ${item.name} in your room!`);
-  };
 
-  const handleClaimDailyReward = () => {
-    if (homeState.dailyRewardClaimed) {
-      showToast('Daily reward already claimed today! Come back after your next shift.');
-      return;
+    // 13. ROOM 5: BEDROOM MINOR (Starter Room: Single bed with simplified bedding + nightstand)
+    {
+      const minorBedGroup = new THREE.Group();
+      minorBedGroup.position.set(-8.8, 0, 7.2);
+
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(1.75, 0.34, 2.8), flatMat('#5c3a21'));
+      frame.position.y = 0.2;
+      frame.castShadow = true;
+      minorBedGroup.add(frame);
+
+      const mattress = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.24, 2.65), flatMat('#cbd5e1'));
+      mattress.position.y = 0.46;
+      minorBedGroup.add(mattress);
+
+      const blanket = new THREE.Mesh(new THREE.BoxGeometry(1.64, 0.26, 1.75), flatMat('#3b82f6'));
+      blanket.position.set(0, 0.48, -0.4);
+      minorBedGroup.add(blanket);
+
+      const pillow = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.14, 0.5), flatMat('#f8fafc'));
+      pillow.position.set(0, 0.62, 0.92);
+      minorBedGroup.add(pillow);
+      scene.add(minorBedGroup);
+
+      // Nightstand
+      const nightstand = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.62, 0.75), flatMat('#78350f'));
+      nightstand.position.set(-6.8, 0.32, 8.2);
+      nightstand.castShadow = true;
+      scene.add(nightstand);
     }
-    soundEngine.playCoin();
-    onUpdateWalletAndCred(500, 10);
-    setHomeState((prev) => ({ ...prev, dailyRewardClaimed: true }));
-    showToast('🎁 Daily Reward Claimed: +₦500 added to wallet!');
-  };
 
-  const handleClaimGemBonus = () => {
-    soundEngine.playCoin();
-    const nextGems = homeState.gemsFound + 1;
-    if (nextGems >= 3) {
-      onUpdateWalletAndCred(300, 15);
-      setHomeState((prev) => ({ ...prev, gemsFound: 0 }));
-      showToast('💎 Street Gem Prize Completed: +₦300 Bonus!');
-    } else {
-      setHomeState((prev) => ({ ...prev, gemsFound: nextGems }));
-      showToast(`💎 Found Street Token (${nextGems}/3)! Find ${3 - nextGems} more for ₦300 prize.`);
+    // 14. ROOM 6: BATHROOM MAJOR (White bathtub + standing toilet & sink unit)
+    {
+      // White Bathtub
+      const tubGroup = new THREE.Group();
+      tubGroup.position.set(9.7, 0, 6.8);
+      const tubOuter = new THREE.Mesh(new THREE.BoxGeometry(1.45, 0.68, 2.9), flatMat('#f8fafc', 0.4));
+      tubOuter.position.y = 0.35;
+      tubOuter.castShadow = true;
+      tubGroup.add(tubOuter);
+
+      const tubWater = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.1, 2.55), flatMat('#38bdf8', 0.2));
+      tubWater.position.y = 0.66;
+      tubGroup.add(tubWater);
+      scene.add(tubGroup);
+
+      // Standing Toilet & Sink Unit
+      const sinkUnit = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.82, 1.2), flatMat('#e2e8f0'));
+      sinkUnit.position.set(7.2, 0.41, 3.2);
+      scene.add(sinkUnit);
+
+      const toilet = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.75, 0.75), flatMat('#f8fafc'));
+      toilet.position.set(7.2, 0.38, 8.2);
+      scene.add(toilet);
     }
-  };
 
-  // Click on isometric floor to walk character there
-  const handleSvgFloorClick = (e: React.MouseEvent<SVGSVGElement>) => {
-    const svg = e.currentTarget;
-    const pt = svg.createSVGPoint();
-    pt.x = e.clientX;
-    pt.y = e.clientY;
-    const ctm = svg.getScreenCTM();
-    if (!ctm) return;
-    const transformed = pt.matrixTransform(ctm.inverse());
-    // Clamp within room floor area depending on roomTier
-    const minX = homeState.roomTier === 1 ? 260 : 165;
-    const maxX = homeState.roomTier === 1 ? 525 : 645;
-    const minY = homeState.roomTier === 1 ? 255 : 195;
-    const maxY = homeState.roomTier === 1 ? 470 : 495;
-    const clampedX = Math.max(minX, Math.min(maxX, Math.round(transformed.x)));
-    const clampedY = Math.max(minY, Math.min(maxY, Math.round(transformed.y)));
-    setPlayerPos({ x: clampedX, y: clampedY });
-  };
+    // 15. ROOM 7: BATHROOM MINOR (Standing toilet & sink + small trash bin)
+    {
+      const minorSink = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.8, 0.9), flatMat('#f1f5f9'));
+      minorSink.position.set(-10.2, 0.4, -1.3);
+      scene.add(minorSink);
 
-  const tierInfo = ROOM_TIERS.find((t) => t.tier === homeState.roomTier) || ROOM_TIERS[0];
+      const minorToilet = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.72, 0.7), flatMat('#f8fafc'));
+      minorToilet.position.set(-10.2, 0.36, 1.3);
+      scene.add(minorToilet);
+
+      const trashBin = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.22, 0.18, 0.45, 10),
+        flatMat('#475569')
+      );
+      trashBin.position.set(-7.2, 0.23, -1.6);
+      scene.add(trashBin);
+    }
+
+    // 16. ROOM LOCK VEIL MESHES (When viewing in Starter Room Progression Mode)
+    const veilMap: Record<string, THREE.Mesh> = {};
+    APARTMENT_ROOMS.forEach((r) => {
+      const w = r.bounds.maxX - r.bounds.minX;
+      const d = r.bounds.maxZ - r.bounds.minZ;
+      const veilGeo = new THREE.BoxGeometry(w - 0.15, 3.05, d - 0.15);
+      const veilMat = new THREE.MeshStandardMaterial({
+        color: '#090d16',
+        transparent: true,
+        opacity: 0.84,
+        roughness: 1,
+      });
+      const veilMesh = new THREE.Mesh(veilGeo, veilMat);
+      veilMesh.position.set(r.center.x, 1.55, r.center.z);
+      veilMesh.visible = !showAllRoomsUnveiled && r.tierRequired > unlockedTierIndex;
+      scene.add(veilMesh);
+      veilMap[r.id] = veilMesh;
+    });
+    roomVeilMeshesRef.current = veilMap;
+
+    // 17. LOW-POLY 3D DRIVER AVATAR IN THE APARTMENT
+    const avatarGroup = new THREE.Group();
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.72, 0.32), flatMat('#facc15')); // Danfo yellow shirt
+    torso.position.y = 0.88;
+    torso.castShadow = true;
+    avatarGroup.add(torso);
+
+    const head = new THREE.Mesh(new THREE.IcosahedronGeometry(0.24, 1), flatMat('#78350f'));
+    head.position.y = 1.44;
+    head.castShadow = true;
+    avatarGroup.add(head);
+
+    const legs = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.52, 0.28), flatMat('#1e293b'));
+    legs.position.y = 0.26;
+    avatarGroup.add(legs);
+
+    // Selection ring under player
+    const ringGeo = new THREE.RingGeometry(0.36, 0.48, 24);
+    const ringMat = new THREE.MeshBasicMaterial({ color: '#34d399', side: THREE.DoubleSide });
+    const footRing = new THREE.Mesh(ringGeo, ringMat);
+    footRing.rotation.x = -Math.PI / 2;
+    footRing.position.y = 0.04;
+    avatarGroup.add(footRing);
+
+    avatarGroup.position.set(playerPosRef.current.x, 0, playerPosRef.current.z);
+    scene.add(avatarGroup);
+
+    // 18. POINTER INTERACTION: Click floor to walk OR drag to orbit 3D isometric model
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+    let isDragging = false;
+    let downX = 0;
+    let downY = 0;
+    let movedDist = 0;
+
+    const onPointerDown = (e: PointerEvent) => {
+      isDragging = true;
+      downX = e.clientX;
+      downY = e.clientY;
+      movedDist = 0;
+    };
+
+    const onPointerMove = (e: PointerEvent) => {
+      if (!isDragging) return;
+      const dx = e.clientX - downX;
+      const dy = e.clientY - downY;
+      movedDist += Math.hypot(dx, dy);
+      downX = e.clientX;
+      downY = e.clientY;
+
+      orbitRef.current.azimuth -= dx * 0.0065;
+      orbitRef.current.polar = Math.max(0.45, Math.min(1.22, orbitRef.current.polar - dy * 0.005));
+      updateCameraTransform();
+    };
+
+    const onPointerUp = (e: PointerEvent) => {
+      if (!isDragging) return;
+      isDragging = false;
+
+      // If click (not drag), raycast floor to move avatar to that room
+      if (movedDist < 8) {
+        const rect = renderer.domElement.getBoundingClientRect();
+        mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+        raycaster.setFromCamera(mouse, camera);
+        const hits = raycaster.intersectObjects(floorMeshes, false);
+        if (hits.length > 0) {
+          const hit = hits[0];
+          const roomId = hit.object.userData.roomId as RoomId;
+          const roomDef = APARTMENT_ROOMS.find((r) => r.id === roomId);
+          if (roomDef) {
+            playerTargetRef.current = {
+              x: Math.max(roomDef.bounds.minX + 0.8, Math.min(roomDef.bounds.maxX - 0.8, hit.point.x)),
+              z: Math.max(roomDef.bounds.minZ + 0.8, Math.min(roomDef.bounds.maxZ - 0.8, hit.point.z)),
+            };
+            setActiveRoom(roomId);
+            setStatusToast(`🚶 Walking to ${roomDef.name}: ${roomDef.description}`);
+          }
+        }
+      }
+    };
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      orbitRef.current.zoom = Math.max(0.65, Math.min(2.1, orbitRef.current.zoom - e.deltaY * 0.001));
+      updateCameraTransform();
+    };
+
+    const domElem = renderer.domElement;
+    domElem.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    domElem.addEventListener('wheel', onWheel, { passive: false });
+
+    const onResize = () => {
+      if (!container) return;
+      const w = container.clientWidth || window.innerWidth;
+      const h = container.clientHeight || window.innerHeight;
+      const asp = w / h;
+      camera.left = (-frustumSize * asp) / 2;
+      camera.right = (frustumSize * asp) / 2;
+      camera.top = frustumSize / 2;
+      camera.bottom = -frustumSize / 2;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+    };
+    window.addEventListener('resize', onResize);
+
+    // 19. ANIMATION LOOP
+    let reqId = 0;
+    let lastTime = performance.now();
+    const animate = (now: number) => {
+      reqId = requestAnimationFrame(animate);
+      const dt = Math.min(0.05, (now - lastTime) / 1000);
+      lastTime = now;
+
+      // Move avatar smoothly toward target
+      const pos = playerPosRef.current;
+      const tgt = playerTargetRef.current;
+      const dx = tgt.x - pos.x;
+      const dz = tgt.z - pos.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist > 0.08) {
+        const speed = 5.5;
+        const step = Math.min(dist, speed * dt);
+        pos.x += (dx / dist) * step;
+        pos.z += (dz / dist) * step;
+        pos.yaw = Math.atan2(dx, dz);
+        avatarGroup.position.set(pos.x, Math.abs(Math.sin(now * 0.012)) * 0.08, pos.z);
+        avatarGroup.rotation.y = pos.yaw;
+      } else {
+        avatarGroup.position.set(pos.x, 0, pos.z);
+      }
+
+      renderer.render(scene, camera);
+    };
+    reqId = requestAnimationFrame(animate);
+
+    return () => {
+      cancelAnimationFrame(reqId);
+      domElem.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      domElem.removeEventListener('wheel', onWheel);
+      window.removeEventListener('resize', onResize);
+
+      texturesToDispose.forEach((t) => t.dispose());
+      scene.traverse((obj) => {
+        const mesh = obj as THREE.Mesh;
+        if (mesh.geometry) mesh.geometry.dispose();
+        if (mesh.material) {
+          if (Array.isArray(mesh.material)) mesh.material.forEach((m) => m.dispose());
+          else mesh.material.dispose();
+        }
+      });
+      renderer.dispose();
+    };
+  }, []);
+
+  const currentRoomDef = APARTMENT_ROOMS.find((r) => r.id === activeRoom) || APARTMENT_ROOMS[0];
+
+  const jumpToRoom = (roomId: RoomId) => {
+    const def = APARTMENT_ROOMS.find((r) => r.id === roomId);
+    if (!def) return;
+    playerTargetRef.current = { x: def.center.x, z: def.center.z };
+    setActiveRoom(roomId);
+    setStatusToast(`📍 Moved to ${def.name}`);
+  };
 
   return (
-    <div className="relative w-full h-screen overflow-hidden select-none flex flex-col justify-between bg-[#0c1638] text-slate-900 font-sans">
-      {/* ═══════ TOP FLOATING WHITE STATUS PILL (Matches Reference Image) ═══════ */}
-      <div className="relative z-30 pt-3 px-3 sm:px-6 flex flex-col items-center">
-        <div className="w-full max-w-md bg-white/95 backdrop-blur-md rounded-full px-4 py-2 shadow-[0_10px_30px_rgba(0,0,0,0.45)] flex items-center justify-between gap-2 border border-white/60">
-          {/* Time */}
-          <div className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-slate-800 shrink-0">
-            <span className="text-amber-400 text-base">🌙</span>
-            <span>2:43 AM</span>
-          </div>
+    <div className="fixed inset-0 z-50 bg-[#090b10] flex flex-col overflow-hidden select-none">
+      {/* 3D LOW-POLY ISOMETRIC APARTMENT VIEWPORT */}
+      <div ref={mountRef} className="relative flex-1 w-full h-full cursor-grab active:cursor-grabbing" />
 
-          <div className="h-4 w-px bg-slate-200" />
+      {/* FLOATING TOGGLE FOR PURE 3D ASSET VIEW (WITHOUT GAME UI OVERLAYS) */}
+      <div className="absolute top-3 right-3 z-50 flex items-center gap-2">
+        <button
+          onClick={() => setCleanModelOnly((v) => !v)}
+          className="px-3 py-1.5 rounded-xl bg-stone-900/90 hover:bg-stone-800 border border-amber-400/60 text-amber-300 text-xs font-mono font-bold flex items-center gap-1.5 shadow-xl backdrop-blur"
+          title="Toggle pure 3D isometric model without game UI overlays"
+        >
+          {cleanModelOnly ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+          <span>{cleanModelOnly ? 'SHOW GAME UI' : 'PURE 3D MODEL (NO UI)'}</span>
+        </button>
 
-          {/* Mood */}
-          <button
-            onClick={() => triggerNeedAction('energy', 355, 435, '😴 Resting in Room')}
-            className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-emerald-600 truncate hover:opacity-80"
-            title="Tap to rest & boost mood"
-          >
-            <span className="text-base">😄</span>
-            <span className="truncate">{moodText}</span>
-          </button>
-
-          {/* Mute Toggle */}
-          <button
-            onClick={() => {
-              const next = !isMuted;
-              setIsMuted(next);
-              soundEngine.toggleMute?.();
-            }}
-            className="p-1 text-slate-500 hover:text-slate-800 transition-colors"
-            title="Toggle Sound"
-          >
-            {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-          </button>
-
-          {/* Wallet Naira + Drive/Earn (+) Button */}
-          <div className="flex items-center gap-2 bg-slate-100 rounded-full pl-3 pr-1 py-1">
-            <span className="text-xs sm:text-sm font-extrabold text-slate-900 tabular-nums">
-              ₦{gameState.walletNaira.toLocaleString()}
-            </span>
-            <button
-              onClick={onGoToDrive}
-              className="w-7 h-7 rounded-full bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-white flex items-center justify-center shadow-md transition-all"
-              title="Drive Danfo Bus to Earn More Naira!"
-            >
-              <Plus className="w-4 h-4 stroke-[3]" />
-            </button>
-          </div>
-        </div>
-
-        {/* Sub-pills: Room Tier & Drive / Park Menu Shortcuts */}
-        {!cleanScreen && (
-          <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
-            <div className="bg-slate-800/80 backdrop-blur border border-slate-600/60 text-white rounded-full px-3 py-0.5 text-[11px] font-bold flex items-center gap-1.5 shadow">
-              <span>🏠 {tierInfo.name}</span>
-            </div>
-            <button
-              onClick={onGoToDrive}
-              className="bg-amber-400 hover:bg-amber-300 active:scale-95 text-stone-950 rounded-full px-3 py-0.5 text-[11px] font-black flex items-center gap-1 shadow-md transition-all"
-            >
-              <Bus className="w-3 h-3" />
-              <span>DRIVE DANFO</span>
-            </button>
-            <button
-              onClick={onBackToMenu}
-              className="bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-stone-950 rounded-full px-3 py-0.5 text-[11px] font-black flex items-center gap-1 shadow-md transition-all"
-            >
-              <span>🚏 MOTOR PARK MENU</span>
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* ═══════ TOP-LEFT FLOATING REWARD CARDS & CLEAN SCREEN BUTTON ═══════ */}
-      <div className="absolute top-[92px] left-3 sm:left-6 z-30 flex flex-col items-start gap-2 max-w-[260px]">
-        {!cleanScreen && (
+        {!cleanModelOnly && (
           <>
-            {/* Daily Reward Card */}
             <button
-              onClick={handleClaimDailyReward}
-              className="w-full bg-white/95 hover:bg-white active:scale-[0.98] rounded-full px-3.5 py-2 shadow-xl flex items-center gap-3 text-left transition-all"
+              onClick={onOpenPhone}
+              className="px-3 py-1.5 rounded-xl bg-stone-900/90 hover:bg-stone-800 border border-stone-700 text-stone-200 text-xs font-mono font-bold flex items-center gap-1 shadow-xl"
             >
-              <div className="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center text-lg shrink-0">
-                🎁
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-xs font-extrabold text-slate-800 truncate">
-                  {homeState.dailyRewardClaimed ? 'Daily reward claimed!' : 'Daily reward ready · day 1'}
-                </div>
-                <div className="w-full bg-slate-200 h-2 rounded-full mt-1 overflow-hidden relative">
-                  <div
-                    className="h-full bg-emerald-500 transition-all"
-                    style={{ width: homeState.dailyRewardClaimed ? '100%' : '33%' }}
-                  />
-                </div>
-                <div className="text-[10px] font-bold text-blue-600 text-center mt-0.5">
-                  {homeState.dailyRewardClaimed ? '3/3 (Claimed ₦500)' : '1/3 · Tap to claim ₦500'}
-                </div>
-              </div>
+              <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
+              <span>PHONE</span>
             </button>
-
-            {/* Daily Gem / Street Token Card */}
             <button
-              onClick={handleClaimGemBonus}
-              className="w-full bg-white/95 hover:bg-white active:scale-[0.98] rounded-full px-3.5 py-2 shadow-xl flex items-center gap-3 text-left transition-all"
+              onClick={onGoToDrive}
+              className="px-4 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-stone-950 font-['Bungee'] text-xs shadow-xl active:scale-95"
             >
-              <div className="w-9 h-9 rounded-full bg-sky-100 flex items-center justify-center text-lg shrink-0">
-                💎
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-xs font-extrabold text-slate-800 truncate">
-                  Daily street bonus
-                </div>
-                <div className="text-[11px] font-semibold text-slate-500 truncate">
-                  {homeState.gemsFound}/3 found · next prize ₦300
-                </div>
-              </div>
+              🚌 BACK TO BUS
             </button>
           </>
         )}
-
-        {/* ^ Clean Screen Toggle Button */}
-        <button
-          onClick={() => setCleanScreen((v) => !v)}
-          className="bg-white/95 hover:bg-white active:scale-95 rounded-full px-3.5 py-1.5 shadow-lg text-xs font-bold text-slate-700 flex items-center gap-1 transition-all"
-        >
-          {cleanScreen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
-          <span>{cleanScreen ? 'Show HUD' : 'Clean screen'}</span>
-        </button>
       </div>
 
-      {/* Toast Notification */}
-      {toastMsg && (
-        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-50 bg-stone-950/95 border-2 border-amber-400 text-amber-300 px-4 py-2 rounded-full text-xs font-bold shadow-2xl animate-bounce">
-          {toastMsg}
-        </div>
-      )}
-
-      {/* ═══════ CENTER 2D ISOMETRIC CUTAWAY HOUSE ON CIRCULAR GREEN PLATFORM ═══════ */}
-      <div className="flex-1 flex items-center justify-center relative overflow-hidden px-2">
-        <div
-          className="w-full max-w-[780px] aspect-[4/3] flex items-center justify-center transition-transform duration-500"
-          style={{
-            transform: `scale(${homeState.roomTier === 1 ? 1.06 : 1.0}) rotate(${roomRotation}deg)`,
-          }}
-        >
-          <svg
-            viewBox="0 0 800 620"
-            className="w-full h-full drop-shadow-[0_25px_45px_rgba(0,0,0,0.65)] cursor-pointer"
-            onClick={handleSvgFloorClick}
-          >
-            <defs>
-              {/* Dark Checkered Floor Pattern */}
-              <pattern id="darkCheckered" width="40" height="24" patternUnits="userSpaceOnUse">
-                <polygon points="20,0 40,12 20,24 0,12" fill="#231f20" />
-                <polygon points="20,0 40,12 20,24 0,12" fill="#181516" transform="translate(20,12)" />
-                <polygon points="20,0 40,12 20,24 0,12" fill="#181516" transform="translate(-20,12)" />
-              </pattern>
-
-              {/* Light Cream Kitchen Tile Pattern */}
-              <pattern id="creamTile" width="36" height="22" patternUnits="userSpaceOnUse">
-                <polygon points="18,0 36,11 18,22 0,11" fill="#cbbba8" stroke="#b6a48f" strokeWidth="1" />
-              </pattern>
-
-              {/* Grey Bathroom Tile Pattern */}
-              <pattern id="bathTile" width="36" height="22" patternUnits="userSpaceOnUse">
-                <polygon points="18,0 36,11 18,22 0,11" fill="#9ea3a8" stroke="#888d92" strokeWidth="1" />
-              </pattern>
-
-              {/* Warm Wall Sconce Glow */}
-              <radialGradient id="sconceGlow" cx="50%" cy="50%" r="50%">
-                <stop offset="0%" stopColor="#fde68a" stopOpacity="0.85" />
-                <stop offset="50%" stopColor="#f59e0b" stopOpacity="0.28" />
-                <stop offset="100%" stopColor="#f59e0b" stopOpacity="0" />
-              </radialGradient>
-            </defs>
-
-            {/* 1. OLIVE-GREEN CIRCULAR LAWN PLATFORM (Like IMG_6758.png) */}
-            <ellipse cx="400" cy="360" rx="375" ry="235" fill="#4f5b38" />
-            <ellipse cx="400" cy="348" rx="370" ry="228" fill="#728054" />
-            <ellipse cx="400" cy="344" rx="356" ry="216" fill="#7a885b" />
-
-            {/* ═══════ TIER 1: SMALL SINGLE STARTER ROOM (Default Starting Home!) ═══════ */}
-            {homeState.roomTier === 1 && (
-              <g>
-                {/* Outer Foundation Base Shadow */}
-                <polygon
-                  points="400,190 590,300 400,490 210,380"
-                  fill="#44403c"
-                />
-
-                {/* Back-Left Wall (3D Extruded Cutaway) */}
-                <polygon
-                  points="210,380 400,190 400,98 210,288"
-                  fill="#292322"
-                  stroke="#57534e"
-                  strokeWidth="3"
-                />
-                {/* Back-Right Wall (3D Extruded Cutaway) */}
-                <polygon
-                  points="400,190 590,300 590,208 400,98"
-                  fill="#1f1b1a"
-                  stroke="#57534e"
-                  strokeWidth="3"
-                />
-
-                {/* Isometric Checkered Room Floor */}
-                <polygon
-                  points="400,190 590,300 400,485 210,375"
-                  fill="url(#darkCheckered)"
-                  stroke="#57534e"
-                  strokeWidth="4"
-                />
-
-                {/* Window with Blinds on Back-Right Wall */}
-                <g transform="translate(465, 160)">
-                  <polygon points="0,0 70,40 70,90 0,50" fill="#cbd5e1" stroke="#94a3b8" strokeWidth="3" />
-                  <line x1="5" y1="12" x2="65" y2="46" stroke="#64748b" strokeWidth="2" />
-                  <line x1="5" y1="22" x2="65" y2="56" stroke="#64748b" strokeWidth="2" />
-                  <line x1="5" y1="32" x2="65" y2="66" stroke="#64748b" strokeWidth="2" />
-                  <line x1="5" y1="42" x2="65" y2="76" stroke="#64748b" strokeWidth="2" />
-                </g>
-
-                {/* Glowing Wall Light Sconce */}
-                <circle cx="330" cy="200" r="42" fill="url(#sconceGlow)" />
-                <circle cx="330" cy="200" r="6" fill="#fef3c7" />
-
-                {/* Starter Bed in Bottom-Left Corner (Interactive: Tap to Sleep) */}
-                <g
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    triggerNeedAction('energy', 330, 395, '😴 Sleeping on Foam Bed');
-                  }}
-                  className="cursor-pointer hover:opacity-95"
-                >
-                  {/* Wooden Bed Frame */}
-                  <polygon points="245,365 325,315 395,360 315,410" fill="#451a03" stroke="#290f02" strokeWidth="2" />
-                  {/* Purple Mattress */}
-                  <polygon points="252,356 325,310 388,350 315,396" fill="#3b0764" />
-                  {/* White Sheet Fold & Pillows */}
-                  <polygon points="252,356 285,335 348,375 315,396" fill="#cbd5e1" />
-                  <ellipse cx="285" cy="360" rx="14" ry="8" fill="#f8fafc" transform="rotate(-28 285 360)" />
-                  {/* Headboard */}
-                  <polygon points="245,365 315,410 315,382 245,337" fill="#5c2406" />
-                </g>
-
-                {/* Optional Study Desk & Pink Chair (If owned or starter) */}
-                {hasItem('study_desk') && (
-                  <g
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      triggerNeedAction('social', 410, 395, '💻 Checking Danfo Routes at Desk');
-                    }}
-                    className="cursor-pointer"
-                  >
-                    <polygon points="395,385 455,348 485,368 425,405" fill="#a87c56" />
-                    <polygon points="395,385 425,405 425,432 395,412" fill="#855f3e" />
-                    <polygon points="425,405 485,368 485,395 425,432" fill="#704e32" />
-                    {/* Pink Office Chair */}
-                    <ellipse cx="415" cy="365" rx="14" ry="10" fill="#be185d" />
-                    <rect x="405" y="342" width="18" height="22" rx="5" fill="#db2777" />
-                  </g>
-                )}
-
-                {/* Optional Ring Light */}
-                {hasItem('ring_light') && (
-                  <g
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      triggerNeedAction('fun', 370, 325, '📸 Streaming Lagos Driver Vlog');
-                    }}
-                    className="cursor-pointer"
-                  >
-                    <line x1="365" y1="295" x2="355" y2="335" stroke="#111" strokeWidth="3" />
-                    <line x1="365" y1="295" x2="375" y2="335" stroke="#111" strokeWidth="3" />
-                    <line x1="365" y1="295" x2="365" y2="338" stroke="#111" strokeWidth="3" />
-                    <ellipse
-                      cx="365"
-                      cy="282"
-                      rx="11"
-                      ry="15"
-                      fill="none"
-                      stroke="#f8fafc"
-                      strokeWidth="4"
-                    />
-                  </g>
-                )}
-
-                {/* Optional Red Sofa & Orange Rug in Small Room */}
-                {hasItem('red_sofa_rug') && (
-                  <g
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      triggerNeedAction('energy', 445, 310, '🛋️ Relaxing on Red Velvet Sofa');
-                    }}
-                    className="cursor-pointer"
-                  >
-                    <ellipse cx="475" cy="328" rx="38" ry="24" fill="#c2410c" stroke="#1e293b" strokeWidth="4" />
-                    <polygon points="415,280 468,248 492,265 439,297" fill="#7f1d1d" />
-                    <polygon points="415,280 468,248 468,225 415,257" fill="#5c1111" />
-                  </g>
-                )}
-
-                {/* Optional TV Console */}
-                {hasItem('tv_console') && (
-                  <g
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      triggerNeedAction('fun', 475, 340, '📺 Watching Super Eagles Match');
-                    }}
-                    className="cursor-pointer"
-                  >
-                    <polygon points="485,342 548,302 565,314 502,354" fill="#b08968" />
-                    <polygon points="498,325 545,295 545,258 498,288" fill="#334155" stroke="#1e293b" strokeWidth="2" />
-                  </g>
-                )}
-
-                {/* Optional House Cat */}
-                {hasItem('house_cat') && (
-                  <g
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      triggerNeedAction('social', 395, 315, '🐱 Petting Milo the Cat');
-                    }}
-                    className="cursor-pointer"
-                  >
-                    <ellipse cx="400" cy="300" rx="10" ry="6" fill="#a8a29e" />
-                    <circle cx="408" cy="295" r="5" fill="#a8a29e" />
-                  </g>
-                )}
-
-                {/* Small Room Starter Label */}
-                <g transform="translate(275, 498)">
-                  <rect x="0" y="0" width="250" height="28" rx="14" fill="rgba(15,23,42,0.85)" stroke="#facc15" strokeWidth="1.5" />
-                  <text x="125" y="18" textAnchor="middle" fill="#facc15" fontSize="11" fontWeight="bold">
-                    STARTER SINGLE ROOM • TAP FLOOR OR BED
-                  </text>
-                </g>
-              </g>
-            )}
-
-            {/* ═══════ TIER 2 & TIER 3: MULTI-ROOM ISOMETRIC APARTMENT CUTAWAY (Exact IMG_6758.png Layout!) ═══════ */}
-            {homeState.roomTier >= 2 && (
-              <g>
-                {/* Outer Foundation Base */}
-                <polygon points="430,88 755,275 365,545 45,355" fill="#4b4844" />
-
-                {/* 1. Kitchen / Dining Floor (Left Quadrant - Cream Tiles) */}
-                <polygon points="45,345 235,220 355,290 165,415" fill="url(#creamTile)" />
-
-                {/* 2. Bathroom Floor (Top-Left Quadrant - Grey Tiles) */}
-                <polygon points="235,220 385,122 490,185 340,282" fill="url(#bathTile)" />
-
-                {/* 3. Main Living & Bedroom Floor (Dark Checkered Tiles) */}
-                <polygon points="165,415 355,290 490,185 605,250 745,275 365,535" fill="url(#darkCheckered)" />
-
-                {/* Back-Left Exterior Wall */}
-                <polygon points="45,345 430,88 430,22 45,278" fill="#262120" stroke="#6b6661" strokeWidth="3" />
-                {/* Back-Right Exterior Wall */}
-                <polygon points="430,88 745,275 745,208 430,22" fill="#211d1c" stroke="#6b6661" strokeWidth="3" />
-
-                {/* Glowing Wall Sconces */}
-                <circle cx="315" cy="128" r="35" fill="url(#sconceGlow)" />
-                <circle cx="315" cy="128" r="5" fill="#fef3c7" />
-                <circle cx="575" cy="145" r="35" fill="url(#sconceGlow)" />
-                <circle cx="575" cy="145" r="5" fill="#fef3c7" />
-
-                {/* Window Blinds Left & Right */}
-                <polygon points="155,212 208,176 208,225 155,260" fill="#cbd5e1" stroke="#94a3b8" strokeWidth="2" />
-                <polygon points="585,142 645,178 645,228 585,192" fill="#cbd5e1" stroke="#94a3b8" strokeWidth="2" />
-
-                {/* ── BATHROOM ZONE (Shower, White Bathtub, Partition Walls) ── */}
-                <g
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    triggerNeedAction('hygiene', 330, 215, '🚿 Taking a Fresh Shower');
-                  }}
-                  className="cursor-pointer"
-                >
-                  {/* Glass Shower Stall */}
-                  <polygon points="245,165 288,138 288,215 245,242" fill="rgba(226,232,240,0.45)" stroke="#e2e8f0" strokeWidth="3" />
-                  {/* White Bathtub */}
-                  <polygon points="348,228 425,180 452,198 375,246" fill="#e7e5e4" stroke="#d6d3d1" strokeWidth="2" />
-                  <ellipse cx="400" cy="212" rx="32" ry="12" fill="#a8a29e" transform="rotate(-30 400 212)" />
-                </g>
-
-                {/* ── SNOOKER / POOL ROOM (Top Corner - Tier 3 or Pool Table Owned) ── */}
-                {(homeState.roomTier === 3 || hasItem('pool_table')) && (
-                  <g
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      triggerNeedAction('fun', 475, 195, '🎱 Playing Snooker in Game Lounge');
-                    }}
-                    className="cursor-pointer"
-                  >
-                    <polygon points="435,142 490,108 552,146 498,180" fill="#451a03" />
-                    <polygon points="442,142 490,113 544,146 496,175" fill="#065f46" stroke="#047857" strokeWidth="2" />
-                    <circle cx="485" cy="142" r="2.5" fill="#facc15" />
-                    <circle cx="495" cy="146" r="2.5" fill="#ef4444" />
-                    <circle cx="502" cy="140" r="2.5" fill="#ffffff" />
-                  </g>
-                )}
-
-                {/* Interior Cutaway Partition Walls (Matching Reference Image) */}
-                <polygon points="210,235 320,302 320,265 210,198" fill="#1c1917" stroke="#a8a29e" strokeWidth="2" />
-                <polygon points="365,272 488,195 488,162 365,238" fill="#292524" stroke="#a8a29e" strokeWidth="2" />
-                <polygon points="135,392 295,288 295,252 135,356" fill="#1c1917" stroke="#a8a29e" strokeWidth="2" />
-                <polygon points="348,295 458,365 458,332 348,262" fill="#292524" stroke="#a8a29e" strokeWidth="2" />
-
-                {/* ── KITCHEN & ROUND DINING TABLE (Left Quadrant) ── */}
-                <g
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    triggerNeedAction('hunger', 175, 330, '🍛 Eating Hot Jollof & Plantain');
-                  }}
-                  className="cursor-pointer"
-                >
-                  {/* Kitchen Counter & Microwave */}
-                  <polygon points="122,272 162,246 184,260 144,286" fill="#d6c7b2" />
-                  <rect x="135" y="232" width="26" height="18" rx="2" fill="#cbd5e1" stroke="#64748b" strokeWidth="1.5" />
-                  {/* Round Wooden Dining Table */}
-                  <ellipse cx="145" cy="332" rx="28" ry="18" fill="#7c4d2b" stroke="#5c371c" strokeWidth="2" />
-                  {/* Dining Chairs */}
-                  <rect x="102" y="318" width="12" height="22" rx="2" fill="#5c2d16" />
-                  <rect x="176" y="312" width="12" height="22" rx="2" fill="#5c2d16" />
-                  <rect x="138" y="352" width="12" height="20" rx="2" fill="#5c2d16" />
-                </g>
-
-                {/* ── BEDROOM STUDIO (Bottom Quadrant: Purple Bed, Ring Light, Desk & Pink Chair) ── */}
-                <g
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    triggerNeedAction('energy', 315, 445, '😴 Sleeping on Master Bed');
-                  }}
-                  className="cursor-pointer"
-                >
-                  {/* Bed Frame & Purple Mattress */}
-                  <polygon points="235,455 315,402 382,445 302,498" fill="#451a03" />
-                  <polygon points="242,446 315,398 375,436 302,484" fill="#3b0764" />
-                  <polygon points="242,446 275,424 338,462 302,484" fill="#cbd5e1" />
-                </g>
-
-                {/* Ring Light in Bedroom */}
-                <g
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    triggerNeedAction('fun', 365, 380, '📸 Recording Lagos Creator Reel');
-                  }}
-                  className="cursor-pointer"
-                >
-                  <line x1="358" y1="342" x2="348" y2="380" stroke="#111" strokeWidth="3" />
-                  <line x1="358" y1="342" x2="368" y2="380" stroke="#111" strokeWidth="3" />
-                  <ellipse cx="358" cy="330" rx="10" ry="14" fill="none" stroke="#f8fafc" strokeWidth="4" />
-                </g>
-
-                {/* Wooden Desk & Pink Chair */}
-                <g
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    triggerNeedAction('social', 415, 425, '💻 Managing Danfo Fleet at Desk');
-                  }}
-                  className="cursor-pointer"
-                >
-                  <polygon points="390,432 448,395 478,415 420,452" fill="#a87c56" />
-                  <polygon points="390,432 420,452 420,478 390,458" fill="#855f3e" />
-                  <ellipse cx="405" cy="408" rx="13" ry="9" fill="#be185d" />
-                  <rect x="396" y="388" width="16" height="20" rx="4" fill="#db2777" />
-                </g>
-
-                {/* ── RIGHT LIVING LOUNGE (Red Sofa, Circular Orange Rug, Wide TV Console & Bookshelf) ── */}
-                <g
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    triggerNeedAction('fun', 555, 335, '📺 Relaxing in Living Room Lounge');
-                  }}
-                  className="cursor-pointer"
-                >
-                  {/* Circular Orange & Dark Ring Rug */}
-                  <ellipse cx="622" cy="355" rx="46" ry="28" fill="#c2410c" stroke="#1e293b" strokeWidth="5" />
-                  <ellipse cx="622" cy="355" rx="30" ry="18" fill="#ea580c" />
-
-                  {/* Red Velvet Sofa */}
-                  <polygon points="525,305 592,262 620,282 552,325" fill="#7f1d1d" />
-                  <polygon points="525,305 592,262 592,235 525,278" fill="#5c1111" />
-                  <polygon points="525,305 552,325 552,342 525,322" fill="#450a0a" />
-
-                  {/* TV Console & Wide Flat-Screen TV */}
-                  <polygon points="628,382 715,326 738,342 652,398" fill="#b08968" />
-                  <polygon points="645,362 708,320 708,278 645,320" fill="#475569" stroke="#1e293b" strokeWidth="2" />
-
-                  {/* Wooden Bookshelf on Far Right */}
-                  <polygon points="728,325 765,300 765,245 728,270" fill="#a87c56" stroke="#785538" strokeWidth="2" />
-                </g>
-
-                {/* Pet Cat in Center Hall */}
-                <ellipse cx="412" cy="296" rx="10" ry="6" fill="#a8a29e" />
-                <circle cx="420" cy="291" r="5" fill="#a8a29e" />
-              </g>
-            )}
-
-            {/* ═══════ 3D-STYLED PLAYER CHARACTER STANDING INSIDE THE CUTAWAY ROOM ═══════ */}
-            <g
-              transform={`translate(${playerPos.x}, ${playerPos.y})`}
-              className="transition-all duration-300 ease-out"
-            >
-              {/* Floor Foot Shadow */}
-              <ellipse cx="0" cy="4" rx="16" ry="8" fill="rgba(0,0,0,0.55)" />
-              {/* Legs / Trousers */}
-              <rect x="-7" y="-26" width="6" height="28" rx="2" fill="#0f172a" />
-              <rect x="1" y="-26" width="6" height="28" rx="2" fill="#0f172a" />
-              {/* White & Dark Vest Torso (Like Avatar in IMG_6758.png) */}
-              <rect x="-10" y="-56" width="20" height="32" rx="4" fill="#f8fafc" />
-              <rect x="-10" y="-56" width="6" height="30" rx="2" fill="#1e293b" />
-              <rect x="4" y="-56" width="6" height="30" rx="2" fill="#1e293b" />
-              {/* Arms */}
-              <rect x="-15" y="-54" width="5" height="24" rx="2.5" fill="#451a03" />
-              <rect x="10" y="-54" width="5" height="24" rx="2.5" fill="#451a03" />
-              {/* Head & Dreadlocks/Hair */}
-              <circle cx="0" cy="-68" r="11" fill="#451a03" />
-              <path d="M -11 -70 Q 0 -84 11 -70 L 12 -58 L -12 -58 Z" fill="#09090b" />
-              {/* Golden Crown / Cap Accent */}
-              <polygon points="-7,-79 -3,-85 0,-80 3,-85 7,-79" fill="#facc15" />
-
-              {/* Floating Action Bubble when interacting */}
-              {playerActionLabel && (
-                <g transform="translate(0, -98)">
-                  <rect x="-85" y="-22" width="170" height="24" rx="12" fill="#111827" stroke="#facc15" strokeWidth="1.5" />
-                  <text x="0" y="-6" textAnchor="middle" fill="#facc15" fontSize="10" fontWeight="bold">
-                    {playerActionLabel}
-                  </text>
-                </g>
-              )}
-            </g>
-          </svg>
-        </div>
-      </div>
-
-      {/* ═══════ BUY FURNITURE & ROOM EXPANSION DRAWER (When "Buy" Tab is Active) ═══════ */}
-      {activeBottomTab === 'BUY' && (
-        <div className="fixed inset-x-0 bottom-[88px] z-40 px-3 sm:px-6 flex justify-center animate-in slide-in-from-bottom-5 duration-200">
-          <div className="w-full max-w-2xl bg-slate-900/95 backdrop-blur-xl border-2 border-amber-400 rounded-3xl p-4 text-white shadow-[0_20px_50px_rgba(0,0,0,0.85)] max-h-[56vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-2.5 mb-3">
-              <div>
-                <h3 className="text-sm sm:text-base font-black text-amber-400 flex items-center gap-2">
-                  <Sofa className="w-4 h-4" />
-                  <span>EXPAND APARTMENT & BUY FURNITURE</span>
-                </h3>
-                <p className="text-[11px] text-slate-300">
-                  You started in a Small Single Room. Upgrade your room size or buy furniture with your Danfo fares!
-                </p>
+      {/* GAME UI OVERLAYS (HIDDEN WHEN IN PURE 3D MODEL MODE) */}
+      {!cleanModelOnly && (
+        <>
+          {/* TOP-LEFT COMPACT HEADER & CAMERA / ROOM MODE CONTROLS */}
+          <div className="absolute top-3 left-3 z-40 flex flex-wrap items-center gap-2 pointer-events-auto">
+            <div className="bg-stone-950/90 border border-stone-700/80 rounded-xl px-3 py-1.5 flex items-center gap-3 shadow-xl backdrop-blur">
+              <div className="flex items-center gap-1.5">
+                <Home className="w-4 h-4 text-amber-400" />
+                <span className="text-xs font-['Bungee'] text-white">3D APARTMENT INTERIOR</span>
               </div>
-              <button
-                onClick={() => setActiveBottomTab('HOME')}
-                className="px-3 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300"
-              >
-                Close
-              </button>
+              <span className="text-xs font-mono font-black text-emerald-400">
+                ₦{walletNaira.toLocaleString()}
+              </span>
+              <div className="flex items-center gap-1 text-xs font-mono text-sky-300">
+                <Zap className="w-3.5 h-3.5 text-amber-400" />
+                <span>
+                  {Math.round(energy)}/{maxEnergy}
+                </span>
+              </div>
             </div>
 
-            {/* Room Size Expansion Tiers */}
-            <div className="mb-4">
-              <div className="text-[10px] font-mono uppercase tracking-wider text-amber-300 font-bold mb-2">
-                1. Apartment Size Progression (Current: Tier {homeState.roomTier}/3)
+            <button
+              onClick={() => setShowAllRoomsUnveiled((v) => !v)}
+              className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-mono font-bold flex items-center gap-1 shadow-lg ${
+                showAllRoomsUnveiled
+                  ? 'bg-emerald-950/90 border-emerald-400/60 text-emerald-300'
+                  : 'bg-stone-900/90 border-stone-700 text-stone-300'
+              }`}
+            >
+              {showAllRoomsUnveiled ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+              <span>{showAllRoomsUnveiled ? 'ALL 7 ROOMS UNROOFED' : 'STARTER ROOM LOCK MODE'}</span>
+            </button>
+
+            <button
+              onClick={() => {
+                orbitRef.current = { azimuth: Math.PI / 4, polar: 0.88, zoom: 1.05 };
+              }}
+              className="px-2.5 py-1.5 rounded-xl bg-stone-900/90 hover:bg-stone-800 border border-stone-700 text-stone-300 text-[11px] font-mono font-bold flex items-center gap-1 shadow-lg"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>ISO VIEW</span>
+            </button>
+
+            <button
+              onClick={() => setShowUpgradeDrawer((v) => !v)}
+              className="px-2.5 py-1.5 rounded-xl bg-purple-950/90 hover:bg-purple-900 border border-purple-400/60 text-purple-200 text-[11px] font-mono font-bold flex items-center gap-1 shadow-lg"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>EXPAND ROOMS ({unlockedTierIndex + 1}/{HOME_UPGRADE_TIERS.length})</span>
+            </button>
+          </div>
+
+          {/* REAL ESTATE UPGRADE DRAWER */}
+          {showUpgradeDrawer && (
+            <div className="absolute top-16 left-3 z-50 w-80 max-w-[92vw] bg-stone-950/95 border border-stone-700 rounded-2xl p-3 shadow-2xl backdrop-blur">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-['Bungee'] text-amber-400">EXPAND APARTMENT ROOMS</span>
+                <button
+                  onClick={() => setShowUpgradeDrawer(false)}
+                  className="text-xs font-mono text-stone-400 hover:text-white"
+                >
+                  ✕
+                </button>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                {ROOM_TIERS.map((rt) => {
-                  const isOwned = homeState.roomTier >= rt.tier;
-                  const isCurrent = homeState.roomTier === rt.tier;
+              <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                {HOME_UPGRADE_TIERS.map((tier, idx) => {
+                  const isOwned = idx <= unlockedTierIndex;
                   return (
                     <div
-                      key={rt.tier}
-                      className={`rounded-2xl p-3 border flex flex-col justify-between ${
-                        isCurrent
-                          ? 'bg-amber-400/15 border-amber-400'
-                          : isOwned
-                          ? 'bg-emerald-950/30 border-emerald-500/40'
-                          : 'bg-slate-950/80 border-slate-800'
+                      key={tier.id}
+                      className={`p-2 rounded-xl border flex items-center justify-between gap-2 ${
+                        isOwned
+                          ? 'bg-emerald-500/10 border-emerald-500/40'
+                          : 'bg-stone-900/80 border-stone-800'
                       }`}
                     >
                       <div>
-                        <div className="flex items-center justify-between gap-1">
-                          <span className="text-xs font-extrabold text-white">{rt.name}</span>
-                          {isOwned && <Check className="w-4 h-4 text-emerald-400 shrink-0" />}
-                        </div>
-                        <div className="text-[10px] text-amber-300 font-semibold mt-0.5">{rt.subtitle}</div>
-                        <p className="text-[10px] text-slate-400 mt-1 leading-snug">{rt.description}</p>
+                        <div className="text-xs font-bold text-white">{tier.name}</div>
+                        <div className="text-[10px] font-mono text-stone-400">{tier.location}</div>
                       </div>
-                      <div className="mt-2.5">
-                        {isOwned ? (
-                          <button
-                            onClick={() => setHomeState((prev) => ({ ...prev, roomTier: rt.tier }))}
-                            className={`w-full py-1.5 rounded-xl text-[10px] font-black ${
-                              isCurrent
-                                ? 'bg-emerald-500 text-slate-950'
-                                : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
-                            }`}
-                          >
-                            {isCurrent ? 'ACTIVE LAYOUT' : 'SWITCH TO THIS VIEW'}
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleUpgradeRoomTier(rt.tier, rt.price, rt.name)}
-                            className="w-full py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 active:scale-95 text-slate-950 font-black text-[11px] shadow"
-                          >
-                            UNLOCK • ₦{rt.price.toLocaleString()}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Furniture Catalog */}
-            <div>
-              <div className="text-[10px] font-mono uppercase tracking-wider text-emerald-400 font-bold mb-2">
-                2. Room Furniture & Appliances
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {HOME_FURNITURE_CATALOG.map((item) => {
-                  const owned = hasItem(item.id);
-                  const lockedTier = homeState.roomTier < item.minTier;
-                  return (
-                    <div
-                      key={item.id}
-                      className="rounded-2xl p-2.5 bg-slate-950/90 border border-slate-800 flex items-center justify-between gap-2"
-                    >
-                      <div className="min-w-0">
-                        <div className="text-xs font-bold text-white truncate">{item.name}</div>
-                        <div className="text-[10px] text-emerald-400 font-semibold">{item.boostLabel}</div>
-                        <div className="text-[10px] text-slate-400 truncate">{item.description}</div>
-                      </div>
-                      {owned ? (
-                        <span className="px-2.5 py-1 rounded-xl bg-emerald-500/20 text-emerald-300 text-[10px] font-bold shrink-0">
-                          Owned
-                        </span>
-                      ) : lockedTier ? (
-                        <span className="px-2.5 py-1 rounded-xl bg-slate-800 text-slate-400 text-[10px] font-bold flex items-center gap-1 shrink-0">
-                          <Lock className="w-3 h-3" /> Tier {item.minTier}
+                      {isOwned ? (
+                        <span className="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 text-[10px] font-mono font-bold">
+                          UNLOCKED
                         </span>
                       ) : (
                         <button
-                          onClick={() => handleBuyFurniture(item)}
-                          className="px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 active:scale-95 text-slate-950 font-black text-xs shrink-0"
+                          disabled={walletNaira < tier.purchaseCostNaira}
+                          onClick={() => {
+                            if (walletNaira < tier.purchaseCostNaira) return;
+                            onUpdateWalletAndCred(-tier.purchaseCostNaira, 25);
+                            setUnlockedTierIndex(idx);
+                            try {
+                              localStorage.setItem('danfo_home_3d_tier', String(idx));
+                            } catch {}
+                            setStatusToast(`🎉 Unlocked ${tier.name}!`);
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-amber-400 disabled:bg-stone-800 disabled:text-stone-600 text-stone-950 text-[10px] font-mono font-black"
                         >
-                          ₦{item.price.toLocaleString()}
+                          ₦{tier.purchaseCostNaira.toLocaleString()}
                         </button>
                       )}
                     </div>
@@ -1024,174 +1284,78 @@ export const PlayerHome2D: React.FC<PlayerHome2DProps> = ({
                 })}
               </div>
             </div>
-          </div>
-        </div>
-      )}
+          )}
 
-      {/* ═══════ BOTTOM AVATAR + 6-NEED PILL + WHITE NAVIGATION BAR (Exact Reference Image Layout) ═══════ */}
-      <div className="relative z-30 pb-3 px-3 sm:px-6 flex flex-col items-center gap-2.5">
-        {/* Row Above Nav: Avatar Circle + 6-Need Status Pill + Room Rotate Button */}
-        <div className="w-full max-w-md flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            {/* Avatar Circle with Green Ring */}
-            <button
-              onClick={() => triggerNeedAction('social', 385, 385, '😎 Feeling Fresh!')}
-              className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-emerald-200 border-4 border-white shadow-xl flex items-center justify-center overflow-hidden shrink-0 ring-2 ring-emerald-400"
-              title="Driver Profile"
-            >
-              <div className="w-full h-full bg-gradient-to-b from-emerald-300 to-emerald-500 flex flex-col items-center justify-end pt-2">
-                <div className="w-6 h-6 rounded-full bg-[#451a03] border-t-4 border-stone-950" />
-                <div className="w-10 h-6 rounded-t-lg bg-white border-x-4 border-stone-900 mt-0.5" />
-              </div>
-            </button>
+          {/* BOTTOM COMPACT ROOM TELEPORT & HOME ACTIONS BAR */}
+          <div className="absolute bottom-3 left-3 right-3 z-40 flex flex-col sm:flex-row items-center justify-between gap-2 pointer-events-auto">
+            {/* Room Selector Pills */}
+            <div className="flex flex-wrap items-center gap-1 bg-stone-950/90 border border-stone-700/80 rounded-2xl p-1.5 shadow-xl backdrop-blur">
+              {APARTMENT_ROOMS.map((r) => (
+                <button
+                  key={r.id}
+                  onClick={() => jumpToRoom(r.id)}
+                  className={`px-2.5 py-1 rounded-xl text-[10px] font-mono font-bold transition-all ${
+                    activeRoom === r.id
+                      ? 'bg-amber-400 text-stone-950 shadow'
+                      : 'text-stone-300 hover:bg-stone-800'
+                  }`}
+                >
+                  {r.name.split(' (')[0]}
+                </button>
+              ))}
+            </div>
 
-            {/* 6-Need Status Pill (🍛 Hunger, ⚡ Energy, 🎉 Fun, 💬 Social, 🫧 Hygiene, 🚽 Toilet) */}
-            <div className="bg-white/95 backdrop-blur-md rounded-full px-4 py-2 shadow-xl grid grid-cols-3 gap-x-3 gap-y-1.5 border border-white/60">
-              {/* Hunger */}
+            {/* Quick Home Actions (Sleep, Cook, Pool Table) */}
+            <div className="flex items-center gap-1.5 bg-stone-950/90 border border-stone-700/80 rounded-2xl p-1.5 shadow-xl backdrop-blur">
               <button
-                onClick={() => triggerNeedAction('hunger', 340, 360, '🍛 Eating Jollof Rice')}
-                className="flex items-center gap-1"
-                title="Eat Meal (+Hunger)"
+                onClick={() => {
+                  jumpToRoom(unlockedTierIndex >= 2 ? 'bedroom_major_studio' : 'bedroom_minor');
+                  onUpdateWalletAndCred(0, 5, 100);
+                  setStatusToast('😴 Slept soundly! Driver Energy restored to 100%.');
+                }}
+                className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-[11px] font-mono font-bold flex items-center gap-1 active:scale-95"
               >
-                <span className="text-xs">🍛</span>
-                <div className="w-7 sm:w-9 h-2 bg-slate-200 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full ${homeState.needs.hunger < 50 ? 'bg-amber-500' : 'bg-emerald-500'}`}
-                    style={{ width: `${homeState.needs.hunger}%` }}
-                  />
-                </div>
+                <Bed className="w-3.5 h-3.5" />
+                <span>SLEEP (100% ⚡)</span>
               </button>
 
-              {/* Energy */}
               <button
-                onClick={() => triggerNeedAction('energy', 315, 395, '😴 Power Nap on Bed')}
-                className="flex items-center gap-1"
-                title="Sleep on Bed (+Energy)"
+                onClick={() => {
+                  if (walletNaira < 1500) {
+                    setStatusToast('⚠️ Need ₦1,500 to cook Jollof Rice & Plantain!');
+                    return;
+                  }
+                  jumpToRoom('kitchen_dining_area');
+                  onUpdateWalletAndCred(-1500, 3, Math.min(100, energy + 35));
+                  setStatusToast('🍛 Ate hot Jollof at the circular dining table (+35 Energy).');
+                }}
+                className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-mono font-bold flex items-center gap-1 active:scale-95"
               >
-                <span className="text-xs">⚡</span>
-                <div className="w-7 sm:w-9 h-2 bg-slate-200 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full ${homeState.needs.energy < 50 ? 'bg-amber-500' : 'bg-emerald-500'}`}
-                    style={{ width: `${homeState.needs.energy}%` }}
-                  />
-                </div>
+                <Utensils className="w-3.5 h-3.5" />
+                <span>EAT (₦1.5k)</span>
               </button>
 
-              {/* Fun */}
               <button
-                onClick={() => triggerNeedAction('fun', 440, 345, '🎉 Chilling to Afrobeats')}
-                className="flex items-center gap-1"
-                title="Relax (+Fun)"
+                onClick={() => {
+                  jumpToRoom('main_living_recreation_room');
+                  onUpdateWalletAndCred(0, 4, Math.min(100, energy + 15));
+                  setStatusToast('🎱 Racked a frame on the green-felt pool table (+15 Energy)!');
+                }}
+                className="px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-[11px] font-mono font-bold flex items-center gap-1 active:scale-95"
               >
-                <span className="text-xs">🎉</span>
-                <div className="w-7 sm:w-9 h-2 bg-slate-200 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-emerald-500 rounded-full"
-                    style={{ width: `${homeState.needs.fun}%` }}
-                  />
-                </div>
-              </button>
-
-              {/* Social */}
-              <button
-                onClick={() => triggerNeedAction('social', 395, 375, '💬 Chatting with Neighbors')}
-                className="flex items-center gap-1"
-                title="Socialize (+Social)"
-              >
-                <span className="text-xs">💬</span>
-                <div className="w-7 sm:w-9 h-2 bg-slate-200 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-emerald-500 rounded-full"
-                    style={{ width: `${homeState.needs.social}%` }}
-                  />
-                </div>
-              </button>
-
-              {/* Hygiene */}
-              <button
-                onClick={() => triggerNeedAction('hygiene', 330, 260, '🫧 Freshening Up')}
-                className="flex items-center gap-1"
-                title="Wash Up (+Hygiene)"
-              >
-                <span className="text-xs">🫧</span>
-                <div className="w-7 sm:w-9 h-2 bg-slate-200 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-emerald-500 rounded-full"
-                    style={{ width: `${homeState.needs.hygiene}%` }}
-                  />
-                </div>
-              </button>
-
-              {/* Toilet */}
-              <button
-                onClick={() => triggerNeedAction('toilet', 345, 250, '🚽 Using Restroom')}
-                className="flex items-center gap-1"
-                title="Restroom (+Comfort)"
-              >
-                <span className="text-xs">🚽</span>
-                <div className="w-7 sm:w-9 h-2 bg-slate-200 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-emerald-500 rounded-full"
-                    style={{ width: `${homeState.needs.toilet}%` }}
-                  />
-                </div>
+                <Tv className="w-3.5 h-3.5" />
+                <span>POOL & TV</span>
               </button>
             </div>
           </div>
 
-          {/* Right Circular Orbit / Angle Reset Button */}
-          <button
-            onClick={() => setRoomRotation((r) => (r === 0 ? -6 : r === -6 ? 6 : 0))}
-            className="w-11 h-11 rounded-full bg-white/95 hover:bg-white active:scale-95 shadow-xl flex items-center justify-center text-slate-800 shrink-0"
-            title="Rotate Room Perspective"
-          >
-            <RotateCcw className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Bottom White Rounded Navigation Pill Bar (Home | Buy | Map | Phone) */}
-        <div className="w-full max-w-md bg-white/95 backdrop-blur-md rounded-[28px] p-1.5 shadow-[0_12px_35px_rgba(0,0,0,0.5)] grid grid-cols-4 gap-1 border border-white/80">
-          <button
-            onClick={() => setActiveBottomTab('HOME')}
-            className={`py-2 rounded-[22px] flex flex-col items-center justify-center gap-0.5 transition-all ${
-              activeBottomTab === 'HOME'
-                ? 'bg-[#111827] text-white shadow-md'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Home className="w-4 h-4" />
-            <span className="text-[11px] font-bold">Home</span>
-          </button>
-
-          <button
-            onClick={() => setActiveBottomTab((prev) => (prev === 'BUY' ? 'HOME' : 'BUY'))}
-            className={`py-2 rounded-[22px] flex flex-col items-center justify-center gap-0.5 transition-all ${
-              activeBottomTab === 'BUY'
-                ? 'bg-[#111827] text-white shadow-md'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Sofa className="w-4 h-4" />
-            <span className="text-[11px] font-bold">Buy</span>
-          </button>
-
-          <button
-            onClick={onGoToDrive}
-            className="py-2 rounded-[22px] flex flex-col items-center justify-center gap-0.5 text-slate-600 hover:text-slate-900 hover:bg-amber-100/60 transition-all"
-          >
-            <MapIcon className="w-4 h-4" />
-            <span className="text-[11px] font-bold">Map / Drive</span>
-          </button>
-
-          <button
-            onClick={onOpenPhone}
-            className="py-2 rounded-[22px] flex flex-col items-center justify-center gap-0.5 text-slate-600 hover:text-slate-900 transition-all"
-          >
-            <Smartphone className="w-4 h-4" />
-            <span className="text-[11px] font-bold">Phone</span>
-          </button>
-        </div>
-      </div>
+          {/* SUBTLE STATUS CAPTION */}
+          <div className="absolute bottom-16 left-1/2 -translate-x-1/2 z-30 pointer-events-none bg-stone-950/80 border border-stone-800 px-3 py-1 rounded-full text-[11px] font-mono text-stone-300 shadow">
+            {statusToast} • <span className="text-amber-300">{currentRoomDef.name}</span>
+          </div>
+        </>
+      )}
     </div>
   );
 };
+export default PlayerHome2D;

@@ -548,12 +548,26 @@ export class ThreeDrivingEngine {
     this.world = new CANNON.World();
     this.world.gravity.set(0, -9.82, 0);
 
+    // 1b. High-Friction Tire & Road Contact Materials (Prevents 'sliding on ice' during sharp turns)
+    const groundMat = new CANNON.Material('groundMaterial');
+    const tireMat = new CANNON.Material('tireMaterial');
+    const tireGroundContact = new CANNON.ContactMaterial(groundMat, tireMat, {
+      friction: 9.5,
+      restitution: 0.0,
+      contactEquationStiffness: 1e8,
+      contactEquationRelaxation: 3,
+    });
+    this.world.addContactMaterial(tireGroundContact);
+    this.world.defaultContactMaterial.friction = 8.5;
+    this.world.defaultContactMaterial.restitution = 0.0;
+
     // 2. Create a static CANNON.Body with a CANNON.Plane shape to serve as the physical ground matching our road mesh
     const groundShape = new CANNON.Plane();
     this.groundBody = new CANNON.Body({
       mass: 0,
       shape: groundShape,
       type: CANNON.Body.STATIC,
+      material: groundMat,
     });
     // Rotate plane so normal points +Y (up)
     this.groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
@@ -572,7 +586,12 @@ export class ThreeDrivingEngine {
     ];
     shortcutGroundCoords.forEach(([gx, gz, widthX, lengthZ]) => {
       const slabShape = new CANNON.Box(new CANNON.Vec3(widthX / 2, 0.25, lengthZ / 2));
-      const slabBody = new CANNON.Body({ mass: 0, type: CANNON.Body.STATIC, shape: slabShape });
+      const slabBody = new CANNON.Body({
+        mass: 0,
+        type: CANNON.Body.STATIC,
+        shape: slabShape,
+        material: groundMat,
+      });
       slabBody.position.set(gx, -0.25, gz);
       this.world.addBody(slabBody);
     });
@@ -587,17 +606,16 @@ export class ThreeDrivingEngine {
     rightBarrier.position.set(30.5, 2.0, 0);
     this.world.addBody(rightBarrier);
 
-    // 3. Implement a CANNON.RaycastVehicle setup for our Danfo bus
-    // Give the chassis body a mass of 1500
+    // 3. Implement a CANNON.RaycastVehicle setup for our Danfo bus with LOWERED CENTER OF MASS
     const chassisShape = new CANNON.Box(new CANNON.Vec3(1.06, 0.85, 2.45));
-    this.chassisBody = new CANNON.Body({ mass: 1500 });
-    this.chassisBody.addShape(chassisShape, new CANNON.Vec3(0, 0, 0));
-    // Position chassis above ground
+    this.chassisBody = new CANNON.Body({ mass: 1500, material: tireMat });
+    // Offset chassis collision box +0.35m upwards relative to the body origin so the effective Center of Mass sits 0.35m lower!
+    this.chassisBody.addShape(chassisShape, new CANNON.Vec3(0, 0.35, 0));
     this.chassisBody.position.set(0, 0.85, 0);
-    // CRITICAL: Strictly lock pitch (X) and roll (Z) so vehicle CANNOT flip upside down!
+    // CRITICAL: Strictly lock pitch (X) and roll (Z) so vehicle CANNOT flip or tip during fast turns!
     this.chassisBody.angularFactor.set(0, 1, 0);
-    this.chassisBody.angularDamping = 0.6;
-    this.chassisBody.linearDamping = 0.04;
+    this.chassisBody.angularDamping = 0.85;
+    this.chassisBody.linearDamping = 0.08;
     this.world.addBody(this.chassisBody);
 
     this.vehicle = new CANNON.RaycastVehicle({
@@ -607,20 +625,20 @@ export class ThreeDrivingEngine {
       indexForwardAxis: 2,
     });
 
-    // Configure 4 physical wheels with realistic suspension stiffness, damping, and zero roll influence
+    // Configure 4 physical wheels with FIRM suspension stiffness, strong damping, high frictionSlip, and zero roll influence
     const wheelOptions = {
       radius: 0.42,
       directionLocal: new CANNON.Vec3(0, -1, 0),
-      suspensionStiffness: 28,
-      suspensionRestLength: 0.4,
-      frictionSlip: 12.0,
-      dampingRelaxation: 2.6,
-      dampingCompression: 2.6,
-      maxSuspensionForce: 100000,
-      rollInfluence: 0.0, // Zero roll influence so suspension cannot flip or tilt the bus!
+      suspensionStiffness: 58,     // Firmer springs to prevent violent weight transfer
+      suspensionRestLength: 0.32,  // Planted stance
+      frictionSlip: 28.0,          // High lateral tire friction so tires bite into turns without sliding on ice
+      dampingRelaxation: 5.4,      // Firm rebound damping so chassis stabilizes immediately after a turn
+      dampingCompression: 5.8,     // Firm compression damping
+      maxSuspensionForce: 250000,
+      rollInfluence: 0.0,          // Zero roll influence so suspension cannot tilt or flip the bus
       axleLocal: new CANNON.Vec3(1, 0, 0),
       chassisConnectionPointLocal: new CANNON.Vec3(0, 0, 0),
-      maxSuspensionTravel: 0.3,
+      maxSuspensionTravel: 0.22,
       customSlidingRotationalSpeed: -30,
       useCustomSlidingRotationalSpeed: true,
     };
@@ -628,22 +646,22 @@ export class ThreeDrivingEngine {
     // 4 physical wheels: Front-Left, Front-Right, Rear-Left, Rear-Right
     this.vehicle.addWheel({
       ...wheelOptions,
-      chassisConnectionPointLocal: new CANNON.Vec3(1.05, -0.2, 1.6),
+      chassisConnectionPointLocal: new CANNON.Vec3(1.05, -0.15, 1.6),
       isFrontWheel: true,
     });
     this.vehicle.addWheel({
       ...wheelOptions,
-      chassisConnectionPointLocal: new CANNON.Vec3(-1.05, -0.2, 1.6),
+      chassisConnectionPointLocal: new CANNON.Vec3(-1.05, -0.15, 1.6),
       isFrontWheel: true,
     });
     this.vehicle.addWheel({
       ...wheelOptions,
-      chassisConnectionPointLocal: new CANNON.Vec3(1.05, -0.2, -1.6),
+      chassisConnectionPointLocal: new CANNON.Vec3(1.05, -0.15, -1.6),
       isFrontWheel: false,
     });
     this.vehicle.addWheel({
       ...wheelOptions,
-      chassisConnectionPointLocal: new CANNON.Vec3(-1.05, -0.2, -1.6),
+      chassisConnectionPointLocal: new CANNON.Vec3(-1.05, -0.15, -1.6),
       isFrontWheel: false,
     });
 
@@ -4183,54 +4201,68 @@ export class ThreeDrivingEngine {
       }
     }
 
-    // NATURAL ACKERMANN / BICYCLE VEHICLE TURNING KINEMATICS (Zero Lateral Sliding!)
-    // Dynamically expand lateral road bounds for Oshodi Bus Park, Gas Station Pull-Off Bays & Branching Shortcuts!
+    // TIGHT 'DR. DRIVING' LATERAL VELOCITY DAMPENING & ACKERMANN KINEMATICS (Zero Ice-Sliding!)
     const turnDir = gear === 'R' ? -1 : 1;
     const roadBounds = this.getAllowedRoadBounds(roadDistanceTraveled);
     const minRoadX = roadBounds.minX;
     const maxRoadX = roadBounds.maxX;
     const targetX = Math.max(minRoadX, Math.min(maxRoadX, laneOffsetMeters));
 
+    // Step Cannon-es physics world & cancel out any local lateral sideways velocity slide
+    this.world.step(1 / 60, Math.min(dt, 0.05), 2);
+    const localForwardX = Math.sin(this.busHeadingYaw);
+    const localForwardZ = Math.cos(this.busHeadingYaw);
+    const localRightX = Math.cos(this.busHeadingYaw);
+    const localRightZ = -Math.sin(this.busHeadingYaw);
+    const lateralSlideSpeed =
+      this.chassisBody.velocity.x * localRightX + this.chassisBody.velocity.z * localRightZ;
+    // Artificial sideways velocity dampening (cancels out lateral drift immediately)
+    const dampedLateral = lateralSlideSpeed * Math.pow(0.0005, dt);
+
     // Direct synchronization of physics chassis & visual 3D bus
     this.chassisBody.position.x = targetX;
     this.busRoot.position.x = targetX;
     this.chassisBody.position.z = roadDistanceTraveled;
     this.busRoot.position.z = roadDistanceTraveled;
-    this.chassisBody.velocity.z = isEngineRunning ? speedMps * Math.cos(this.busHeadingYaw) : 0;
-    this.chassisBody.velocity.x = isEngineRunning ? speedMps * Math.sin(this.busHeadingYaw) : 0;
+    this.chassisBody.velocity.x =
+      isEngineRunning ? speedMps * localForwardX + dampedLateral * localRightX : 0;
+    this.chassisBody.velocity.z =
+      isEngineRunning ? speedMps * localForwardZ + dampedLateral * localRightZ : 0;
 
     // Strict upright stabilization for chassis height
-    if (this.chassisBody.position.y < 0.4 || isNaN(this.chassisBody.position.y)) {
+    if (this.chassisBody.position.y < 0.4 || this.chassisBody.position.y > 1.2 || isNaN(this.chassisBody.position.y)) {
       this.chassisBody.position.y = 0.85;
       this.chassisBody.velocity.y = 0;
     }
-    this.busRoot.position.y = this.chassisBody.position.y;
+    this.busRoot.position.y = 0.85;
 
-    // Smoothly interpolate steering angle & suspension banking roll/pitch
+    // Smoothly interpolate steering angle & firm suspension banking roll/pitch
     this.smoothedSteerNorm = THREE.MathUtils.lerp(
       this.smoothedSteerNorm,
       steerNorm,
-      Math.min(1.0, dt * 15.0)
+      Math.min(1.0, dt * 22.0)
     );
 
-    // Smoothly apply true integrated vehicle heading yaw (bus only turns its nose as it drives forward!)
+    // Snappy, responsive 'Dr. Driving' cornering yaw with zero post-turn drift
     if (params.headingYaw !== undefined) {
-      this.busHeadingYaw = THREE.MathUtils.lerp(this.busHeadingYaw, params.headingYaw, Math.min(1.0, dt * 18.0));
+      this.busHeadingYaw = THREE.MathUtils.lerp(this.busHeadingYaw, params.headingYaw, Math.min(1.0, dt * 26.0));
     } else if (speedMps > 0.05 && !isSteppedDown) {
-      const wheelAngleRad = -this.smoothedSteerNorm * 0.46;
-      const yawRate = turnDir * (speedMps / 3.6) * Math.tan(wheelAngleRad) * 1.15;
-      const selfAlign = (1 - Math.abs(this.smoothedSteerNorm) * 0.65) * (0.85 + speedMps * 0.1);
-      this.busHeadingYaw += (yawRate - this.busHeadingYaw * selfAlign) * dt;
-      this.busHeadingYaw = Math.max(-0.48, Math.min(0.48, this.busHeadingYaw));
+      if (Math.abs(this.smoothedSteerNorm) > 0.02) {
+        const targetYaw = -this.smoothedSteerNorm * 0.42 * turnDir;
+        this.busHeadingYaw = THREE.MathUtils.lerp(this.busHeadingYaw, targetYaw, Math.min(1.0, dt * 14.0));
+      } else {
+        this.busHeadingYaw *= Math.pow(0.0008, dt);
+      }
+      this.busHeadingYaw = Math.max(-0.46, Math.min(0.46, this.busHeadingYaw));
     }
 
-    // Natural suspension banking roll proportional to actual forward speed & turn rate (zero roll when stopped!)
-    const speedFactorForRoll = Math.min(1.0, speedMps / 12.0);
-    const targetBodyRoll = this.smoothedSteerNorm * speedFactorForRoll * 0.032;
-    this.smoothedBodyRoll = THREE.MathUtils.lerp(this.smoothedBodyRoll, targetBodyRoll, Math.min(1.0, dt * 12.0));
+    // Firm suspension banking roll (reduced roll due to lowered CoM and stiffened springs)
+    const speedFactorForRoll = Math.min(1.0, speedMps / 14.0);
+    const targetBodyRoll = this.smoothedSteerNorm * speedFactorForRoll * 0.012;
+    this.smoothedBodyRoll = THREE.MathUtils.lerp(this.smoothedBodyRoll, targetBodyRoll, Math.min(1.0, dt * 18.0));
 
-    const targetBodyPitch = isBraking && speedMps > 1 ? 0.014 : (throttle > 0.1 && speedMps > 1 ? -0.008 : 0);
-    this.smoothedBodyPitch = THREE.MathUtils.lerp(this.smoothedBodyPitch, targetBodyPitch, Math.min(1.0, dt * 10.0));
+    const targetBodyPitch = isBraking && speedMps > 1 ? 0.009 : (throttle > 0.1 && speedMps > 1 ? -0.005 : 0);
+    this.smoothedBodyPitch = THREE.MathUtils.lerp(this.smoothedBodyPitch, targetBodyPitch, Math.min(1.0, dt * 16.0));
 
     this.busRoot.rotation.order = 'YXZ';
     this.busRoot.rotation.y = this.busHeadingYaw;
