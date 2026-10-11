@@ -256,7 +256,7 @@ export class RoadManager {
         mainSpec.type === 'FOUR_WAY_INTERSECTION' ||
         mainSpec.type === 'ROUNDABOUT' ||
         (centerZ >= 300 && centerZ <= 900) ||
-        (centerZ >= 1250 && centerZ <= 1850);
+        (centerZ >= 1250 && centerZ <= 2200);
 
       const onLeftCorridor =
         playerX > 7.5 ||

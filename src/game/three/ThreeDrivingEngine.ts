@@ -195,6 +195,21 @@ export class ThreeDrivingEngine {
   private exhaustParticles: THREE.Points;
   private exhaustPositions: Float32Array;
   private rainParticles: THREE.Points | null = null;
+  // 🛍️ Oshodi Central Market Shortcut Vendors & Slow-Moving Market Traffic
+  private oshodiMarketVendors: Array<{
+    id: string;
+    name: string;
+    specialty: string;
+    x: number;
+    z: number;
+  }> = [];
+  private oshodiMarketTraffic: Array<{
+    group: THREE.Group;
+    speed: number;
+    laneX: number;
+    minZ: number;
+    maxZ: number;
+  }> = [];
 
   // Dynamic Chase Camera Smooth Spring Damping & Speed FOV
   private currentChaseCamPos: THREE.Vector3 = new THREE.Vector3(0, 3.8, -10.5);
@@ -403,6 +418,10 @@ export class ThreeDrivingEngine {
     if (z >= 1270 && z <= 1810) {
       minX = Math.min(minX, -21.0);
     }
+    // 6b. Oshodi Central Market Shortcut Corridor (z = 1710..2150 on Right -X side, laneCenterX = -18.5)
+    if (z >= 1710 && z <= 2150) {
+      minX = Math.min(minX, -23.5);
+    }
     // 7. Gas Station #3 Pull-Off Side Lane (Oando Mega Petrol at z = 1725..1775 on Left +X side)
     if (z >= 1725 && z <= 1775) {
       maxX = Math.max(maxX, 18.0);
@@ -517,7 +536,8 @@ export class ThreeDrivingEngine {
       // When between the entry and exit intersections, solid island buildings separate the highway and shortcut street
       const isShortcutZone1 = targetZ >= 358 && targetZ <= 822; // Allen Ave (Right, lane -18.5)
       const isShortcutZone2 = targetZ >= 678 && targetZ <= 1082; // Toyin St (Left, lane +18.5)
-      const isShortcutZone3 = targetZ >= 1298 && targetZ <= 1782; // Mushin (Right, lane -18.5)
+      const isShortcutZone3 = targetZ >= 1298 && targetZ <= 1702; // Mushin (Right, lane -18.5)
+      const isShortcutZoneOshodi = targetZ >= 1738 && targetZ <= 2122; // Oshodi Central Market (Right, lane -18.5)
       const isShortcutZone4 = targetZ >= 2338 && targetZ <= 2862; // Surulere (Left, lane +18.5)
 
       if (isShortcutZone1) {
@@ -574,6 +594,25 @@ export class ThreeDrivingEngine {
             newX = -21.2;
             collided = true;
             collisionMsg = '💥 GBAM! Ladipo market building wall!';
+          }
+        }
+      } else if (isShortcutZoneOshodi) {
+        if (targetX > -11.0) {
+          if (newX < -8.6) {
+            newX = -8.6;
+            collided = true;
+            collisionMsg = '💥 Island divider wall! Turn right into the marked Oshodi Market shortcut entry!';
+          }
+        } else {
+          // Middle road inside Oshodi Market: stalls on left (-23.5) and right (-13.5), middle street is -18.5
+          if (newX > -14.2) {
+            newX = -14.2;
+            collided = true;
+            collisionMsg = '💥 Watch out! You bumped a right-side market stall!';
+          } else if (newX < -22.8) {
+            newX = -22.8;
+            collided = true;
+            collisionMsg = '💥 Watch out! You bumped a left-side market stall!';
           }
         }
       } else if (isShortcutZone4) {
@@ -1204,12 +1243,13 @@ export class ThreeDrivingEngine {
     this.buildThirdMainlandRoadblocks();
     this.buildIkejaArea();
     this.buildOshodiArea();
+    this.buildOshodiMarketShortcut();
     this.buildSurulereArea();
   }
 
   /**
    * Builds Multiple 90-Degree Road Intersections on BOTH sides (-X and +X) leading to different districts
-   * (Allen Ave, Toyin St / Alausa, Mushin / Ladipo, Surulere / Bode Thomas) lined with urban buildings!
+   * (Allen Ave, Toyin St / Alausa, Mushin / Ladipo, Oshodi Central Market, Surulere / Bode Thomas) lined with urban buildings!
    */
   private buildBranchingShortcuts() {
     const asphaltTex = createAsphaltTexture();
@@ -1238,7 +1278,15 @@ export class ThreeDrivingEngine {
         name: 'MUSHIN / LADIPO AUTO PARTS BYPASS',
         subtitle: 'TURN RIGHT ↪ INNER-STREET SHORTCUT (+35% SPEED)',
         startZ: 1280,
-        endZ: 1800,
+        endZ: 1720,
+        side: 'RIGHT' as const,
+        laneCenterX: -18.5,
+      },
+      {
+        name: 'OSHODI CENTRAL MARKET SHORTCUT',
+        subtitle: 'TURN RIGHT ↪ VENDORS ON BOTH SIDES • SLOW CRAWL (+35% PROGRESS)',
+        startZ: 1720,
+        endZ: 2140,
         side: 'RIGHT' as const,
         laneCenterX: -18.5,
       },
@@ -1652,6 +1700,72 @@ export class ThreeDrivingEngine {
     unionSign.position.set(-24.2, 4.4, 2);
     park.add(unionSign);
 
+    // 6. 🚏 Starting Bus Stop & Passenger Boarding Platform (Bay 02 - Right outside player's bus door!)
+    const platformMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.8 });
+    const safetyYellowMat = new THREE.MeshBasicMaterial({ color: 0xfacc15 });
+    const platform = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.22, 36), platformMat);
+    platform.position.set(-13.4, 0.11, 0);
+    park.add(platform);
+
+    const platformSafetyEdge = new THREE.Mesh(new THREE.PlaneGeometry(0.24, 36), safetyYellowMat);
+    platformSafetyEdge.rotation.x = -Math.PI / 2;
+    platformSafetyEdge.position.set(-15.1, 0.23, 0);
+    park.add(platformSafetyEdge);
+
+    // Waiting Benches & Departure Sign
+    const benchMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.8 });
+    for (let bz = -8; bz <= 8; bz += 8) {
+      const bench = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.45, 2.8), benchMat);
+      bench.position.set(-12.5, 0.35, bz);
+      park.add(bench);
+    }
+
+    const platformSignTex = createSignboardTexture('🚏 DEPARTURE BAY 02', 'CMS MARINA • OSHODI • MARYLAND (ENTER WITH CHANGE)', '#15803d');
+    const platformSign = new THREE.Mesh(
+      new THREE.BoxGeometry(0.2, 1.4, 12),
+      new THREE.MeshStandardMaterial({ map: platformSignTex })
+    );
+    platformSign.position.set(-12.0, 3.8, 0);
+    park.add(platformSign);
+
+    // 7. Lively 3D Nigerian Commuters Waiting at the Starting Bay & Bus Stop!
+    const startingCommuters = [
+      // Right outside passenger sliding door and front windshield on platform (x: -13.2 to -13.8, z: 0.6 to 18)
+      { role: 'Market Woman (Mama Nkechi)', isWoman: true, outfitColor: 0x16a34a, capColor: 0xfacc15, hasBasket: true, waving: true, x: -13.5, z: 0.8, rotY: 0.0 },
+      { role: 'Conductor Tout (Segun)', isWoman: false, outfitColor: 0xfacc15, capColor: 0x09090b, waving: true, x: -13.8, z: 2.2, rotY: 0.05 },
+      { role: 'Corporate Worker (Emeka)', isWoman: false, outfitColor: 0xf8fafc, pantsColor: 0x1e3a8a, hasBriefcase: true, waving: true, x: -13.4, z: 3.8, rotY: -0.1 },
+      { role: 'VIP Mama (Sister Blessing)', isWoman: true, outfitColor: 0x9333ea, capColor: 0xec4899, hasBag: true, waving: true, x: -13.2, z: 5.6, rotY: 0.1 },
+      { role: 'Student (Tunde Campus)', isWoman: false, outfitColor: 0xdc2626, capColor: 0x18181b, waving: true, x: -13.6, z: 8.5, rotY: -0.2 },
+      { role: 'Market Trader (Iya Moria)', isWoman: true, outfitColor: 0xea580c, capColor: 0x15803d, hasBasket: true, x: -13.1, z: 12.0, rotY: 0.15 },
+      { role: 'Traveler (Alhaji Musa)', isWoman: false, outfitColor: 0xffffff, capColor: 0xfacc15, hasGhanaMustGo: true, x: -13.5, z: 16.5, rotY: -0.3 },
+      { role: 'Pure Water Hawker (Iya Basira)', isWoman: true, outfitColor: 0x0284c7, capColor: 0x38bdf8, hasBasket: true, waving: true, x: -12.8, z: 22.0, rotY: -0.1 },
+      { role: 'Gala Seller Boy (Kunle)', isWoman: false, outfitColor: 0xf97316, capColor: 0x18181b, waving: true, x: -11.8, z: 27.5, rotY: -0.4 },
+      // Waiting benches & terminal shed
+      { role: 'Tech Buyer (Chinedu)', isWoman: false, outfitColor: 0x0284c7, hasBriefcase: true, x: -13.5, z: -3.5, rotY: 0.2 },
+      { role: 'Market Matron (Iya Risi)', isWoman: true, outfitColor: 0xca8a04, capColor: 0x16a34a, hasBag: true, x: -13.2, z: -7.0, rotY: 0.2 },
+      { role: 'Elderly Commuter (Pa Johnson)', isWoman: false, outfitColor: 0x334155, pantsColor: 0x0f172a, x: -12.4, z: -0.5, rotY: 0.3 },
+      { role: 'Youth Corp Member (Corper Bisi)', isWoman: true, outfitColor: 0x15803d, capColor: 0x15803d, hasBag: true, waving: true, x: -12.2, z: 4.5, rotY: -0.1 },
+      { role: 'Shoe Cobbler (Bro Sunday)', isWoman: false, outfitColor: 0x78350f, x: -12.5, z: 11.5, rotY: 0.2 },
+      // Roadside Exit Merge Commuters (waving to hailing bus right at the exit gate!)
+      { role: 'Airport Commuter (Dr. Kalu)', isWoman: false, outfitColor: 0x0f172a, pantsColor: 0x3b82f6, hasBriefcase: true, waving: true, x: -10.2, z: 35.5, rotY: -0.8 },
+      { role: 'Nurse Commuter (Sister Ronke)', isWoman: true, outfitColor: 0xf0fdf4, capColor: 0x22c55e, hasBag: true, waving: true, x: -9.8, z: 38.0, rotY: -0.7 },
+    ];
+
+    startingCommuters.forEach((c) => {
+      const commuter = this.createProceduralCommuter(c);
+      commuter.position.set(c.x, 0.22, c.z);
+      commuter.rotation.y = c.rotY - Math.PI / 2;
+      park.add(commuter);
+    });
+
+    // Piles of passenger luggage & yam baskets on platform
+    const crateMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.85 });
+    [-5, 2, 7].forEach((lz) => {
+      const crate = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.55, 0.85), crateMat);
+      crate.position.set(-12.4, 0.45, lz);
+      park.add(crate);
+    });
+
     // Perimeter low concrete wall at back & far end of park (leaving z=14..38 exit wide open)
     const wallMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.7 });
     const backWall = new THREE.Mesh(new THREE.BoxGeometry(20, 1.1, 0.6), wallMat);
@@ -1766,6 +1880,281 @@ export class ThreeDrivingEngine {
     }
 
     this.scene.add(group);
+  }
+
+  /**
+   * 🛍️ OSHODI CENTRAL MARKET SHORTCUT (z = 1720m to 2160m)
+   * Authentic bustling Lagos street market with NPC vendors on BOTH sides of the road!
+   * Stalls selling peppers, tomatoes, plantains, yams, Ankara fabrics, Alaba electronics, cold minerals.
+   * Road running right in the middle where cars and fellow Danfo buses & Keke Napeps crawl slowly.
+   * Full walkability: player can drive slowly through or step out on foot to walk between stalls!
+   */
+  private buildOshodiMarketShortcut() {
+    const market = new THREE.Group();
+    market.position.set(0, 0, 0);
+
+    const asphaltTex = createAsphaltTexture();
+    const marketRoadMat = new THREE.MeshStandardMaterial({ map: asphaltTex, roughness: 0.88, color: 0x222226 });
+    const gutterWaterMat = new THREE.MeshStandardMaterial({ color: 0x1c2826, roughness: 0.3, metalness: 0.3 });
+    const gutterWallMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.9 });
+
+    const umbrellaColors = [0xfacc15, 0xef4444, 0x16a34a, 0x2563eb, 0x9333ea, 0xea580c];
+
+    const startZ = 1720;
+    const endZ = 2140;
+    const lengthZ = endZ - startZ;
+    const midZ = (startZ + endZ) / 2;
+    const streetCenterX = -18.5; // Middle road lane where vehicles drive
+
+    // 1. Weathered Paved Road in the Middle (width 8.2m)
+    const marketRoad = new THREE.Mesh(new THREE.PlaneGeometry(8.2, lengthZ), marketRoadMat);
+    marketRoad.rotation.x = -Math.PI / 2;
+    marketRoad.position.set(streetCenterX, 0.03, midZ);
+    market.add(marketRoad);
+
+    // Open concrete gutters along both curbs of the market street
+    [-4.3, 4.3].forEach((gxOffset) => {
+      const gx = streetCenterX + gxOffset;
+      const gutter = new THREE.Mesh(new THREE.PlaneGeometry(0.8, lengthZ), gutterWaterMat);
+      gutter.rotation.x = -Math.PI / 2;
+      gutter.position.set(gx, 0.04, midZ);
+      market.add(gutter);
+
+      const lip = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.22, lengthZ), gutterWallMat);
+      lip.position.set(gx, 0.11, midZ);
+      market.add(lip);
+    });
+
+    // 2. Entrance & Exit Overhead Market Gantries
+    [
+      { z: startZ, title: '🛍️ OSHODI CENTRAL MARKET SHORTCUT', sub: 'SLOW CRAWL ZONE • VENDORS ON BOTH SIDES • EXPRESS BYPASS' },
+      { z: endZ, title: '↩ REJOIN LAGOS EXPRESSWAY', sub: 'END OF OSHODI MARKET • MERGE ONTO MAIN HIGHWAY' },
+    ].forEach((gantry) => {
+      const signTex = createSignboardTexture(gantry.title, gantry.sub, '#d97706');
+      const beam = new THREE.Mesh(new THREE.BoxGeometry(10.5, 2.2, 0.35), new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.3 }));
+      beam.position.set(streetCenterX, 6.2, gantry.z);
+      market.add(beam);
+
+      [-4.6, 4.6].forEach((colX) => {
+        const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.65, 6.2, 0.65), new THREE.MeshStandardMaterial({ color: 0x78350f }));
+        pillar.position.set(streetCenterX + colX, 3.1, gantry.z);
+        market.add(pillar);
+      });
+    });
+
+    // 3. Dense Market Stalls on BOTH SIDES of the Middle Road
+    // Left stalls: x = -23.5 (facing +X into the street)
+    // Right stalls: x = -13.5 (facing -X into the street)
+    const stallTemplates = [
+      { name: 'IYA OLOJA', specialty: 'Fresh Pepper, Tomatoes & Yam Tubers', color: 0xdc2626, goodsType: 'PEPPERS', isWoman: true, outfitColor: 0x16a34a },
+      { name: 'BRO EMEKA', specialty: 'Alaba Woofers, Radios & Phones', color: 0x2563eb, goodsType: 'ELECTRONICS', isWoman: false, outfitColor: 0x1e3a8a },
+      { name: 'MAMA NKECHI', specialty: 'Ankara Wax Prints & George Lace', color: 0xca8a04, goodsType: 'ANKARA', isWoman: true, outfitColor: 0xf59e0b },
+      { name: 'IYA BASIRA', specialty: 'Chilled Minerals, Pure Water & Bread', color: 0x16a34a, goodsType: 'PROVISIONS', isWoman: true, outfitColor: 0x059669 },
+      { name: 'CHINEDU', specialty: 'Original Jeans, Hoodies & Sneakers', color: 0x9333ea, goodsType: 'CLOTHES', isWoman: false, outfitColor: 0x6b21a8 },
+      { name: 'BABA AFEEZ', specialty: 'Hot Suya Grill & Smoked Fish', color: 0xea580c, goodsType: 'SUYA', isWoman: false, outfitColor: 0xc2410c },
+      { name: 'AUNTY BISI', specialty: 'Yellow Plantains & Cassava Tubers', color: 0x10b981, goodsType: 'PLANTAIN', isWoman: true, outfitColor: 0x047857 },
+      { name: 'SEGUN SOUNDS', specialty: 'Headphones, Flash Drives & Powerbanks', color: 0x0284c7, goodsType: 'ELECTRONICS', isWoman: false, outfitColor: 0x0369a1 },
+    ];
+
+    this.oshodiMarketVendors = [];
+
+    for (let i = 0; i < 16; i++) {
+      const zPos = startZ + 25 + i * 23;
+      if (zPos > endZ - 20) break;
+
+      const tLeft = stallTemplates[i % stallTemplates.length];
+      const tRight = stallTemplates[(i + 4) % stallTemplates.length];
+
+      // Build Left Stall at x = -23.5 (facing +X, rotY = Math.PI / 2)
+      this.createMarketStallUnit(market, -23.5, zPos, Math.PI / 2, tLeft, umbrellaColors[i % umbrellaColors.length]);
+      this.oshodiMarketVendors.push({
+        id: `vendor-l-${i}`,
+        name: tLeft.name,
+        specialty: tLeft.specialty,
+        x: -23.5,
+        z: zPos,
+      });
+
+      // Build Right Stall at x = -13.5 (facing -X, rotY = -Math.PI / 2)
+      this.createMarketStallUnit(market, -13.5, zPos, -Math.PI / 2, tRight, umbrellaColors[(i + 3) % umbrellaColors.length]);
+      this.oshodiMarketVendors.push({
+        id: `vendor-r-${i}`,
+        name: tRight.name,
+        specialty: tRight.specialty,
+        x: -13.5,
+        z: zPos,
+      });
+    }
+
+    // 4. Moving Traffic Inside the Oshodi Market Shortcut (Danfos, Kekes, Cabs & Bikes crawling through crowds)
+    this.oshodiMarketTraffic = [];
+    const marketVehicles = [
+      { type: 'DANFO', z: startZ + 35, speed: 4.1, slogan: 'NO SHAKING' },
+      { type: 'KEKE', z: startZ + 95, speed: 3.6, slogan: 'BLESSING' },
+      { type: 'CAR', z: startZ + 160, speed: 3.9, color: 0x1e3a8a },
+      { type: 'DANFO', z: startZ + 230, speed: 4.0, slogan: 'FACE YOUR FRONT' },
+      { type: 'KEKE', z: startZ + 300, speed: 3.5, slogan: 'GOD DEY' },
+      { type: 'CAR', z: startZ + 370, speed: 3.8, color: 0xb45309 },
+    ];
+
+    marketVehicles.forEach((mv) => {
+      const mGroup = new THREE.Group();
+      mGroup.position.set(streetCenterX, 0, mv.z);
+
+      let model: THREE.Group;
+      if (mv.type === 'DANFO') {
+        model = this.createProceduralDanfo(0xfacc15, mv.slogan || 'LAGOS HUSTLER');
+      } else if (mv.type === 'KEKE') {
+        model = this.createProceduralKeke(mv.slogan || 'GOD DEY');
+      } else {
+        model = this.createProceduralLuxuryCar(mv.color || 0x1e3a8a);
+      }
+      mGroup.add(model);
+      market.add(mGroup);
+
+      this.oshodiMarketTraffic.push({
+        group: mGroup,
+        speed: mv.speed,
+        laneX: streetCenterX,
+        minZ: startZ + 10,
+        maxZ: endZ - 10,
+      });
+    });
+
+    this.scene.add(market);
+  }
+
+  private createMarketStallUnit(
+    parent: THREE.Group,
+    x: number,
+    z: number,
+    rotY: number,
+    template: {
+      name: string;
+      specialty: string;
+      color: number;
+      goodsType: string;
+      isWoman: boolean;
+      outfitColor: number;
+    },
+    umbrellaColor: number
+  ) {
+    const stall = new THREE.Group();
+    stall.position.set(x, 0, z);
+    stall.rotation.y = rotY;
+
+    // 1. Wooden Display Table
+    const woodMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.85 });
+    const tableTop = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.1, 2.8), woodMat);
+    tableTop.position.set(0, 0.85, 0);
+    const tableLegs = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.8, 2.6), woodMat);
+    tableLegs.position.set(0, 0.4, 0);
+    stall.add(tableTop, tableLegs);
+
+    // 2. Large Vibrant Canvas Parasol Market Umbrella (2.6m diameter)
+    const umbrellaPole = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.04, 0.04, 2.9),
+      new THREE.MeshStandardMaterial({ color: 0x52525b, metalness: 0.6 })
+    );
+    umbrellaPole.position.set(-0.2, 1.45, 0);
+    const umbrellaCanopy = new THREE.Mesh(
+      new THREE.ConeGeometry(1.5, 0.6, 12),
+      new THREE.MeshStandardMaterial({ color: umbrellaColor, roughness: 0.4, side: THREE.DoubleSide })
+    );
+    umbrellaCanopy.position.set(-0.2, 2.9, 0);
+    stall.add(umbrellaPole, umbrellaCanopy);
+
+    // 3. Merchandised Goods on Table
+    if (template.goodsType === 'PEPPERS') {
+      [-0.8, 0, 0.8].forEach((pz, idx) => {
+        const basin = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.38, 0.3, 0.16, 10),
+          new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.5 })
+        );
+        basin.position.set(0.1, 0.95, pz);
+        const producePile = new THREE.Mesh(
+          new THREE.ConeGeometry(0.34, 0.32, 8),
+          new THREE.MeshStandardMaterial({ color: idx === 1 ? 0xdc2626 : (idx === 0 ? 0xef4444 : 0xb91c1c), roughness: 0.3 })
+        );
+        producePile.position.set(0.1, 1.15, pz);
+        stall.add(basin, producePile);
+      });
+    } else if (template.goodsType === 'PLANTAIN') {
+      for (let pz = -0.9; pz <= 0.9; pz += 0.45) {
+        const plantain = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.12, 0.14, 0.65, 8),
+          new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.5 })
+        );
+        plantain.rotation.z = Math.PI / 2;
+        plantain.position.set(0.1, 0.96, pz);
+        const yam = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.1, 0.1, 0.7, 8),
+          new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.9 })
+        );
+        yam.position.set(-0.3, 0.96, pz);
+        stall.add(plantain, yam);
+      }
+    } else if (template.goodsType === 'ELECTRONICS') {
+      [-0.7, 0.1, 0.7].forEach((ez) => {
+        const woofer = new THREE.Mesh(
+          new THREE.BoxGeometry(0.45, 0.55, 0.45),
+          new THREE.MeshStandardMaterial({ color: 0x09090b, roughness: 0.3 })
+        );
+        woofer.position.set(0.1, 1.18, ez);
+        stall.add(woofer);
+      });
+    } else if (template.goodsType === 'ANKARA') {
+      const ankaraColors = [0xf59e0b, 0x10b981, 0x3b82f6, 0xec4899];
+      [-0.8, -0.3, 0.3, 0.8].forEach((az, idx) => {
+        const roll = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.14, 0.14, 0.65, 8),
+          new THREE.MeshStandardMaterial({ color: ankaraColors[idx % ankaraColors.length], roughness: 0.6 })
+        );
+        roll.position.set(0.1, 0.98, az);
+        stall.add(roll);
+      });
+    } else if (template.goodsType === 'PROVISIONS') {
+      const cooler = new THREE.Mesh(
+        new THREE.BoxGeometry(0.65, 0.48, 0.8),
+        new THREE.MeshStandardMaterial({ color: 0x2563eb, roughness: 0.4 })
+      );
+      cooler.position.set(0.1, 1.15, -0.6);
+      const carton = new THREE.Mesh(
+        new THREE.BoxGeometry(0.5, 0.4, 0.7),
+        new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.8 })
+      );
+      carton.position.set(0.1, 1.12, 0.6);
+      stall.add(cooler, carton);
+    } else {
+      const box = new THREE.Mesh(
+        new THREE.BoxGeometry(0.8, 0.45, 2.2),
+        new THREE.MeshStandardMaterial({ color: template.color, roughness: 0.6 })
+      );
+      box.position.set(0.1, 1.12, 0);
+      stall.add(box);
+    }
+
+    // 4. 3D NPC Vendor (Standing behind table, facing forward towards the middle street!)
+    const vendor = this.createProceduralCommuter({
+      isWoman: template.isWoman,
+      outfitColor: template.outfitColor,
+      capColor: template.isWoman ? umbrellaColor : 0x09090b,
+      waving: true,
+    });
+    vendor.position.set(-0.85, 0, 0);
+    vendor.rotation.y = Math.PI / 2;
+    stall.add(vendor);
+
+    // 5. Overhead Floating Stall Signboard
+    const signTex = createSignboardTexture(template.name, template.specialty, '#b45309');
+    const signboard = new THREE.Mesh(
+      new THREE.BoxGeometry(0.1, 0.65, 2.6),
+      new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.4 })
+    );
+    signboard.position.set(0.85, 2.1, 0);
+    stall.add(signboard);
+
+    parent.add(stall);
   }
 
   /** SURULERE — Residential + Teslim Balogun stadium area */
@@ -3258,6 +3647,133 @@ export class ThreeDrivingEngine {
 
     group.userData = { leftLeg, rightLeg, leftArm, rightArm };
     return group;
+  }
+
+  /**
+   * 🚶 Builds 3D Nigerian Commuters, Passengers & Market Vendors
+   * with authentic Ankara fabrics, traditional caps / Gele headwraps,
+   * baskets, briefcases, bags, and hailing gestures!
+   */
+  public createProceduralCommuter(options: {
+    outfitColor?: number;
+    pantsColor?: number;
+    capColor?: number;
+    hasBag?: boolean;
+    hasBasket?: boolean;
+    hasBriefcase?: boolean;
+    hasGhanaMustGo?: boolean;
+    isWoman?: boolean;
+    waving?: boolean;
+    seated?: boolean;
+  } = {}): THREE.Group {
+    const person = new THREE.Group();
+    const skinMat = new THREE.MeshStandardMaterial({ color: 0x4a2c18, roughness: 0.85 });
+    const outfitMat = new THREE.MeshStandardMaterial({
+      color: options.outfitColor || 0xd97706,
+      roughness: 0.65,
+    });
+    const pantsMat = new THREE.MeshStandardMaterial({
+      color: options.pantsColor || (options.isWoman ? 0xb45309 : 0x1e293b),
+      roughness: 0.75,
+    });
+    const headwearMat = new THREE.MeshStandardMaterial({
+      color: options.capColor || 0xfacc15,
+      roughness: 0.5,
+    });
+
+    const isSeated = options.seated || false;
+
+    // Torso / Ankara Gown or Shirt
+    const torsoGeo = options.isWoman
+      ? new THREE.CylinderGeometry(0.2, 0.28, 0.68, 10)
+      : new THREE.BoxGeometry(0.38, 0.58, 0.24);
+    const torso = new THREE.Mesh(torsoGeo, outfitMat);
+    torso.position.y = isSeated ? 0.82 : 1.12;
+    person.add(torso);
+
+    // Head
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 12), skinMat);
+    head.position.y = isSeated ? 1.25 : 1.54;
+    person.add(head);
+
+    // Headwear: Gele headwrap for women or cap for men
+    if (options.isWoman) {
+      const gele = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.16, 0.16, 10), headwearMat);
+      gele.position.set(0, isSeated ? 1.38 : 1.67, 0);
+      gele.rotation.z = 0.12;
+      person.add(gele);
+    } else if (options.capColor) {
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.1, 10), headwearMat);
+      cap.position.set(0, isSeated ? 1.35 : 1.64, 0.02);
+      person.add(cap);
+    }
+
+    // Legs
+    if (!isSeated) {
+      if (!options.isWoman) {
+        [-0.09, 0.09].forEach((lx) => {
+          const leg = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.78, 0.15), pantsMat);
+          leg.position.set(lx, 0.42, 0);
+          person.add(leg);
+        });
+      } else {
+        const skirt = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.35, 0.8, 10), pantsMat);
+        skirt.position.set(0, 0.43, 0);
+        person.add(skirt);
+      }
+    } else {
+      [-0.09, 0.09].forEach((lx) => {
+        const thigh = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.42), pantsMat);
+        thigh.position.set(lx, 0.48, 0.2);
+        const shin = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.42, 0.14), pantsMat);
+        shin.position.set(lx, 0.24, 0.38);
+        person.add(thigh, shin);
+      });
+    }
+
+    // Arms
+    const armY = isSeated ? 0.85 : 1.15;
+    const leftArm = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.42, 0.11), outfitMat);
+    leftArm.position.set(-0.25, armY, 0);
+    person.add(leftArm);
+
+    const rightArm = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.42, 0.11), outfitMat);
+    if (options.waving) {
+      rightArm.position.set(0.28, armY + 0.32, 0.1);
+      rightArm.rotation.z = -0.6;
+      rightArm.rotation.x = -0.35;
+    } else {
+      rightArm.position.set(0.25, armY, 0);
+    }
+    person.add(rightArm);
+
+    // Accessories: Woven Market Basket, Briefcase, Ghana-Must-Go Bag
+    if (options.hasBasket) {
+      const basket = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.26, 0.2, 0.2, 10),
+        new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.9 })
+      );
+      basket.position.set(0.3, isSeated ? 0.6 : 0.88, 0.15);
+      person.add(basket);
+    }
+    if (options.hasBriefcase) {
+      const caseMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(0.1, 0.28, 0.38),
+        new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 0.5 })
+      );
+      caseMesh.position.set(-0.29, isSeated ? 0.55 : 0.8, 0.05);
+      person.add(caseMesh);
+    }
+    if (options.hasGhanaMustGo) {
+      const gmg = new THREE.Mesh(
+        new THREE.BoxGeometry(0.44, 0.54, 0.34),
+        new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.7 })
+      );
+      gmg.position.set(0.38, 0.27, 0.12);
+      person.add(gmg);
+    }
+
+    return person;
   }
 
   /**
@@ -5381,35 +5897,47 @@ export class ThreeDrivingEngine {
     const trafficFleetConfig = [
       // Lane -5.8 (Right Outer Commuter & BRT Lane: ~10.5 - 11.5 m/s)
       { type: 'BRT', lane: -5.8, z: 68, speed: 10.8, name: 'BRT Oshodi-TBS 01', slogan: 'BRT 101 • OSHODI ➔ TBS / CMS' },
-      { type: 'DANFO', lane: -5.8, z: 135, speed: 11.2, name: 'Jagaban Express', slogan: 'No King as God' },
-      { type: 'BRT', lane: -5.8, z: 215, speed: 11.0, name: 'BRT Ketu Express', slogan: 'BRT 102 • OSHODI ➔ IKORODU' },
-      { type: 'KEKE', lane: -5.8, z: 295, speed: 10.8, name: 'Obalende Trike', slogan: 'NO CONDITION PERMANENT' },
-      { type: 'BRT', lane: -5.8, z: 375, speed: 11.4, name: 'BRT Abule-Egba', slogan: 'BRT 103 • OSHODI ➔ ABULE-EGBA' },
-      { type: 'POLICE', lane: -5.8, z: 455, speed: 11.4, name: 'Alausa Task Force' },
+      { type: 'DANFO', lane: -5.8, z: 120, speed: 11.2, name: 'Jagaban Express', slogan: 'No King as God' },
+      { type: 'BRT', lane: -5.8, z: 185, speed: 11.0, name: 'BRT Ketu Express', slogan: 'BRT 102 • OSHODI ➔ IKORODU' },
+      { type: 'KEKE', lane: -5.8, z: 250, speed: 10.6, name: 'Obalende Trike', slogan: 'NO CONDITION PERMANENT' },
+      { type: 'BRT', lane: -5.8, z: 320, speed: 11.4, name: 'BRT Abule-Egba', slogan: 'BRT 103 • OSHODI ➔ ABULE-EGBA' },
+      { type: 'DANFO', lane: -5.8, z: 390, speed: 11.1, name: 'Agege Shuttle', slogan: 'GOD DEY' },
+      { type: 'POLICE', lane: -5.8, z: 460, speed: 11.4, name: 'Alausa Task Force' },
+      { type: 'KEKE', lane: -5.8, z: 530, speed: 10.5, name: 'Maryland Maruwa', slogan: 'ALAFIA' },
+      { type: 'BRT', lane: -5.8, z: 600, speed: 11.3, name: 'BRT Mile 12 Line', slogan: 'BRT 109 • OSHODI ➔ MILE 12' },
 
       // Lane -2.0 (Right Fast Inner Lane: ~14.5 - 15.8 m/s)
-      { type: 'LUXURY_CAR', lane: -2.0, z: 80, speed: 14.8, color: 0x1e3a8a, name: 'Royal Blue Benz C300' },
-      { type: 'DISPATCH_BIKE', lane: -2.0, z: 150, speed: 15.2, boxColor: 0x16a34a, brand: 'GOKADA' },
-      { type: 'SUV', lane: -2.0, z: 225, speed: 15.0, color: 0x334155, name: 'Gunmetal Land Cruiser' },
-      { type: 'DANFO', lane: -2.0, z: 305, speed: 14.5, name: 'Lekki Hustler', slogan: 'Eko Oni Baje' },
-      { type: 'POLICE', lane: -2.0, z: 385, speed: 15.4, name: 'RRS Rapid Response' },
-      { type: 'LUXURY_CAR', lane: -2.0, z: 465, speed: 15.5, color: 0x0f172a, name: 'Midnight Executive Benz' },
+      { type: 'LUXURY_CAR', lane: -2.0, z: 75, speed: 14.8, color: 0x1e3a8a, name: 'Royal Blue Benz C300' },
+      { type: 'DISPATCH_BIKE', lane: -2.0, z: 135, speed: 15.2, boxColor: 0x16a34a, brand: 'GOKADA' },
+      { type: 'SUV', lane: -2.0, z: 205, speed: 15.0, color: 0x334155, name: 'Gunmetal Land Cruiser' },
+      { type: 'DANFO', lane: -2.0, z: 275, speed: 14.5, name: 'Lekki Hustler', slogan: 'Eko Oni Baje' },
+      { type: 'POLICE', lane: -2.0, z: 350, speed: 15.4, name: 'RRS Rapid Response' },
+      { type: 'LUXURY_CAR', lane: -2.0, z: 420, speed: 15.5, color: 0x0f172a, name: 'Midnight Executive Benz' },
+      { type: 'DISPATCH_BIKE', lane: -2.0, z: 490, speed: 15.8, boxColor: 0xea580c, brand: 'FEZ DELIVERY' },
+      { type: 'SUV', lane: -2.0, z: 560, speed: 15.2, color: 0x475569, name: 'Silver Lexus RX' },
+      { type: 'DANFO', lane: -2.0, z: 630, speed: 14.8, name: 'Yaba Pilot', slogan: 'TIME IS MONEY' },
 
       // Lane 2.0 (Left Fast Inner Lane: ~15.0 - 16.5 m/s)
       { type: 'SUV', lane: 2.0, z: 70, speed: 15.5, color: 0x09090b, name: 'Black Prado V8' },
-      { type: 'DANFO', lane: 2.0, z: 145, speed: 15.0, name: 'Alhaji Agbaje', slogan: 'Face Your Front' },
-      { type: 'LUXURY_CAR', lane: 2.0, z: 220, speed: 16.0, color: 0xd4af37, name: 'Champagne Gold Lexus ES' },
-      { type: 'BRT', lane: 2.0, z: 300, speed: 14.8, name: 'BRT CMS Terminal', slogan: 'BRT 104 • OSHODI ➔ LEKKI / AJAH' },
-      { type: 'DISPATCH_BIKE', lane: 2.0, z: 380, speed: 15.8, boxColor: 0xea580c, brand: 'CHOWDECK' },
-      { type: 'LUXURY_CAR', lane: 2.0, z: 460, speed: 16.2, color: 0x064e3b, name: 'Emerald Benz E-Class' },
+      { type: 'DANFO', lane: 2.0, z: 140, speed: 15.0, name: 'Alhaji Agbaje', slogan: 'Face Your Front' },
+      { type: 'LUXURY_CAR', lane: 2.0, z: 210, speed: 16.0, color: 0xd4af37, name: 'Champagne Gold Lexus ES' },
+      { type: 'BRT', lane: 2.0, z: 285, speed: 14.8, name: 'BRT CMS Terminal', slogan: 'BRT 104 • OSHODI ➔ LEKKI / AJAH' },
+      { type: 'DISPATCH_BIKE', lane: 2.0, z: 360, speed: 15.8, boxColor: 0xea580c, brand: 'CHOWDECK' },
+      { type: 'LUXURY_CAR', lane: 2.0, z: 435, speed: 16.2, color: 0x064e3b, name: 'Emerald Benz E-Class' },
+      { type: 'DANFO', lane: 2.0, z: 510, speed: 15.2, name: 'Ojuelegba Storm', slogan: 'OLUWA NISHOLA' },
+      { type: 'SUV', lane: 2.0, z: 580, speed: 15.6, color: 0xb91c1c, name: 'Crimson Range Rover' },
+      { type: 'LUXURY_CAR', lane: 2.0, z: 650, speed: 16.0, color: 0x1e293b, name: 'Navy BMW 5-Series' },
 
       // Lane 5.8 (Left Outer Commuter Lane: ~11.5 - 12.8 m/s)
-      { type: 'BRT', lane: 5.8, z: 92, speed: 11.5, name: 'BRT Oshodi-Yaba', slogan: 'BRT 105 • OSHODI ➔ YABA / CMS' },
-      { type: 'BRT', lane: 5.8, z: 170, speed: 11.8, name: 'BRT TBS Line 1', slogan: 'BRT 106 • OSHODI ➔ IKEJA ALONG' },
-      { type: 'DANFO', lane: 5.8, z: 255, speed: 12.2, name: 'Rasaki Turbo', slogan: 'Destiny Child' },
-      { type: 'SUV', lane: 5.8, z: 335, speed: 12.5, color: 0xf8fafc, name: 'Pearl White G-Wagon' },
-      { type: 'DISPATCH_BIKE', lane: 5.8, z: 410, speed: 12.4, boxColor: 0xdc2626, brand: 'MAX.NG' },
-      { type: 'POLICE', lane: 5.8, z: 490, speed: 12.6, name: 'Highway Patrol 04' },
+      { type: 'BRT', lane: 5.8, z: 88, speed: 11.5, name: 'BRT Oshodi-Yaba', slogan: 'BRT 105 • OSHODI ➔ YABA / CMS' },
+      { type: 'BRT', lane: 5.8, z: 160, speed: 11.8, name: 'BRT TBS Line 1', slogan: 'BRT 106 • OSHODI ➔ IKEJA ALONG' },
+      { type: 'DANFO', lane: 5.8, z: 235, speed: 12.2, name: 'Rasaki Turbo', slogan: 'Destiny Child' },
+      { type: 'SUV', lane: 5.8, z: 310, speed: 12.5, color: 0xf8fafc, name: 'Pearl White G-Wagon' },
+      { type: 'DISPATCH_BIKE', lane: 5.8, z: 385, speed: 12.4, boxColor: 0xdc2626, brand: 'MAX.NG' },
+      { type: 'POLICE', lane: 5.8, z: 460, speed: 12.6, name: 'Highway Patrol 04' },
+      { type: 'KEKE', lane: 5.8, z: 535, speed: 11.0, name: 'CMS Tricycle', slogan: 'GRACE OF GOD' },
+      { type: 'DANFO', lane: 5.8, z: 610, speed: 12.0, name: 'Bariga Flyer', slogan: 'NO WEAPON' },
+      { type: 'BRT', lane: 5.8, z: 680, speed: 11.6, name: 'BRT Costain Line', slogan: 'BRT 110 • OSHODI ➔ COSTAIN' },
     ];
 
     trafficFleetConfig.forEach((veh) => {
@@ -6186,6 +6714,34 @@ export class ThreeDrivingEngine {
       c.group.position.x = c.baseX + Math.sin(brtAnimTime + c.phase) * 0.18;
     });
 
+    // 12c. Animate Moving Traffic Inside Oshodi Central Market Shortcut (Danfos & Keke Napeps creeping slowly through market)
+    if (this.oshodiMarketTraffic && this.oshodiMarketTraffic.length > 0) {
+      const isPlayerInMarket = this.busRoot.position.x < -12.5 && busZ >= 1710 && busZ <= 2150;
+      this.oshodiMarketTraffic.forEach((veh, vIdx) => {
+        // Slow crawl speed ~3.6 to 4.4 m/s (~13 - 16 km/h) through market crowds
+        veh.group.position.z += veh.speed * dt;
+        veh.group.position.x = veh.laneX + Math.sin(Date.now() * 0.002 + vIdx * 1.5) * 0.18;
+        if (veh.group.position.z > veh.maxZ) {
+          veh.group.position.z = veh.minZ;
+        }
+
+        // Anti-phasing collision with player if player is inside the market street:
+        if (isPlayerInMarket) {
+          const dx = this.busRoot.position.x - veh.group.position.x;
+          const dz = this.busRoot.position.z - veh.group.position.z;
+          const minSafeZ = 4.8;
+          if (Math.abs(dx) < 2.2 && Math.abs(dz) < minSafeZ) {
+            if (dz < 0) {
+              this.busRoot.position.z = veh.group.position.z - minSafeZ;
+              this.chassisBody.position.z = this.busRoot.position.z;
+            } else {
+              veh.group.position.z = this.busRoot.position.z - minSafeZ;
+            }
+          }
+        }
+      });
+    }
+
     // 13. Junction Bus Stops Positioning & Commuter Boarding Animation (Both Sides & Waybill Beacon)
     this.junctionMeshes.forEach((jMesh) => {
       jMesh.group.position.z = jMesh.junction.distanceMarkerMeters;
@@ -6806,14 +7362,34 @@ export class ThreeDrivingEngine {
       }
     }
 
+    // 🛍️ Oshodi Central Market Vendor Stall check
+    let nearbyVendor: { id: string; name: string; specialty: string; x: number; z: number; dist: number } | null = null;
+    if (this.oshodiMarketVendors) {
+      for (const v of this.oshodiMarketVendors) {
+        const dist = Math.hypot(p.x - v.x, p.z - v.z);
+        if (dist < 8.0) {
+          nearbyVendor = { id: v.id, name: v.name, specialty: v.specialty, x: v.x, z: v.z, dist };
+          break;
+        }
+      }
+    }
+
     return {
       nearbyGasAttendant: nearbyGas,
       nearbyMechanic: nearbyMech,
       nearbyBank: nearbyBank,
       nearbyPosLady: nearbyPos,
       nearbyCustomCarShop: nearbyCustom,
+      nearbyMarketVendor: nearbyVendor,
       busDistance: busDist,
     };
+  }
+
+  public isInOshodiMarket(): boolean {
+    if (!this.busRoot) return false;
+    const z = this.busRoot.position.z;
+    const x = this.busRoot.position.x;
+    return z >= 1715 && z <= 2145 && x <= -12.5;
   }
 
   public getIntersectingCustomCarShopZone(): { id: string; name: string } | null {
