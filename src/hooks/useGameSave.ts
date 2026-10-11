@@ -51,12 +51,22 @@ export function useGameSave() {
     try {
       const stored = localStorage.getItem(SAVE_KEY);
       if (stored) {
-        const parsed = JSON.parse(stored);
+        const parsed = JSON.parse(stored) || {};
         if (!parsed.bankInitialized && (!parsed.bankBalanceNaira || parsed.bankBalanceNaira === 0)) {
           parsed.bankBalanceNaira = 250000;
           parsed.bankInitialized = true;
         }
-        return { ...DEFAULT_SAVE, ...parsed };
+        return {
+          ...DEFAULT_SAVE,
+          ...parsed,
+          walletNaira: typeof parsed.walletNaira === 'number' && !isNaN(parsed.walletNaira) ? parsed.walletNaira : DEFAULT_SAVE.walletNaira,
+          bankBalanceNaira: typeof parsed.bankBalanceNaira === 'number' && !isNaN(parsed.bankBalanceNaira) ? parsed.bankBalanceNaira : DEFAULT_SAVE.bankBalanceNaira,
+          koloBalanceNaira: typeof parsed.koloBalanceNaira === 'number' && !isNaN(parsed.koloBalanceNaira) ? parsed.koloBalanceNaira : DEFAULT_SAVE.koloBalanceNaira,
+          streetCred: typeof parsed.streetCred === 'number' && !isNaN(parsed.streetCred) ? parsed.streetCred : DEFAULT_SAVE.streetCred,
+          ownedVehicles: Array.isArray(parsed.ownedVehicles) && parsed.ownedVehicles.length > 0 ? parsed.ownedVehicles : DEFAULT_SAVE.ownedVehicles,
+          unlockedHouses: Array.isArray(parsed.unlockedHouses) && parsed.unlockedHouses.length > 0 ? parsed.unlockedHouses : DEFAULT_SAVE.unlockedHouses,
+          needs: { ...DEFAULT_SAVE.needs, ...(parsed.needs || {}) },
+        };
       }
     } catch (e) {
       console.error('Failed to load save data', e);

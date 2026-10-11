@@ -743,7 +743,6 @@ export class RoadManager {
           const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
           for (const m of mats) {
             if (!sharedMats.has(m)) {
-              if (m.map) m.map.dispose();
               m.dispose();
             }
           }

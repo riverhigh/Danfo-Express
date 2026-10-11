@@ -245,9 +245,18 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
 
   const passengersCountRef = useRef<number>(gameState.bus.passengers?.length || 0);
   const luggageClaimedStopsRef = useRef<Record<string, boolean>>({});
+  const gameStateRef = useRef<GameState>(gameState);
+  const bootStateRef = useRef<'OPEN' | 'CLOSED'>(bootState);
+  const pendingRefuelCostRef = useRef<number>(0);
+
   useEffect(() => {
+    gameStateRef.current = gameState;
     passengersCountRef.current = gameState.bus.passengers?.length || 0;
-  }, [gameState.bus.passengers]);
+  }, [gameState]);
+
+  useEffect(() => {
+    bootStateRef.current = bootState;
+  }, [bootState]);
 
   // Initialize Three.js Engine on mount & connect live rear-view mirror + orthographic mini-map canvases
   useEffect(() => {
@@ -1068,8 +1077,9 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       }
 
       // 3. ZUUKS-STYLE GAS STATION LOGIC (THREE.Box3 Zone Intersection + Velocity === 0 + isEngineOn === false)
+      const currentGameState = gameStateRef.current;
       const boxGasZone = engineRef.current ? engineRef.current.getIntersectingGasStationZone() : null;
-      const gasBays = gameState.gasStations || [];
+      const gasBays = currentGameState.gasStations || [];
       const matchedGasBay = boxGasZone
         ? gasBays.find((g) => g.id === boxGasZone.id) || {
             id: boxGasZone.id,
@@ -1090,6 +1100,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           activeGasStationRef.current = matchedGasBay;
           setActiveGasStation(matchedGasBay);
           refuelStatsRef.current = { liters: 0, cost: 0 };
+          pendingRefuelCostRef.current = 0;
           setRefuelLitersPumped(0);
           setRefuelCostNaira(0);
         }
@@ -1099,33 +1110,22 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         // 2. Check if isEngineRunning === false
         // 3. Slowly increment state.fuel while deducting state.money at ₦500 per Liter!
         if (sim.speed < 0.5 && !inp.isEngineRunning) {
-          setIsRefueling(true);
+          setIsRefueling((prev) => (prev ? prev : true));
           if (sim.fuel < 100) {
             const litersDelta = 3.2 * dt; // 3.2 Liters per second smooth pumping
-            const costDelta = Math.round(litersDelta * 500); // ₦500 per Liter
+            const costDelta = litersDelta * 500; // ₦500 per Liter
             const fuelPercentDelta = litersDelta * 2.0; // 50L tank = 100%
             sim.fuel = Math.min(100, sim.fuel + fuelPercentDelta);
             refuelStatsRef.current.liters += litersDelta;
             refuelStatsRef.current.cost += costDelta;
+            pendingRefuelCostRef.current += costDelta;
 
-            if (Math.random() < 0.18) {
+            if (Math.random() < 0.12) {
               soundEngine.playCoin();
             }
-
-            setGameState((prev) => {
-              const nextWallet = Math.max(0, prev.walletNaira - costDelta);
-              return {
-                ...prev,
-                walletNaira: nextWallet,
-                bus: {
-                  ...prev.bus,
-                  fuelPercent: Math.round(sim.fuel),
-                },
-              };
-            });
           }
         } else {
-          setIsRefueling(false);
+          setIsRefueling((prev) => (prev ? false : prev));
         }
       } else {
         if (activeGasStationRef.current) {
@@ -1163,7 +1163,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       }
 
       // 4. Roadside Shop Detection (Pulling up near shop curb)
-      const shops = gameState.roadsideShops || [];
+      const shops = currentGameState.roadsideShops || [];
       const nearShop = shops.find((s) => Math.abs(s.distanceMarkerMeters - sim.distanceTraveled) < 18 && Math.abs(sim.laneOffset) > 2.5);
       if (nearShop && sim.speed < 6) {
         if (!activeShopRef.current) { activeShopRef.current = nearShop; setActiveShop(nearShop); }
@@ -1195,7 +1195,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
 
       // Periodic NPC Waybill Delivery Offer
       waybillTimer += dt;
-      if (waybillTimer >= 32 && !gameState.activeDelivery && !gameState.availableDelivery && sim.distanceTraveled > 100) {
+      if (waybillTimer >= 32 && !currentGameState.activeDelivery && !currentGameState.availableDelivery && sim.distanceTraveled > 100) {
         waybillTimer = 0;
         const downstreamJobs = SAMPLE_DELIVERY_JOBS.filter(
           (j) => j.destinationMarkerMeters > sim.distanceTraveled + 250
@@ -1215,7 +1215,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       }
 
       // 5. Junction Bus Stop Detection, AI Conductor Shouting & 5 Passenger Archetypes Boarding/Alighting
-      const juncs = gameState.junctions;
+      const juncs = currentGameState.junctions || [];
       const nearJunc = juncs.find((j) => Math.abs(j.distanceMarkerMeters - sim.distanceTraveled) <= 55);
 
       const upcomingIdx = juncs.findIndex((j) => j.distanceMarkerMeters > sim.distanceTraveled - 16);
@@ -1228,8 +1228,8 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         const isAtStop = Math.abs(distToJunc) <= 28 && sim.speed < 16;
 
         // Check if this stop has an active Waybill Delivery destination!
-        if (isAtStop && (sim.doorState === 'OPEN' || bootState === 'OPEN') && gameState.activeDelivery) {
-          const delJob = gameState.activeDelivery;
+        if (isAtStop && (sim.doorState === 'OPEN' || bootStateRef.current === 'OPEN') && currentGameState.activeDelivery) {
+          const delJob = currentGameState.activeDelivery;
           const isDeliveryMatch =
             delJob.destinationJunctionUid === nearJunc.uid ||
             delJob.destinationName.toLowerCase().includes(nearJunc.name.toLowerCase());
@@ -1253,7 +1253,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         }
 
         // Faster boarding when AI Conductor is hired!
-        const boardingInterval = gameState.conductor.hasConductor ? 0.38 : 0.58;
+        const boardingInterval = currentGameState.conductor.hasConductor ? 0.38 : 0.58;
 
         if (isAtStop && sim.doorState === 'OPEN' && !nearJunc.cleared) {
           boardingTimer += dt;
@@ -1433,53 +1433,57 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       }
 
       if (engineRef.current) {
-        engineRef.current.update(
-          {
-            speedKmH: sim.speed,
-            steeringWheelAngleDeg: sim.steeringAngle,
-            laneOffsetMeters: sim.laneOffset,
-            headingYaw: sim.headingYaw,
-            walkThirdPerson: walkThirdPersonRef.current,
-            gear: inp.gear,
-            isBraking: inp.brake,
-            cameraMode: cameraModeRef.current,
-            cameraLookYaw: lookRef.current.yaw,
-            cameraLookPitch: lookRef.current.pitch,
-            turnSignal: inp.turnSignal,
-            hazardLights: inp.hazardLights,
-            wipersActive: inp.wipersActive,
-            isEngineRunning: inp.isEngineRunning,
-            upgrades: sim.busUpgrades,
-            slogan: sim.busSlogan,
-            roadDistanceTraveled: sim.distanceTraveled,
-            fuelPercent: Math.round(sim.fuel),
-            throttle: inp.gas ? 1.0 : 0.0,
-            doorState: sim.doorState,
-            bootState: bootState,
-            hasConductor: gameState.conductor.hasConductor,
-            isSteppedDown: sim.isSteppedDown,
-            junctions: gameState.junctions,
-            activeJunctionIndex: sim.activeJunctionIndex,
-            isBoardingPassengers: sim.isBoarding,
-            activeDelivery: gameState.activeDelivery,
-            walkMoveX: walkJoyRef.current.x,
-            walkMoveZ: walkJoyRef.current.y,
-            passengerCount: passengersCountRef.current,
-          },
-          dt
-        );
+        try {
+          engineRef.current.update(
+            {
+              speedKmH: sim.speed,
+              steeringWheelAngleDeg: sim.steeringAngle,
+              laneOffsetMeters: sim.laneOffset,
+              headingYaw: sim.headingYaw,
+              walkThirdPerson: walkThirdPersonRef.current,
+              gear: inp.gear,
+              isBraking: inp.brake,
+              cameraMode: cameraModeRef.current,
+              cameraLookYaw: lookRef.current.yaw,
+              cameraLookPitch: lookRef.current.pitch,
+              turnSignal: inp.turnSignal,
+              hazardLights: inp.hazardLights,
+              wipersActive: inp.wipersActive,
+              isEngineRunning: inp.isEngineRunning,
+              upgrades: sim.busUpgrades,
+              slogan: sim.busSlogan,
+              roadDistanceTraveled: sim.distanceTraveled,
+              fuelPercent: Math.round(sim.fuel),
+              throttle: inp.gas ? 1.0 : 0.0,
+              doorState: sim.doorState,
+              bootState: bootStateRef.current,
+              hasConductor: currentGameState.conductor.hasConductor,
+              isSteppedDown: sim.isSteppedDown,
+              junctions: currentGameState.junctions || [],
+              activeJunctionIndex: sim.activeJunctionIndex,
+              isBoardingPassengers: sim.isBoarding,
+              activeDelivery: currentGameState.activeDelivery,
+              walkMoveX: walkJoyRef.current.x,
+              walkMoveZ: walkJoyRef.current.y,
+              passengerCount: passengersCountRef.current,
+            },
+            dt
+          );
 
-        const phys = engineRef.current.getPhysicsChassis();
-        if (phys && !isNaN(phys.position.x) && !isNaN(phys.position.z)) {
-          sim.laneOffset = phys.position.x;
-          sim.distanceTraveled = Math.max(0, phys.position.z);
-        }
+          const phys = engineRef.current.getPhysicsChassis();
+          if (phys && !isNaN(phys.position.x) && !isNaN(phys.position.z)) {
+            sim.laneOffset = phys.position.x;
+            sim.distanceTraveled = Math.max(0, phys.position.z);
+          }
 
-        const collisionMsg = engineRef.current.consumeCollisionMessage();
-        if (collisionMsg) {
-          sim.speed = Math.max(0, sim.speed * 0.72);
-          sim.comfort = Math.max(10, sim.comfort - 8);
-          addFeedMessage(collisionMsg);
+          const collisionMsg = engineRef.current.consumeCollisionMessage();
+          if (collisionMsg) {
+            sim.speed = Math.max(0, sim.speed * 0.72);
+            sim.comfort = Math.max(10, sim.comfort - 8);
+            addFeedMessage(collisionMsg);
+          }
+        } catch (err) {
+          console.error('3D Engine update error:', err);
         }
       }
 
@@ -1502,6 +1506,21 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         if (activeGasStationRef.current) {
           setRefuelLitersPumped(Number(refuelStatsRef.current.liters.toFixed(1)));
           setRefuelCostNaira(Math.round(refuelStatsRef.current.cost));
+          if (pendingRefuelCostRef.current >= 1) {
+            const costToDeduct = Math.round(pendingRefuelCostRef.current);
+            pendingRefuelCostRef.current -= costToDeduct;
+            setGameState((prev) => {
+              const nextWallet = Math.max(0, prev.walletNaira - costToDeduct);
+              return {
+                ...prev,
+                walletNaira: nextWallet,
+                bus: {
+                  ...prev.bus,
+                  fuelPercent: Math.round(sim.fuel),
+                },
+              };
+            });
+          }
         }
       }
 
@@ -1510,7 +1529,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
 
     animId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(animId);
-  }, [gameState.junctions, gameState.activeJunctionIndex, gameState.conductor.hasConductor, gameState.gasStations, onFinishShift, setGameState, addFeedMessage]);
+  }, [onFinishShift, setGameState, addFeedMessage]);
 
   const currentJunction = gameState.junctions[activeJuncIndex];
   const distToJunc = currentJunction ? Math.round(currentJunction.distanceMarkerMeters - currentDist) : 0;
@@ -2007,7 +2026,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                   const nextUpgrades = {
                     ...prev.bus.upgrades,
                     dualRadiatorFan: true,
-                    bullBar: !prev.bus.upgrades.bullBar,
+                    heavyBullBar: !prev.bus.upgrades.heavyBullBar,
                   };
                   simRef.current.busUpgrades = nextUpgrades;
                   onUpdateSave?.({ walletNaira: nextWallet, busUpgrades: nextUpgrades });
@@ -2067,30 +2086,41 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                 }
                 const seatsLeft = cap - curr;
                 const poachedCount = Math.min(3, seatsLeft);
-                const newPax = Array.from({ length: poachedCount }, (_, idx) => ({
+                const newPax: Passenger[] = Array.from({ length: poachedCount }, (_, idx) => ({
                   id: `brt-poach-${Date.now()}-${idx}`,
                   name: ['Tunde', 'Ngozi', 'Kunle', 'Bisi'][idx % 4],
-                  archetype: 'WORKER' as const,
-                  destination: 'CMS Marina Terminal' as const,
-                  fareOffer: 300,
-                  agreedFare: 300,
-                  patience: 100,
-                  isAgitated: false,
-                  hasChangeIssue: false,
-                  changeOwed: 0,
+                  archetype: 'CORPORATE',
+                  archetypeLabel: '💼 BRT Commuter',
+                  destination: 'CMS Marina Terminal',
+                  fare: 300,
+                  seatsTaken: 1,
+                  paid: true,
+                  patience: 90,
+                  maxPatience: 100,
+                  hasBigBill: false,
+                  changeNeeded: 0,
+                  seatedAt: curr + idx,
+                  satisfaction: 'HAPPY',
                 }));
+                const totalEarned = poachedCount * 300;
                 passengersCountRef.current = curr + poachedCount;
-                setPassengerCount(curr + poachedCount);
                 soundEngine.playHorn(false);
-                setGameState((prev) => ({
-                  ...prev,
-                  bus: {
-                    ...prev.bus,
-                    passengers: [...(prev.bus.passengers || []), ...newPax],
-                  },
-                }));
+                soundEngine.playCoin();
+                triggerCashToast(totalEarned, `+₦${totalEarned.toLocaleString()} BRT Queue Fares!`);
+                setGameState((prev) => {
+                  const nextWallet = prev.walletNaira + totalEarned;
+                  onUpdateSave?.({ walletNaira: nextWallet });
+                  return {
+                    ...prev,
+                    walletNaira: nextWallet,
+                    bus: {
+                      ...prev.bus,
+                      passengers: [...(prev.bus.passengers || []), ...newPax],
+                    },
+                  };
+                });
                 addFeedMessage(
-                  `📢 "NO QUEUE FOR BRT, ENTER DANFO!" Poached +${poachedCount} impatient commuters from Oshodi BRT Station (${curr + poachedCount}/${cap} seats)!`
+                  `📢 "NO QUEUE FOR BRT, ENTER DANFO!" Poached +${poachedCount} commuters from Oshodi BRT Station (${curr + poachedCount}/${cap} seats, +₦${totalEarned})!`
                 );
               }}
               className="px-2.5 py-1.5 bg-yellow-400 hover:bg-yellow-300 active:scale-95 text-stone-950 font-black text-[9px] font-['Bungee'] rounded-xl shadow shrink-0"

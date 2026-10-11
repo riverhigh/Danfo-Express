@@ -166,33 +166,9 @@ export class ThreeDrivingEngine {
   private trafficModels: THREE.Group[] = [];
   private npcModels: THREE.Group[] = [];
     
-  // Pre-load Lagos pedestrians with proper foot-level alignment (no vehicle GLBs downloaded)
+  // Lightweight procedural pedestrians used instead of heavy multi-megabyte GLB downloads
   private loadTrafficModels() {
-    const npcLoader = new GLTFLoader();
     this.npcModels = [];
-    const npcPaths = [
-      '/models/african_female_model.glb',
-      '/models/free_download_athletic_african_man_walking_223.glb',
-      '/models/free_download_attractive_african_woman_236.glb',
-      '/models/human.glb'
-    ];
-    npcPaths.forEach(path => {
-      npcLoader.load(path, (gltf) => {
-        // 1. Calculate the character's exact physical boundaries
-        const humanBox = new THREE.Box3().setFromObject(gltf.scene);
-        const lowestY = humanBox.min.y; // Finds the absolute bottom of their shoes
-
-        // 2. Shift the internal meshes up so the feet rest at Y = 0
-        gltf.scene.children.forEach(child => {
-          child.position.y -= lowestY;
-        });
-
-        const m = gltf.scene;
-        m.scale.set(1.4, 1.4, 1.4);
-        m.position.set(0, 0, 0);
-        this.npcModels.push(m);
-      }, undefined, (err) => console.warn('Pedestrian GLB load warning:', err));
-    });
   }
 
     private roadSegments: THREE.Group[] = [];
@@ -3110,12 +3086,32 @@ export class ThreeDrivingEngine {
   public syncJunctionShelters(junctions: JunctionStop[]) {
     if (this.junctionMeshes.length > 0) return;
 
-    const charLoader = new GLTFLoader();
-    const characterGlbs = [
-      '/models/free_download_athletic_african_man_walking_223.glb',
-      '/models/free_download_attractive_african_woman_236.glb',
-      '/models/african_female_model.glb'
-    ];
+    // Shared geometries & materials for 20 Bus Stops (40 shelters, ~120 waiting commuters) -> Zero GLB memory spikes!
+    const roofGeo = new THREE.BoxGeometry(7, 0.25, 10);
+    const roofMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.5 });
+    const pillarGeo = new THREE.CylinderGeometry(0.12, 0.12, 3.8, 8);
+    const pillarMat = new THREE.MeshStandardMaterial({ color: 0x57534e });
+    const benchGeo = new THREE.BoxGeometry(0.8, 0.5, 6);
+    const benchMat = new THREE.MeshStandardMaterial({ color: 0x78350f });
+    const signBoardGeo = new THREE.BoxGeometry(0.1, 2.2, 4.4);
+    const stopBoxGeo = new THREE.PlaneGeometry(3.5, 12);
+    const stopBoxMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0.35 });
+
+    // Shared commuter character geometries & materials
+    const headGeo = new THREE.SphereGeometry(0.14, 10, 10);
+    const torsoGeo = new THREE.BoxGeometry(0.38, 0.56, 0.24);
+    const legGeo = new THREE.BoxGeometry(0.14, 0.72, 0.16);
+    const bagGeo = new THREE.BoxGeometry(0.32, 0.26, 0.22);
+    const skinMat = new THREE.MeshStandardMaterial({ color: 0x4a2c18, roughness: 0.7 });
+    const pantsMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.8 });
+    const bagMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.6 });
+    const shirtColors = [0xdc2626, 0x0284c7, 0x16a34a, 0xfacc15, 0x9333ea, 0xea580c, 0xec4899, 0x14b8a6];
+    const shirtMats = shirtColors.map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.55 }));
+
+    const crateGeo = new THREE.BoxGeometry(0.9, 0.9, 0.9);
+    const crateMat = new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.35, metalness: 0.2 });
+    const arrowGeo = new THREE.ConeGeometry(0.35, 0.75, 8);
+    const arrowMat = new THREE.MeshBasicMaterial({ color: 0x4ade80 });
 
     junctions.forEach((junc, jIdx) => {
       const group = new THREE.Group();
@@ -3123,7 +3119,7 @@ export class ThreeDrivingEngine {
 
       // Support bus stops on BOTH sides: Left side, Right side, or Dual (Both)
       const effectiveSide = junc.side || (jIdx % 2 === 0 ? 'RIGHT' : 'LEFT');
-      const sidesToBuild: Array<'LEFT' | 'RIGHT'> = 
+      const sidesToBuild: Array<'LEFT' | 'RIGHT'> =
         effectiveSide === 'BOTH' ? ['LEFT', 'RIGHT'] : [effectiveSide];
 
       const passengers: THREE.Group[] = [];
@@ -3137,27 +3133,18 @@ export class ThreeDrivingEngine {
         const stopBoxX = 5.8 * sideMult;
 
         // Bus Stop Shelter Roof
-        const shelterRoof = new THREE.Mesh(
-          new THREE.BoxGeometry(7, 0.25, 10),
-          new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.5 })
-        );
+        const shelterRoof = new THREE.Mesh(roofGeo, roofMat);
         shelterRoof.position.set(shoulderX, 3.8, 0);
         shelterRoof.rotation.z = isLeft ? 0.05 : -0.05;
         group.add(shelterRoof);
 
         [-4, 4].forEach((sz) => {
-          const pillar = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.12, 0.12, 3.8),
-            new THREE.MeshStandardMaterial({ color: 0x57534e })
-          );
+          const pillar = new THREE.Mesh(pillarGeo, pillarMat);
           pillar.position.set(shoulderX, 1.9, sz);
           group.add(pillar);
         });
 
-        const bench = new THREE.Mesh(
-          new THREE.BoxGeometry(0.8, 0.5, 6),
-          new THREE.MeshStandardMaterial({ color: 0x78350f })
-        );
+        const bench = new THREE.Mesh(benchGeo, benchMat);
         bench.position.set(benchX, 0.45, 0);
         group.add(bench);
 
@@ -3167,7 +3154,7 @@ export class ThreeDrivingEngine {
           : junc.nextStopName || junc.destinationTag;
         const signTex = createBusStopSignTexture(junc.name, directionalNextStop, junc.uid, isLeft);
         const signMesh = new THREE.Mesh(
-          new THREE.BoxGeometry(0.1, 2.2, 4.4),
+          signBoardGeo,
           new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.4 })
         );
         signMesh.position.set(signX, 3.2, 5.2);
@@ -3177,15 +3164,12 @@ export class ThreeDrivingEngine {
         group.add(signMesh);
 
         // Yellow striped road curb stop-box on road edge
-        const stopBox = new THREE.Mesh(
-          new THREE.PlaneGeometry(3.5, 12),
-          new THREE.MeshBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0.35 })
-        );
+        const stopBox = new THREE.Mesh(stopBoxGeo, stopBoxMat);
         stopBox.rotation.x = -Math.PI / 2;
         stopBox.position.set(stopBoxX, 0.02, 0);
         group.add(stopBox);
 
-        // High-Graphic 3D Waiting Commuters on Sidewalk
+        // Fast Shared-Geometry 3D Waiting Commuters on Sidewalk
         const commuterCount = Math.min(3, Math.max(1, Math.round(junc.waitingPassengersCount / sidesToBuild.length)));
         for (let p = 0; p < commuterCount; p++) {
           const pGroup = new THREE.Group();
@@ -3193,44 +3177,25 @@ export class ThreeDrivingEngine {
 
           const pX = shoulderX + sideMult * ((p % 2) * 1.5);
           const pZ = -2.5 + p * 2.2;
-          pGroup.position.set(pX, 0.25, pZ);
+          pGroup.position.set(pX, 0.12, pZ);
           pGroup.rotation.y = isLeft ? Math.PI / 2 : -Math.PI / 2;
           pGroup.userData = { origX: pX, origZ: pZ, isLeft, boarded: false };
 
-          const charPath = characterGlbs[(p + (isLeft ? 1 : 0)) % characterGlbs.length];
+          const shirtMat = shirtMats[(jIdx * 3 + p + (isLeft ? 2 : 0)) % shirtMats.length];
+          const head = new THREE.Mesh(headGeo, skinMat);
+          head.position.y = 1.54;
+          const torso = new THREE.Mesh(torsoGeo, shirtMat);
+          torso.position.y = 1.12;
+          const legL = new THREE.Mesh(legGeo, pantsMat);
+          legL.position.set(-0.1, 0.44, 0);
+          const legR = new THREE.Mesh(legGeo, pantsMat);
+          legR.position.set(0.1, 0.44, 0);
+          pGroup.add(head, torso, legL, legR);
 
-          const applyCharModel = (prototype: THREE.Group) => {
-            const clone = prototype.clone(true);
-            pGroup.add(clone);
-          };
-
-          if (ThreeDrivingEngine.modelCache.has(charPath)) {
-            applyCharModel(ThreeDrivingEngine.modelCache.get(charPath)!);
-          } else {
-            charLoader.load(charPath, (gltf) => {
-              const humanBox = new THREE.Box3().setFromObject(gltf.scene);
-              const lowestY = humanBox.min.y;
-              gltf.scene.children.forEach(child => {
-                child.position.y -= lowestY;
-              });
-
-              const charScene = gltf.scene;
-              const bbox = new THREE.Box3().setFromObject(charScene);
-              const size = bbox.getSize(new THREE.Vector3());
-              const maxDim = Math.max(size.x, size.y, size.z);
-              if (maxDim > 0) {
-                const targetHeight = 1.75;
-                const rawHeight = size.y > 0.5 ? size.y : maxDim;
-                charScene.scale.setScalar(targetHeight / rawHeight);
-                const postBox = new THREE.Box3().setFromObject(charScene);
-                const postLowest = postBox.min.y;
-                charScene.children.forEach(child => {
-                  child.position.y -= postLowest;
-                });
-              }
-              ThreeDrivingEngine.modelCache.set(charPath, charScene);
-              applyCharModel(charScene);
-            }, undefined, (err) => console.warn('Char cache load error:', err));
+          if ((jIdx + p) % 2 === 0) {
+            const bag = new THREE.Mesh(bagGeo, bagMat);
+            bag.position.set(0.26, 0.72, 0);
+            pGroup.add(bag);
           }
 
           group.add(pGroup);
@@ -3243,17 +3208,11 @@ export class ThreeDrivingEngine {
       waybillBeacon.position.set(sidesToBuild[0] === 'LEFT' ? -10.5 : 10.5, 5.8, 0);
       waybillBeacon.visible = false;
 
-      const crateMesh = new THREE.Mesh(
-        new THREE.BoxGeometry(0.9, 0.9, 0.9),
-        new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.35, metalness: 0.2 })
-      );
+      const crateMesh = new THREE.Mesh(crateGeo, crateMat);
       crateMesh.rotation.y = 0.4;
       waybillBeacon.add(crateMesh);
 
-      const arrowMesh = new THREE.Mesh(
-        new THREE.ConeGeometry(0.35, 0.75, 8),
-        new THREE.MeshBasicMaterial({ color: 0x4ade80 })
-      );
+      const arrowMesh = new THREE.Mesh(arrowGeo, arrowMat);
       arrowMesh.position.y = -0.9;
       arrowMesh.rotation.x = Math.PI;
       waybillBeacon.add(arrowMesh);
@@ -5084,6 +5043,8 @@ export class ThreeDrivingEngine {
     this.miniMapCamera.up.set(0, 0, 1);
     this.miniMapCamera.lookAt(this.busRoot.position.x, 0, this.busRoot.position.z);
 
+    this.mirrorRenderTick = (this.mirrorRenderTick + 1) % 6;
+
     if (
       !isSteppedDown &&
       (this.leftMirrorCanvas || this.rightMirrorCanvas) &&
@@ -5097,73 +5058,85 @@ export class ThreeDrivingEngine {
       const srcH = Math.round(mH * dpr);
       const srcY = Math.max(0, Math.round(fullH * dpr) - srcH);
 
-      // Position Left & Right Side Mirror Cameras on exterior mirror brackets looking backward (-Z)
-      const leftPos = new THREE.Vector3(1.28, 2.15, 2.05).applyQuaternion(this.busRoot.quaternion).add(this.busRoot.position);
-      const leftTarget = new THREE.Vector3(1.65, 1.85, -35.0).applyQuaternion(this.busRoot.quaternion).add(this.busRoot.position);
-      this.leftMirrorCamera.position.copy(leftPos);
-      this.leftMirrorCamera.up.set(0, 1, 0);
-      this.leftMirrorCamera.lookAt(leftTarget);
-
-      const rightPos = new THREE.Vector3(-1.28, 2.15, 2.05).applyQuaternion(this.busRoot.quaternion).add(this.busRoot.position);
-      const rightTarget = new THREE.Vector3(-1.65, 1.85, -35.0).applyQuaternion(this.busRoot.quaternion).add(this.busRoot.position);
-      this.rightMirrorCamera.position.copy(rightPos);
-      this.rightMirrorCamera.up.set(0, 1, 0);
-      this.rightMirrorCamera.lookAt(rightTarget);
-
-      this.renderer.setScissorTest(true);
-      this.mirrorRenderTick = (this.mirrorRenderTick + 1) % 3;
-
       if (this.leftMirrorCanvas && this.mirrorRenderTick === 0) {
+        const leftPos = new THREE.Vector3(1.28, 2.15, 2.05)
+          .applyQuaternion(this.busRoot.quaternion)
+          .add(this.busRoot.position);
+        const leftTarget = new THREE.Vector3(1.65, 1.85, -35.0)
+          .applyQuaternion(this.busRoot.quaternion)
+          .add(this.busRoot.position);
+        this.leftMirrorCamera.position.copy(leftPos);
+        this.leftMirrorCamera.up.set(0, 1, 0);
+        this.leftMirrorCamera.lookAt(leftTarget);
+
+        this.renderer.setScissorTest(true);
         this.renderer.setViewport(0, 0, mW, mH);
         this.renderer.setScissor(0, 0, mW, mH);
         this.renderer.render(this.scene, this.leftMirrorCamera);
-        const ctxL = this.leftMirrorCanvas.getContext('2d');
-        if (ctxL) {
-          ctxL.save();
-          ctxL.scale(-1, 1);
-          ctxL.drawImage(
-            this.renderer.domElement,
-            0,
-            srcY,
-            srcW,
-            srcH,
-            -this.leftMirrorCanvas.width,
-            0,
-            this.leftMirrorCanvas.width,
-            this.leftMirrorCanvas.height
-          );
-          ctxL.restore();
-        }
+        this.renderer.setScissorTest(false);
+
+        try {
+          const ctxL = this.leftMirrorCanvas.getContext('2d');
+          if (ctxL) {
+            ctxL.save();
+            ctxL.scale(-1, 1);
+            ctxL.drawImage(
+              this.renderer.domElement,
+              0,
+              srcY,
+              srcW,
+              srcH,
+              -this.leftMirrorCanvas.width,
+              0,
+              this.leftMirrorCanvas.width,
+              this.leftMirrorCanvas.height
+            );
+            ctxL.restore();
+          }
+        } catch {}
       }
 
-      if (this.rightMirrorCanvas && this.mirrorRenderTick === 1) {
+      if (this.rightMirrorCanvas && this.mirrorRenderTick === 2) {
+        const rightPos = new THREE.Vector3(-1.28, 2.15, 2.05)
+          .applyQuaternion(this.busRoot.quaternion)
+          .add(this.busRoot.position);
+        const rightTarget = new THREE.Vector3(-1.65, 1.85, -35.0)
+          .applyQuaternion(this.busRoot.quaternion)
+          .add(this.busRoot.position);
+        this.rightMirrorCamera.position.copy(rightPos);
+        this.rightMirrorCamera.up.set(0, 1, 0);
+        this.rightMirrorCamera.lookAt(rightTarget);
+
+        this.renderer.setScissorTest(true);
         this.renderer.setViewport(0, 0, mW, mH);
         this.renderer.setScissor(0, 0, mW, mH);
         this.renderer.render(this.scene, this.rightMirrorCamera);
-        const ctxR = this.rightMirrorCanvas.getContext('2d');
-        if (ctxR) {
-          ctxR.save();
-          ctxR.scale(-1, 1);
-          ctxR.drawImage(
-            this.renderer.domElement,
-            0,
-            srcY,
-            srcW,
-            srcH,
-            -this.rightMirrorCanvas.width,
-            0,
-            this.rightMirrorCanvas.width,
-            this.rightMirrorCanvas.height
-          );
-          ctxR.restore();
-        }
-      }
+        this.renderer.setScissorTest(false);
 
-      this.renderer.setScissorTest(false);
+        try {
+          const ctxR = this.rightMirrorCanvas.getContext('2d');
+          if (ctxR) {
+            ctxR.save();
+            ctxR.scale(-1, 1);
+            ctxR.drawImage(
+              this.renderer.domElement,
+              0,
+              srcY,
+              srcW,
+              srcH,
+              -this.rightMirrorCanvas.width,
+              0,
+              this.rightMirrorCanvas.width,
+              this.rightMirrorCanvas.height
+            );
+            ctxR.restore();
+          }
+        } catch {}
+      }
     }
 
     // 17b. Render Top-Down Orthographic Mini-Map Pass (using renderer.setViewport & copying to Top-Right Mini-Map HUD)
-    if (this.miniMapCanvas && fullW > 200 && fullH > 200 && this.mirrorRenderTick === 2) {
+    if (this.miniMapCanvas && fullW > 200 && fullH > 200 && this.mirrorRenderTick === 4) {
       const mmSize = 180;
       const dpr = this.renderer.getPixelRatio();
       const srcMm = Math.round(mmSize * dpr);
@@ -5181,48 +5154,30 @@ export class ThreeDrivingEngine {
 
       this.scene.fog = savedFog;
 
-      const ctxM = this.miniMapCanvas.getContext('2d');
-      if (ctxM) {
-        ctxM.drawImage(
-          this.renderer.domElement,
-          0,
-          srcMmY,
-          srcMm,
-          srcMm,
-          0,
-          0,
-          this.miniMapCanvas.width,
-          this.miniMapCanvas.height
-        );
-      }
+      try {
+        const ctxM = this.miniMapCanvas.getContext('2d');
+        if (ctxM) {
+          ctxM.drawImage(
+            this.renderer.domElement,
+            0,
+            srcMmY,
+            srcMm,
+            srcMm,
+            0,
+            0,
+            this.miniMapCanvas.width,
+            this.miniMapCanvas.height
+          );
+        }
+      } catch {}
     }
 
     // 17c. Restore full viewport & render main camera scene across full window
     const hide3DBusInCockpit = params.cameraMode === 'FIRST_PERSON' && !isSteppedDown;
-    if (hide3DBusInCockpit) {
-      this.busBody.visible = false;
-    } else {
-      this.busBody.visible = true;
-    }
+    this.busBody.visible = !hide3DBusInCockpit;
     this.renderer.setViewport(0, 0, fullW, fullH);
     this.renderer.render(this.scene, this.camera);
     this.busBody.visible = true;
-
-    // 17d. Also render live Orthographic Mini-Map square box directly in the top-right viewport corner via setViewport!
-    if (fullW > 320 && fullH > 260) {
-      const boxSize = fullW < 640 ? 104 : 132;
-      const boxX = fullW - boxSize - 10;
-      const boxY = fullH - boxSize - 44; // Top-right corner directly below top HUD bar
-      const savedFog = this.scene.fog;
-      this.scene.fog = null;
-      this.renderer.setScissorTest(true);
-      this.renderer.setViewport(boxX, boxY, boxSize, boxSize);
-      this.renderer.setScissor(boxX, boxY, boxSize, boxSize);
-      this.renderer.render(this.scene, this.miniMapCamera);
-      this.renderer.setScissorTest(false);
-      this.scene.fog = savedFog;
-      this.renderer.setViewport(0, 0, fullW, fullH);
-    }
   }
 
   /**

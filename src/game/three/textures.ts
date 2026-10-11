@@ -1,46 +1,59 @@
 import * as THREE from 'three';
 
 /**
- * Procedural texture generators for ultra-crisp, zero-external-dependency Lagos 3D rendering
+ * Procedural texture generators with memory caching for ultra-crisp, zero-crash Lagos 3D rendering
  */
 
+let cachedAsphaltTex: THREE.CanvasTexture | null = null;
+let cachedCurbTex: THREE.CanvasTexture | null = null;
+let cachedDashboardTex: THREE.CanvasTexture | null = null;
+let cachedNairaTex: THREE.CanvasTexture | null = null;
+const facadeTextureCache = new Map<string, THREE.CanvasTexture>();
+const signboardTextureCache = new Map<string, THREE.CanvasTexture>();
+const busStopSignTextureCache = new Map<string, THREE.CanvasTexture>();
+
 export function createAsphaltTexture(): THREE.CanvasTexture {
+  if (cachedAsphaltTex) return cachedAsphaltTex;
+
   const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = 512;
+  canvas.width = 256;
+  canvas.height = 256;
   const ctx = canvas.getContext('2d')!;
 
   // Base dark asphalt
   ctx.fillStyle = '#1c1917';
-  ctx.fillRect(0, 0, 512, 512);
+  ctx.fillRect(0, 0, 256, 256);
 
-  // Grain and gravel speckles
-  for (let i = 0; i < 40000; i++) {
-    const x = Math.random() * 512;
-    const y = Math.random() * 512;
+  // Fast grain and gravel speckles
+  for (let i = 0; i < 3200; i++) {
+    const x = Math.random() * 256;
+    const y = Math.random() * 256;
     const brightness = Math.floor(Math.random() * 45) + 20;
     ctx.fillStyle = `rgb(${brightness}, ${brightness}, ${brightness})`;
-    ctx.fillRect(x, y, Math.random() * 2 + 1, Math.random() * 2 + 1);
+    ctx.fillRect(x, y, 2, 2);
   }
 
   // Subtle tire skid mark streaks
   ctx.strokeStyle = 'rgba(10, 10, 10, 0.4)';
-  ctx.lineWidth = 14;
+  ctx.lineWidth = 8;
   ctx.beginPath();
-  ctx.moveTo(140, 0);
-  ctx.lineTo(140, 512);
-  ctx.moveTo(370, 0);
-  ctx.lineTo(370, 512);
+  ctx.moveTo(70, 0);
+  ctx.lineTo(70, 256);
+  ctx.moveTo(185, 0);
+  ctx.lineTo(185, 256);
   ctx.stroke();
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
   texture.repeat.set(2, 16);
+  cachedAsphaltTex = texture;
   return texture;
 }
 
 export function createCurbTexture(): THREE.CanvasTexture {
+  if (cachedCurbTex) return cachedCurbTex;
+
   const canvas = document.createElement('canvas');
   canvas.width = 256;
   canvas.height = 64;
@@ -59,52 +72,62 @@ export function createCurbTexture(): THREE.CanvasTexture {
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
   texture.repeat.set(16, 1);
+  cachedCurbTex = texture;
   return texture;
 }
 
 export function createBuildingFacadeTexture(name: string, accentColor: string): THREE.CanvasTexture {
+  const cacheKey = `${name}::${accentColor}`;
+  const existing = facadeTextureCache.get(cacheKey);
+  if (existing) return existing;
+
   const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = 512;
+  canvas.width = 256;
+  canvas.height = 256;
   const ctx = canvas.getContext('2d')!;
 
   // Concrete building base
   ctx.fillStyle = '#292524';
-  ctx.fillRect(0, 0, 512, 512);
+  ctx.fillRect(0, 0, 256, 256);
 
   // Windows grid
-  for (let y = 140; y < 480; y += 70) {
-    for (let x = 30; x < 480; x += 80) {
+  for (let y = 70; y < 240; y += 35) {
+    for (let x = 15; x < 240; x += 40) {
       // Window frame
       ctx.fillStyle = '#1c1917';
-      ctx.fillRect(x, y, 55, 45);
+      ctx.fillRect(x, y, 28, 22);
       // Glass glow
-      const isLit = Math.random() > 0.4;
+      const isLit = ((x + y + name.length) % 3) !== 0;
       ctx.fillStyle = isLit ? '#fef08a' : '#0f172a';
-      ctx.fillRect(x + 4, y + 4, 47, 37);
+      ctx.fillRect(x + 2, y + 2, 24, 18);
       // Air conditioner unit below some windows
-      if (Math.random() > 0.6) {
+      if ((x + y) % 5 === 0) {
         ctx.fillStyle = '#e2e8f0';
-        ctx.fillRect(x + 10, y + 48, 35, 16);
+        ctx.fillRect(x + 5, y + 24, 18, 8);
       }
     }
   }
 
   // Shop signboard at ground floor
   ctx.fillStyle = accentColor;
-  ctx.fillRect(0, 20, 512, 80);
+  ctx.fillRect(0, 10, 256, 40);
   ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 32px sans-serif';
+  ctx.font = 'bold 16px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText(name, 256, 70);
+  ctx.fillText(name, 128, 35, 244);
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
+  facadeTextureCache.set(cacheKey, texture);
   return texture;
 }
 
 export function createSignboardTexture(text: string, subtext: string, bgColor: string): THREE.CanvasTexture {
+  const cacheKey = `${text}::${subtext}::${bgColor}`;
+  const existing = signboardTextureCache.get(cacheKey);
+  if (existing) return existing;
+
   const canvas = document.createElement('canvas');
   canvas.width = 512;
   canvas.height = 160;
@@ -120,14 +143,16 @@ export function createSignboardTexture(text: string, subtext: string, bgColor: s
 
   // Text
   ctx.fillStyle = '#ffffff';
-  ctx.font = '900 36px sans-serif';
+  ctx.font = '900 32px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText(text, 256, 75);
+  ctx.fillText(text, 256, 75, 480);
 
-  ctx.font = '600 22px sans-serif';
-  ctx.fillText(subtext, 256, 120);
+  ctx.font = '600 20px sans-serif';
+  ctx.fillText(subtext, 256, 120, 480);
 
-  return new THREE.CanvasTexture(canvas);
+  const texture = new THREE.CanvasTexture(canvas);
+  signboardTextureCache.set(cacheKey, texture);
+  return texture;
 }
 
 export function createBusStopSignTexture(
@@ -136,6 +161,10 @@ export function createBusStopSignTexture(
   stopUid?: string,
   isOppositeSide: boolean = false
 ): THREE.CanvasTexture {
+  const cacheKey = `${stopName}::${nextStopLabel}::${stopUid || ''}::${isOppositeSide ? '1' : '0'}`;
+  const existing = busStopSignTextureCache.get(cacheKey);
+  if (existing) return existing;
+
   const canvas = document.createElement('canvas');
   canvas.width = 512;
   canvas.height = 256;
@@ -151,7 +180,7 @@ export function createBusStopSignTexture(
   const headerText = stopUid
     ? `🚏 ${stopUid.toUpperCase()} • ${isOppositeSide ? 'TO IKEJA / MAINLAND' : 'TO CMS / ISLAND'}`
     : 'LAGOS BUS TRANSIT STOP 🚏';
-  ctx.fillText(headerText, 256, 38);
+  ctx.fillText(headerText, 256, 38, 492);
 
   // Green Main Body (or Deep Blue for Opposite Return Lane)
   ctx.fillStyle = isOppositeSide ? '#0369a1' : '#047857';
@@ -165,7 +194,7 @@ export function createBusStopSignTexture(
   // Current Stop Name
   ctx.fillStyle = '#ffffff';
   ctx.font = '900 28px sans-serif';
-  ctx.fillText(stopName.toUpperCase(), 256, 120);
+  ctx.fillText(stopName.toUpperCase(), 256, 120, 480);
 
   // Directional Next Bus Stop After This Stop
   ctx.fillStyle = '#fef08a';
@@ -173,7 +202,8 @@ export function createBusStopSignTexture(
   ctx.fillText(
     `${isOppositeSide ? '↩ OTHER SIDE NEXT:' : '➔ NEXT STOP:'} ${nextStopLabel.toUpperCase()}`,
     256,
-    172
+    172,
+    480
   );
 
   ctx.fillStyle = '#a7f3d0';
@@ -183,13 +213,18 @@ export function createBusStopSignTexture(
       ? 'OUTBOUND CORRIDOR (MARYLAND ➔ IKEJA DIRECTION)'
       : 'INBOUND CORRIDOR (IKEJA ➔ MARYLAND ➔ OSHODI ➔ CMS)',
     256,
-    220
+    220,
+    480
   );
 
-  return new THREE.CanvasTexture(canvas);
+  const texture = new THREE.CanvasTexture(canvas);
+  busStopSignTextureCache.set(cacheKey, texture);
+  return texture;
 }
 
 export function createDashboardClusterTexture(): THREE.CanvasTexture {
+  if (cachedDashboardTex) return cachedDashboardTex;
+
   const canvas = document.createElement('canvas');
   canvas.width = 512;
   canvas.height = 256;
@@ -327,10 +362,14 @@ export function createDashboardClusterTexture(): THREE.CanvasTexture {
   ctx.fillStyle = '#38bdf8';
   ctx.fillText('BEAM', 325, 36);
 
-  return new THREE.CanvasTexture(canvas);
+  const tex = new THREE.CanvasTexture(canvas);
+  cachedDashboardTex = tex;
+  return tex;
 }
 
 export function createNairaNoteTexture(): THREE.CanvasTexture {
+  if (cachedNairaTex) return cachedNairaTex;
+
   const canvas = document.createElement('canvas');
   canvas.width = 256;
   canvas.height = 128;
@@ -367,5 +406,7 @@ export function createNairaNoteTexture(): THREE.CanvasTexture {
   ctx.fillStyle = '#e2e8f0';
   ctx.fillRect(80, 6, 14, 116);
 
-  return new THREE.CanvasTexture(canvas);
+  const tex = new THREE.CanvasTexture(canvas);
+  cachedNairaTex = tex;
+  return tex;
 }
