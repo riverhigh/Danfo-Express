@@ -1,24 +1,32 @@
 {
+  "id": "/",
   "name": "Danfo Express 3D: Lagos Career Driver",
   "short_name": "DanfoExpress",
   "description": "3D Lagos Danfo Bus Simulator, career progression, conductor mode & street hustle",
   "start_url": "/",
-  "display": "fullscreen",
+  "scope": "/",
+  "display": "standalone",
   "orientation": "landscape",
   "background_color": "#0c0a09",
   "theme_color": "#facc15",
   "icons": [
     {
-      "src": "/icon-512.jpg",
-      "sizes": "512x512",
-      "type": "image/jpeg",
-      "purpose": "any maskable"
-    },
-    {
       "src": "/icon-192.jpg",
       "sizes": "192x192",
       "type": "image/jpeg",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "maskable"
     }
   ]
 }

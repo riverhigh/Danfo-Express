@@ -16,8 +16,14 @@ export type PassengerArchetype =
 export type LagosDestination = 
   | 'Oshodi Interchange'
   | 'Ikeja Along'
+  | 'Allen Roundabout'
+  | 'Maryland Mall'
+  | 'Anthony Village'
+  | 'Gbagada Phase 1'
+  | 'Mushin Olosa Market'
   | 'Third Mainland Bridge / Obalende'
   | 'Ojuelegba Underbridge'
+  | 'Yaba Tech / Sabo'
   | 'Lekki Phase 1 Toll Gate'
   | 'CMS Marina Terminal';
 

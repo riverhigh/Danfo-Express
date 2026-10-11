@@ -209,6 +209,12 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
     simRef.current.isSteppedDown = isSteppedDown;
   }, [gear, isEngineRunning, turnSignal, hazardLights, wipersActive, gyroEnabled, doorState, isSteppedDown]);
 
+  const passengersCountRef = useRef<number>(gameState.bus.passengers?.length || 0);
+  const luggageClaimedStopsRef = useRef<Record<string, boolean>>({});
+  useEffect(() => {
+    passengersCountRef.current = gameState.bus.passengers?.length || 0;
+  }, [gameState.bus.passengers]);
+
   // Initialize Three.js Engine on mount & connect live rear-view mirror + orthographic mini-map canvases
   useEffect(() => {
     if (!mountRef.current) return;
@@ -487,38 +493,54 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
     setWalkJoyVisual({ x: 0, y: 0 });
   };
 
-  // Rear Boot (Luggage Trunk) Door Toggle
+  // Rear Boot (Luggage Trunk) Door Toggle — Opens outwards!
   const toggleBoot = () => {
     const nextBoot = bootState === 'CLOSED' ? 'OPEN' : 'CLOSED';
     setBootState(nextBoot);
     soundEngine.playBootDoorSound(nextBoot === 'OPEN');
     if (nextBoot === 'OPEN') {
-      addFeedMessage('🧳 BOOT OPENED: Rear door lifted up! Customers loading heavy yam & luggage.');
-      // Luggage tip
-      const luggageFee = 900;
-      soundEngine.playCoin();
-      setGameState((prev) => {
-        const nextWallet = prev.walletNaira + luggageFee;
-        onUpdateSave?.({ walletNaira: nextWallet });
-        return {
-          ...prev,
-          walletNaira: nextWallet,
-          conductor: {
-            ...prev.conductor,
-            collectedCash: prev.conductor.collectedCash + luggageFee,
-          },
-        };
-      });
-      addFeedMessage(`📦 BAGGAGE LOADED: +₦${luggageFee} heavy cargo carriage fee collected!`);
+      const currentDist = simRef.current.distanceTraveled;
+      const nearJ = gameState.junctions.find((j) => Math.abs(j.distanceMarkerMeters - currentDist) <= 28);
+      if (nearJ && !luggageClaimedStopsRef.current[nearJ.uid] && (gameState.bus.passengers?.length || 0) > 0) {
+        luggageClaimedStopsRef.current[nearJ.uid] = true;
+        const luggageFee = 100;
+        soundEngine.playCoin();
+        triggerCashToast(luggageFee, `+₦${luggageFee} Market Load Fee!`);
+        setGameState((prev) => {
+          const nextWallet = prev.walletNaira + luggageFee;
+          onUpdateSave?.({ walletNaira: nextWallet });
+          return {
+            ...prev,
+            walletNaira: nextWallet,
+            conductor: {
+              ...prev.conductor,
+              collectedCash: prev.conductor.collectedCash + luggageFee,
+            },
+          };
+        });
+        addFeedMessage(`🧳 BOOT SWUNG OUTWARDS: Loaded passenger market bags at ${nearJ.name} (+₦${luggageFee} luggage fee).`);
+      } else {
+        addFeedMessage('🧳 BOOT OPENED OUTWARDS: Rear trunk lid swung open!');
+      }
     } else {
-      addFeedMessage('🧳 BOOT CLOSED: Rear door slammed shut securely! (KPA-CHUCK)');
+      addFeedMessage('🧳 BOOT CLOSED: Rear trunk lid latched shut securely! (KPA-CHUCK)');
     }
   };
 
-  // Conductor Mode Fares & Change
+  // Conductor Mode Fares & Change (No free money inflation — checks actual passengers on board!)
   const handleCollectFares = () => {
+    const currentPassengers = gameState.bus.passengers || [];
+    if (currentPassengers.length === 0) {
+      addFeedMessage('🚌 BUS IS EMPTY (0/14): Drive to a bus stop and open the sliding door (O) to load passengers first!');
+      return;
+    }
+    const unpaidPassengers = currentPassengers.filter((p) => !p.paid);
+    if (unpaidPassengers.length === 0) {
+      addFeedMessage(`✅ ALL FARES PAID: All ${currentPassengers.length}/${gameState.bus.capacity || 14} passengers on board have paid their fares!`);
+      return;
+    }
+    const fareAmt = unpaidPassengers.reduce((sum, p) => sum + p.fare, 0);
     soundEngine.playCoin();
-    const fareAmt = Math.floor(Math.random() * 900) + 700;
     triggerCashToast(fareAmt, `+₦${fareAmt.toLocaleString()} Fares Collected!`);
     setGameState((prev) => {
       const nextWallet = prev.walletNaira + fareAmt;
@@ -526,13 +548,17 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       return {
         ...prev,
         walletNaira: nextWallet,
+        bus: {
+          ...prev.bus,
+          passengers: (prev.bus.passengers || []).map((p) => ({ ...p, paid: true })),
+        },
         conductor: {
           ...prev.conductor,
           collectedCash: prev.conductor.collectedCash + fareAmt,
         },
       };
     });
-    addFeedMessage(`💵 CONDUCTOR COLLECTED: ₦${fareAmt.toLocaleString()} fares from passenger rows!`);
+    addFeedMessage(`💵 CONDUCTOR COLLECTED: ₦${fareAmt.toLocaleString()} from ${unpaidPassengers.length} passenger(s)!`);
   };
 
   const handleGiveChange = () => {
@@ -1177,7 +1203,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                 let cashCollected = 0;
                 let alightedCount = 0;
 
-                // 1. NPC ALIGHTING: Commuters drop off at this stop + pay Fast/Smooth Ride Tips!
+                // 1. NPC ALIGHTING: Commuters drop off at their destination stop (Base fare already paid on boarding; only fast/smooth tips awarded here!)
                 const remainingPassengers: Passenger[] = [];
                 for (const p of currentPassengers) {
                   const isDropOffHere =
@@ -1189,67 +1215,70 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                     alightedCount++;
                     let tipBonus = 0;
                     if (p.archetype === 'CORPORATE' && p.patience >= 55) {
-                      tipBonus = 500; // Impatient office worker fast tip!
-                      addFeedMessage(`💼 FAST DROP TIP: Office Worker ${p.name} tipped +₦500 for arriving on time!`);
+                      tipBonus = 50; // Realistic fast drop tip
+                      addFeedMessage(`💼 FAST DROP TIP: Office Worker ${p.name} tipped +₦50 for arriving on time!`);
                     } else if (p.archetype === 'PREACHER' && sim.comfort >= 70) {
-                      tipBonus = 900; // VIP / Pregnant Mama smooth ride bonus!
-                      addFeedMessage(`🤰 SMOOTH RIDE BONUS: VIP Mama ${p.name} tipped +₦900 for a smooth ride!`);
+                      tipBonus = 100; // Realistic smooth ride bonus
+                      addFeedMessage(`🤰 SMOOTH RIDE BONUS: VIP Mama ${p.name} tipped +₦100 for a smooth ride!`);
                     }
-                    const totalPaid = p.fare + tipBonus;
-                    cashCollected += totalPaid;
-                    addFeedMessage(`🚶 ALIGHTED: ${p.name} (${p.archetypeLabel || p.archetype}) dropped at ${activeJ.name}! (+₦${totalPaid.toLocaleString()})`);
+                    cashCollected += tipBonus;
+                    addFeedMessage(
+                      tipBonus > 0
+                        ? `🚶 ALIGHTED: ${p.name} dropped at ${activeJ.name}! (+₦${tipBonus} tip)`
+                        : `🚶 ALIGHTED: ${p.name} dropped off at ${activeJ.name}.`
+                    );
                   } else {
                     remainingPassengers.push(p);
                   }
                 }
 
                 if (alightedCount > 0) {
-                  soundEngine.playCoin();
+                  soundEngine.playDoorSlide(true);
                 }
 
-                // 2. NPC BOARDING: 5 Distinct Passenger Archetypes with Seat Counts & Fare Rules
+                // 2. NPC BOARDING: 1 Passenger = 1 Seat (100% Accurate Counter 0/14 -> 14/14) & Realistic Lagos Danfo Fares!
                 const busCapacity = prev.bus.capacity || 14;
-                const seatsUsed = remainingPassengers.reduce((acc, p) => acc + (p.seatsTaken || 1), 0);
+                const seatsUsed = remainingPassengers.length;
                 let remainingWaiting = activeJ.waitingPassengersCount;
 
                 if (seatsUsed < busCapacity && remainingWaiting > 0) {
                   const currIndexInList = updatedJuncs.findIndex((j) => j.uid === activeJ.uid);
                   const downstreamStops = updatedJuncs.slice(currIndexInList + 1);
                   const targetStop = downstreamStops.length > 0
-                    ? downstreamStops[Math.floor(Math.random() * downstreamStops.length)]
+                    ? downstreamStops[Math.floor(Math.random() * Math.min(3, downstreamStops.length))]
                     : updatedJuncs[updatedJuncs.length - 1];
 
                   const archetypes: PassengerArchetype[] = ['CORPORATE', 'MARKET_WOMAN', 'STUDENT', 'AGBERO_TOUT', 'PREACHER'];
                   const chosenArch = archetypes[Math.floor(Math.random() * archetypes.length)];
                   const randomName = PASSENGER_NAMES[Math.floor(Math.random() * PASSENGER_NAMES.length)];
-                  const baseFare = (targetStop.averageFare || activeJ.averageFare) * (fareBargainModeRef.current === 'SURGE_BARGAIN' ? 1.4 : 1.0);
+                  // Standard realistic bus stop fare (₦150 - ₦350), no inflated double-charging
+                  const stopBaseFare = activeJ.averageFare || 200;
+                  const bargainMult = fareBargainModeRef.current === 'SURGE_BARGAIN' ? 1.2 : 1.0;
 
-                  let fareToCharge = Math.round(baseFare);
-                  let seatsTaken = 1;
+                  let fareToCharge = Math.round((stopBaseFare * bargainMult) / 10) * 10;
+                  const seatsTaken = 1;
                   let archLabel = 'Commuter';
 
                   if (chosenArch === 'CORPORATE') {
-                    archLabel = '💼 Impatient Office Worker';
-                    fareToCharge = Math.round(baseFare * 1.2);
+                    archLabel = '💼 Office Worker';
+                    fareToCharge = Math.round((stopBaseFare * 1.1 * bargainMult) / 10) * 10;
                   } else if (chosenArch === 'MARKET_WOMAN') {
-                    archLabel = '🧺 Market Woman (2 Seats)';
-                    seatsTaken = Math.min(2, Math.max(1, busCapacity - seatsUsed));
-                    fareToCharge = Math.round(baseFare * 1.8);
+                    archLabel = '🧺 Market Woman';
+                    fareToCharge = Math.round((stopBaseFare * 1.25 * bargainMult) / 10) * 10;
                   } else if (chosenArch === 'STUDENT') {
                     archLabel = '🎒 Student';
-                    fareToCharge = Math.round(baseFare * 0.65);
+                    fareToCharge = Math.max(100, Math.round((stopBaseFare * 0.75 * bargainMult) / 10) * 10);
                   } else if (chosenArch === 'AGBERO_TOUT') {
                     archLabel = '🗣️ Drama Passenger';
-                    fareToCharge = Math.round(baseFare);
-                    // Trigger Quick-Tap Change-Giving Challenge!
+                    fareToCharge = Math.round((stopBaseFare * bargainMult) / 10) * 10;
                     setDramaChallenge({
                       passengerName: randomName,
                       tapsLeft: 3,
-                      changeAmount: 200,
+                      changeAmount: 50,
                     });
                   } else if (chosenArch === 'PREACHER') {
-                    archLabel = '🤰 VIP / Pregnant Mama';
-                    fareToCharge = Math.round(baseFare * 1.25);
+                    archLabel = '🤰 VIP Mama';
+                    fareToCharge = Math.round((stopBaseFare * 1.15 * bargainMult) / 10) * 10;
                   }
 
                   const newPassenger: Passenger = {
@@ -1260,12 +1289,12 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                     destination: targetStop.destinationTag,
                     destinationUid: targetStop.uid,
                     fare: fareToCharge,
-                    seatsTaken,
+                    seatsTaken: 1,
                     paid: true,
                     patience: chosenArch === 'CORPORATE' ? 80 : 100,
                     maxPatience: 100,
                     hasBigBill: chosenArch === 'AGBERO_TOUT',
-                    changeNeeded: chosenArch === 'AGBERO_TOUT' ? 200 : 0,
+                    changeNeeded: chosenArch === 'AGBERO_TOUT' ? 50 : 0,
                     seatedAt: remainingPassengers.length,
                     satisfaction: 'HAPPY',
                   };
@@ -1275,20 +1304,24 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                   cashCollected += fareToCharge;
                   soundEngine.playPassengerBoarding();
                   soundEngine.playCoin();
-                  addFeedMessage(`🎟️ ${archLabel}: ${newPassenger.name} boarded → "${targetStop.name}!" (+₦${fareToCharge.toLocaleString()})`);
+                  addFeedMessage(
+                    `🎟️ [${remainingPassengers.length}/${busCapacity}] ${archLabel} ${newPassenger.name} boarded → ${targetStop.name} (+₦${fareToCharge})`
+                  );
                 }
 
-                const newSeatsUsed = remainingPassengers.reduce((acc, p) => acc + (p.seatsTaken || 1), 0);
+                const newSeatsUsed = remainingPassengers.length;
                 activeJ.waitingPassengersCount = remainingWaiting;
                 const isCleared = remainingWaiting === 0 || newSeatsUsed >= busCapacity;
                 activeJ.cleared = isCleared;
                 activeJ.stopReached = true;
 
                 const nextWallet = prev.walletNaira + cashCollected;
-                const nextCred = prev.streetCred + alightedCount * 5 + (isCleared ? 15 : 0);
+                const nextCred = prev.streetCred + alightedCount * 4 + (isCleared ? 10 : 0);
                 if (cashCollected > 0 || alightedCount > 0) {
                   onUpdateSave?.({ walletNaira: nextWallet, streetCred: nextCred });
-                  triggerCashToast(cashCollected, `+₦${cashCollected.toLocaleString()} Fares & Tips!`);
+                  if (cashCollected > 0) {
+                    triggerCashToast(cashCollected, `+₦${cashCollected.toLocaleString()} Fare Paid`);
+                  }
                 }
 
                 return {
@@ -1362,6 +1395,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
             activeDelivery: gameState.activeDelivery,
             walkMoveX: walkJoyRef.current.x,
             walkMoveZ: walkJoyRef.current.y,
+            passengerCount: passengersCountRef.current,
           },
           dt
         );
@@ -1523,6 +1557,10 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
             <div className="w-px h-4 bg-stone-700" />
             <Coins className="w-2.5 h-2.5 text-emerald-400" />
             <span className="text-emerald-400 font-black tabular-nums">₦{gameState.walletNaira.toLocaleString()}</span>
+            <div className="w-px h-4 bg-stone-700" />
+            <span className="px-1.5 py-0.5 rounded bg-stone-900 border border-amber-400/50 text-amber-300 font-black tabular-nums">
+              👥 {gameState.bus.passengers?.length || 0}/{gameState.bus.capacity || 14}
+            </span>
             <div className="w-px h-4 bg-stone-700" />
             <span className={`font-black text-sm ${gear === 'D' ? 'text-amber-400' : gear === 'R' ? 'text-rose-400' : gear === 'P' ? 'text-sky-400' : 'text-stone-300'}`}>
               {gear}
@@ -1812,12 +1850,12 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
               soundEngine.playCoin();
               if (dramaChallenge.tapsLeft <= 1) {
                 setDramaChallenge(null);
-                triggerCashToast(300, '+₦300 Fast Change Tip!');
-                addFeedMessage(`🪙 CHANGE SETTLED: ${dramaChallenge.passengerName} calmed down and tipped +₦300!`);
+                triggerCashToast(50, '+₦50 Change Settled!');
+                addFeedMessage(`🪙 CHANGE SETTLED: ${dramaChallenge.passengerName} received ₦50 change (+₦50 bonus)!`);
                 setGameState((prev) => ({
                   ...prev,
-                  walletNaira: prev.walletNaira + 300,
-                  streetCred: prev.streetCred + 10,
+                  walletNaira: prev.walletNaira + 50,
+                  streetCred: prev.streetCred + 5,
                 }));
               } else {
                 setDramaChallenge({
@@ -1830,6 +1868,21 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           >
             🪙 TAP CHANGE ({dramaChallenge.tapsLeft})
           </button>
+        </div>
+      )}
+
+      {/* 🚧 3RD MAINLAND BRIDGE INTERCHANGE LOCKED ROADBLOCK BANNER (Around 760m - 805m) */}
+      {Math.abs(currentDist - 778) < 32 && !activeGasStation && (
+        <div className="absolute top-12 left-1/2 -translate-x-1/2 z-40 pointer-events-none bg-emerald-950/95 border-2 border-amber-400 rounded-2xl px-4 py-1.5 shadow-2xl flex items-center gap-2.5 max-w-md w-[92vw]">
+          <span className="text-lg">🚧</span>
+          <div className="flex-1 min-w-0">
+            <div className="text-[9px] font-mono font-black text-amber-400 uppercase tracking-wider">
+              3RD MAINLAND BRIDGE INTERCHANGE (ADENIJl ADELE / OBALENDE)
+            </div>
+            <div className="text-[10px] text-white font-bold">
+              🔒 LOCKED FOR EXPANSION: Roadblock active on right turn-off. Stay on Main Expressway!
+            </div>
+          </div>
         </div>
       )}
 
@@ -1901,7 +1954,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           (gameState.activeDelivery.destinationJunctionUid === nearJ.uid ||
             gameState.activeDelivery.destinationName.toLowerCase().includes(nearJ.name.toLowerCase()));
 
-        const seatsUsedCount = (gameState.bus.passengers || []).reduce((acc, p) => acc + (p.seatsTaken || 1), 0);
+        const seatsUsedCount = (gameState.bus.passengers || []).length;
 
         return (
           <div className="absolute top-16 left-1/2 -translate-x-1/2 z-40 bg-stone-950/95 border-2 border-amber-400 rounded-2xl px-3.5 py-2 shadow-2xl flex flex-col gap-1.5 pointer-events-auto max-w-md w-[92vw]">
@@ -1910,7 +1963,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                 <MapPin className="w-4 h-4 text-amber-400 animate-pulse shrink-0" />
                 <span className="text-[11px] font-mono font-black text-amber-400 truncate">🚏 {nearJ.name}</span>
                 <span className="text-[9px] font-mono text-emerald-300 font-bold">
-                  💬 "{nearJ.destinationTag}!"
+                  ₦{nearJ.averageFare} • "{nearJ.destinationTag}!"
                 </span>
               </div>
               <div className="flex items-center gap-1 shrink-0">
@@ -1925,7 +1978,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                   }`}
                   title="Bargain Fares at Stop"
                 >
-                  {fareBargainMode === 'SURGE_BARGAIN' ? '🔥 BARGAIN 1.4x' : '💵 FARE 1.0x'}
+                  {fareBargainMode === 'SURGE_BARGAIN' ? '🔥 BARGAIN 1.2x' : `💵 ₦${nearJ.averageFare}`}
                 </button>
                 <button
                   onClick={toggleDoor}
@@ -1945,10 +1998,10 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                 🎯 {dropOffsCount} alighting
               </span>
               <span className="text-amber-300 font-bold">🚪 {nearJ.waitingPassengersCount} waiting</span>
-              <span className="text-sky-300">
-                👥 {seatsUsedCount}/{gameState.bus.capacity} seats
+              <span className="text-sky-300 font-bold">
+                👥 {seatsUsedCount}/{gameState.bus.capacity || 14} on board
               </span>
-              <span className="text-stone-400">💼🧺🎒🗣️🤰</span>
+              <span className="text-emerald-300 font-bold">Fare: ₦{nearJ.averageFare}</span>
             </div>
 
             {isDeliveryDropOff && (
@@ -2010,12 +2063,20 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         return null;
       })()}
 
-      {/* 🚌 COMPACT OSHODI DANFO BUS PARK DEPARTURE HINT (At start of shift when engine is running) */}
-      {!isSteppedDown && isEngineRunning && currentDist < 36 && (
-        <div className="absolute top-11 left-1/2 -translate-x-1/2 z-40 pointer-events-none flex items-center gap-2 bg-stone-950/85 border border-amber-400/80 rounded-full px-3 py-1 shadow-lg backdrop-blur-sm">
+      {/* 🚌 COMPACT OSHODI DANFO BUS PARK DEPARTURE & EMPTY BUS FIRST PICKUP HINT */}
+      {!isSteppedDown && isEngineRunning && currentDist < 130 && (gameState.bus.passengers?.length || 0) === 0 && (
+        <div className="absolute top-11 left-1/2 -translate-x-1/2 z-40 pointer-events-none flex items-center gap-2 bg-stone-950/90 border border-amber-400/80 rounded-full px-3.5 py-1 shadow-lg backdrop-blur-sm">
           <span className="text-xs">🚌</span>
           <span className="text-[9px] font-mono font-bold text-stone-200">
-            <strong className="text-amber-400">OSHODI BUS PARK:</strong> Hold <strong className="text-amber-300">GAS (W)</strong> & steer <strong className="text-emerald-300">LEFT (A)</strong> out the gate!
+            {currentDist < 36 ? (
+              <>
+                <strong className="text-amber-400">BUS EMPTY (0/{gameState.bus.capacity || 14}):</strong> Drive out of Oshodi Park to <strong className="text-emerald-300">Ikeja Along Bus Stop (160m)</strong> for first pickup!
+              </>
+            ) : (
+              <>
+                <strong className="text-amber-400">FIRST PICKUP AHEAD ({Math.max(0, Math.round(160 - currentDist))}m):</strong> Stop at <strong className="text-emerald-300">Ikeja Along</strong> & Open Door (<strong className="text-amber-300">O</strong>) to load passengers!
+              </>
+            )}
           </span>
         </div>
       )}

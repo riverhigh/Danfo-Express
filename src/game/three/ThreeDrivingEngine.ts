@@ -48,6 +48,7 @@ export interface SceneUpdateParams {
   roadsideShops?: RoadsideShop[];
   walkMoveX?: number;
   walkMoveZ?: number;
+  passengerCount?: number;
 }
 
 export class ThreeDrivingEngine {
@@ -106,6 +107,8 @@ export class ThreeDrivingEngine {
   private bootDoorGroup: THREE.Group;
   private bootLuggageGroup: THREE.Group;
   private conductorMesh: THREE.Group;
+  private cabinPassengerMeshes: THREE.Group[] = [];
+  private doorStepLight!: THREE.PointLight;
   private leftFrontWheel: THREE.Mesh;
   private rightFrontWheel: THREE.Mesh;
   private rearWheels: THREE.Mesh[] = [];
@@ -341,7 +344,7 @@ export class ThreeDrivingEngine {
     if (z >= 182 && z <= 238) {
       minX = Math.min(minX, -20.5);
     }
-    // 3. Branching Shortcut #1: Allen Ave Right-Turn Shortcut Block (z = 340..840 on Right -X side)
+    // 3. Branching Intersection #1: Allen Ave Right-Turn Shortcut Block (z = 340..840 on Right -X side)
     if (z >= 325 && z <= 855) {
       minX = Math.min(minX, -24.5);
     }
@@ -349,13 +352,21 @@ export class ThreeDrivingEngine {
     if (z >= 492 && z <= 548) {
       maxX = Math.max(maxX, 20.5);
     }
-    // 5. Branching Shortcut #2: Mushin / Surulere Right-Turn Shortcut Block (z = 1150..1700 on Right -X side)
-    if (z >= 1135 && z <= 1715) {
+    // 5. Branching Intersection #2: Toyin St / Alausa Left-Turn Link (z = 660..1100 on Left +X side)
+    if (z >= 645 && z <= 1115) {
+      maxX = Math.max(maxX, 24.5);
+    }
+    // 6. Branching Intersection #3: Mushin / Ladipo Right-Turn Shortcut Block (z = 1280..1800 on Right -X side)
+    if (z >= 1265 && z <= 1815) {
       minX = Math.min(minX, -24.5);
     }
-    // 6. Gas Station #3 Pull-Off Side Lane (Oando Mega Petrol at z = 1750 on Left +X side)
+    // 7. Gas Station #3 Pull-Off Side Lane (Oando Mega Petrol at z = 1750 on Left +X side)
     if (z >= 1722 && z <= 1778) {
       maxX = Math.max(maxX, 20.5);
+    }
+    // 8. Branching Intersection #4: Surulere / Bode Thomas Left-Turn Link (z = 2320..2880 on Left +X side)
+    if (z >= 2305 && z <= 2895) {
+      maxX = Math.max(maxX, 24.5);
     }
 
     return { minX, maxX };
@@ -398,8 +409,19 @@ export class ThreeDrivingEngine {
     const x = this.busRoot.position.x;
     const z = this.busRoot.position.z;
     const inShortcut1 = z >= 335 && z <= 845 && x < -10.2;
-    const inShortcut2 = z >= 1145 && z <= 1705 && x < -10.2;
-    return inShortcut1 || inShortcut2;
+    const inShortcut2 = z >= 655 && z <= 1105 && x > 10.2;
+    const inShortcut3 = z >= 1275 && z <= 1805 && x < -10.2;
+    const inShortcut4 = z >= 2315 && z <= 2885 && x > 10.2;
+    return inShortcut1 || inShortcut2 || inShortcut3 || inShortcut4;
+  }
+
+  /**
+   * Returns true if the player is near one of the locked 3rd Mainland Bridge intersections
+   */
+  public isNearLockedThirdMainlandRamp(): boolean {
+    if (!this.busRoot) return false;
+    const z = this.busRoot.position.z;
+    return (z >= 555 && z <= 645) || (z >= 1975 && z <= 2065);
   }
 
   public consumeCollisionMessage(): string | null {
@@ -438,10 +460,11 @@ export class ThreeDrivingEngine {
     this.groundBody.updateAABB();
 
     // 2b. Explicit Cannon-es static ground slabs under Branching Shortcut Coordinates & Gas Station Pull-Off Bays
-    // so the vehicle's RaycastVehicle wheels always have solid ground support and never fall through the map!
     const shortcutGroundCoords: Array<[number, number, number, number]> = [
-      [-18.5, 590, 16, 540],  // Shortcut #1 (z = 340..840, x = -10..-26)
-      [-18.5, 1425, 16, 590], // Shortcut #2 (z = 1150..1700, x = -10..-26)
+      [-18.5, 590, 16, 540],  // Shortcut #1: Allen Ave (z = 340..840, x < 0)
+      [18.5, 880, 16, 480],   // Shortcut #2: Toyin St / Alausa (z = 660..1100, x > 0)
+      [-18.5, 1540, 16, 560], // Shortcut #3: Mushin / Ladipo (z = 1280..1800, x < 0)
+      [18.5, 2600, 16, 600],  // Shortcut #4: Surulere / Bode Thomas (z = 2320..2880, x > 0)
       [-14.5, 210, 14, 60],   // Gas Station #1 Pull-Off Bay (z = 210)
       [14.5, 520, 14, 60],    // Gas Station #2 Pull-Off Bay (z = 520)
       [14.5, 1750, 14, 60],   // Gas Station #3 Pull-Off Bay (z = 1750)
@@ -587,7 +610,7 @@ export class ThreeDrivingEngine {
     const curbTex = createCurbTexture();
 
     const roadLength = 120;
-    const segmentCount = 4; // More segments for longer road
+    const segmentCount = 6; // 6 segments = 720m continuous dense urban horizon!
 
     for (let i = 0; i < segmentCount; i++) {
       const group = new THREE.Group();
@@ -619,9 +642,9 @@ export class ThreeDrivingEngine {
         }
       });
 
-      // 2. Curbs & Sidewalks (grouped into rightSideProps [-X] and leftSideProps [+X] so shortcuts & gas bays open cleanly!)
+      // 2. Curbs, Sidewalks & Dense Urban Lagos Buildings on BOTH sides
       const rightSideProps = new THREE.Group();
-      rightSideProps.visible = i > 0; // Hidden at segment 0 so the starting Bus Park connects cleanly to the expressway!
+      rightSideProps.visible = i > 0; // Only hidden at segment 0 so Oshodi Park yard opens onto the road
       group.add(rightSideProps);
       group.userData.rightSideProps = rightSideProps;
 
@@ -636,29 +659,27 @@ export class ThreeDrivingEngine {
         if (idx === 0) rightSideProps.add(curb);
         else leftSideProps.add(curb);
 
-        // Sidewalk
-        const walk = new THREE.Mesh(new THREE.BoxGeometry(7, 0.25, roadLength), new THREE.MeshStandardMaterial({ color: 0x3a3732, roughness: 0.95 }));
-        walk.position.set(idx === 0 ? -14.5 : 14.5, 0.12, 0);
+        // Wide Urban Sidewalk
+        const walk = new THREE.Mesh(new THREE.BoxGeometry(9, 0.25, roadLength), new THREE.MeshStandardMaterial({ color: 0x3a3732, roughness: 0.95 }));
+        walk.position.set(idx === 0 ? -15.5 : 15.5, 0.12, 0);
         if (idx === 0) rightSideProps.add(walk);
         else leftSideProps.add(walk);
       });
 
-      // 2.5 Diverse Road Scenery (Trees & Pedestrian Bridges)
+      // 2.5 Overhead Pedestrian Bridges
       if (i % 2 === 1) {
         const bridgeGroup = new THREE.Group();
         const bridgePillarMat = new THREE.MeshStandardMaterial({ color: 0x9ca3af, roughness: 0.8 });
         const bridgeSpanMat = new THREE.MeshStandardMaterial({ color: 0x1e3a8a, metalness: 0.4, roughness: 0.6 });
 
-        [-11, 11].forEach(px => {
+        [-11, 11].forEach((px) => {
           const pillar = new THREE.Mesh(new THREE.BoxGeometry(1.5, 7, 1.5), bridgePillarMat);
           pillar.position.set(px, 3.5, 0);
-          pillar.castShadow = true;
           bridgeGroup.add(pillar);
         });
 
         const span = new THREE.Mesh(new THREE.BoxGeometry(24, 1, 3), bridgeSpanMat);
         span.position.set(0, 7.5, 0);
-        span.castShadow = true;
         bridgeGroup.add(span);
 
         const sign = new THREE.Mesh(new THREE.PlaneGeometry(16, 1.5), new THREE.MeshBasicMaterial({ color: 0x15803d }));
@@ -668,74 +689,157 @@ export class ThreeDrivingEngine {
         group.add(bridgeGroup);
       }
 
-      // Add some random Trees along the road
-      const treeGeo = new THREE.ConeGeometry(2, 6, 8);
-      const trunkGeo = new THREE.CylinderGeometry(0.4, 0.4, 2);
+      // 3. DENSE MULTI-STORY LAGOS BUILDINGS, BALCONIES, SHOP AWNINGS & SECOND-ROW SKYLINE TOWERS
+      const shopVariants: [string, string, number, number][] = [
+        ['EKO PHARMACY & SUPERSTORE', '#0284c7', 16, 16],
+        ['MAMA PUT AMALA & EWEDU HQ', '#dc2626', 12, 16],
+        ['COMPUTER VILLAGE MEGA PLAZA', '#16a34a', 20, 17],
+        ['SLOT SYSTEMS & TELECOMS', '#9333ea', 15, 16],
+        ['FIRST BANK OF NIGERIA PLC', '#1e40af', 24, 17],
+        ['ZENITH BANK CORPORATE HUB', '#991b1b', 18, 16],
+        ['MTN NIGERIA EXPERIENCE CTR', '#b45309', 15, 16],
+        ['SHOPRITE LAGOS CITY MALL', '#065f46', 21, 17],
+        ['GTBANK GUARANTEE PLAZA', '#c2410c', 22, 16],
+        ['BALOGUN LACE & TEXTILE HOUSE', '#4338ca', 17, 16],
+        ['UBA MARINA COMMERCIAL TOWER', '#b91c1c', 26, 17],
+        ['OANDO ENERGY & LUBRICANTS', '#0f766e', 14, 16],
+      ];
+
+      const awningColors = [0xfacc15, 0xef4444, 0x10b981, 0x3b82f6, 0xf97316, 0x8b5cf6];
+      const balconyMat = new THREE.MeshStandardMaterial({ color: 0xd6d3d1, roughness: 0.75 });
+      const tankMat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.4 });
+      const treeGeo = new THREE.ConeGeometry(1.8, 5.2, 8);
+      const trunkGeo = new THREE.CylinderGeometry(0.32, 0.38, 2.0);
       const leafMat = new THREE.MeshStandardMaterial({ color: 0x166534, roughness: 0.9 });
       const trunkMat = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.9 });
 
-      for (let t = -roadLength / 2; t < roadLength / 2; t += 30) {
-        if (Math.random() > 0.5) {
-          [-12.5, 12.5].forEach(tx => {
-            if (Math.random() > 0.3) {
-              const tree = new THREE.Group();
-              const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-              trunk.position.y = 1;
-              const leaves = new THREE.Mesh(treeGeo, leafMat);
-              leaves.position.y = 4;
-              tree.add(trunk, leaves);
-              tree.position.set(tx, 0, t + Math.random() * 10);
-              tree.castShadow = true;
-              if (tx < 0) rightSideProps.add(tree);
-              else leftSideProps.add(tree);
-            }
-          });
-        }
-      }
-
-      // 3. Buildings — varied heights & colors
-      const shopVariants: [string, string, number, number][] = [
-        ['EKO PHARMACY & CHEMIST',    '#0284c7', 14, 22],
-        ['MAMA PUT AMALA BUKKA',      '#dc2626', 10, 20],
-        ['COMPUTER VILLAGE TECH',     '#16a34a', 18, 24],
-        ['TOTAL PETROL PLAZA',        '#9333ea', 12, 20],
-        ['FIRST BANK OF NIGERIA',     '#1e40af', 22, 24],
-        ['ZENITH BANK MEGA BRANCH',   '#991b1b', 16, 22],
-        ['MTN EXPERIENCE CENTER',     '#b45309', 12, 20],
-        ['SHOPRITE IKEJA MALL',       '#065f46', 20, 28],
-      ];
-
-      for (let s = -roadLength / 2 + 12; s < roadLength / 2; s += 28) {
-        const seed = Math.abs(Math.round(i * 100 + s));
+      // Place Front-Row Street Buildings every 18m on BOTH sides (-X and +X)
+      for (let s = -roadLength / 2 + 9; s < roadLength / 2; s += 18) {
+        const seed = Math.abs(Math.round(i * 130 + s));
         const shopL = shopVariants[seed % shopVariants.length];
-        const shopR = shopVariants[(seed + 3) % shopVariants.length];
+        const shopR = shopVariants[(seed + 5) % shopVariants.length];
 
+        // --- RIGHT SIDE (-X) FRONT-ROW BUILDING (Placed at x = -23.5 so side lanes/shortcuts pass cleanly!) ---
         const bTexL = createBuildingFacadeTexture(shopL[0], shopL[1]);
         const hL = shopL[2];
-        const bMeshL = new THREE.Mesh(new THREE.BoxGeometry(11, hL, shopL[3]), new THREE.MeshStandardMaterial({ map: bTexL, roughness: 0.85 }));
-        bMeshL.position.set(-20, hL / 2, s);
-        bMeshL.castShadow = true;
-        rightSideProps.add(bMeshL);
+        const bGroupL = new THREE.Group();
+        const bMeshL = new THREE.Mesh(
+          new THREE.BoxGeometry(11, hL, shopL[3]),
+          new THREE.MeshStandardMaterial({ map: bTexL, roughness: 0.82 })
+        );
+        bMeshL.position.set(0, hL / 2, 0);
+        bGroupL.add(bMeshL);
 
+        // Ground-floor colorful shopfront awning facing street (+X)
+        const awningL = new THREE.Mesh(
+          new THREE.BoxGeometry(1.8, 0.22, shopL[3] - 1.5),
+          new THREE.MeshStandardMaterial({ color: awningColors[seed % awningColors.length], roughness: 0.5 })
+        );
+        awningL.position.set(6.0, 3.4, 0);
+        bGroupL.add(awningL);
+
+        // Upper-floor cantilevered Lagos balconies
+        for (let by = 6.5; by < hL - 2; by += 4.2) {
+          const balc = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.35, shopL[3] * 0.7), balconyMat);
+          balc.position.set(5.9, by, 0);
+          bGroupL.add(balc);
+        }
+
+        // Rooftop Black GP Water Tank
+        const waterTankL = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 2.2, 10), tankMat);
+        waterTankL.position.set(0, hL + 1.1, -2);
+        bGroupL.add(waterTankL);
+
+        bGroupL.position.set(-28.5, 0, s);
+        rightSideProps.add(bGroupL);
+
+        // --- LEFT SIDE (+X) FRONT-ROW BUILDING ---
         const bTexR = createBuildingFacadeTexture(shopR[0], shopR[1]);
         const hR = shopR[2];
-        const bMeshR = new THREE.Mesh(new THREE.BoxGeometry(11, hR, shopR[3]), new THREE.MeshStandardMaterial({ map: bTexR, roughness: 0.85 }));
-        bMeshR.position.set(20, hR / 2, s);
-        bMeshR.castShadow = true;
-        leftSideProps.add(bMeshR);
+        const bGroupR = new THREE.Group();
+        const bMeshR = new THREE.Mesh(
+          new THREE.BoxGeometry(11, hR, shopR[3]),
+          new THREE.MeshStandardMaterial({ map: bTexR, roughness: 0.82 })
+        );
+        bMeshR.position.set(0, hR / 2, 0);
+        bGroupR.add(bMeshR);
 
-        // Street lamp post with glow bulb
+        const awningR = new THREE.Mesh(
+          new THREE.BoxGeometry(1.8, 0.22, shopR[3] - 1.5),
+          new THREE.MeshStandardMaterial({ color: awningColors[(seed + 2) % awningColors.length], roughness: 0.5 })
+        );
+        awningR.position.set(-6.0, 3.4, 0);
+        bGroupR.add(awningR);
+
+        for (let by = 6.5; by < hR - 2; by += 4.2) {
+          const balc = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.35, shopR[3] * 0.7), balconyMat);
+          balc.position.set(-5.9, by, 0);
+          bGroupR.add(balc);
+        }
+
+        const waterTankR = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 2.2, 10), tankMat);
+        waterTankR.position.set(0, hR + 1.1, 2);
+        bGroupR.add(waterTankR);
+
+        bGroupR.position.set(28.5, 0, s);
+        leftSideProps.add(bGroupR);
+
+        // --- SECOND-ROW TALL SKYLINE HIGH-RISE TOWERS (x = -42 and x = +42) ---
+        if (seed % 2 === 0) {
+          const towerInfoL = shopVariants[(seed + 3) % shopVariants.length];
+          const towerTexL = createBuildingFacadeTexture(towerInfoL[0], towerInfoL[1]);
+          const towerHL = 28 + (seed % 16);
+          const towerL = new THREE.Mesh(
+            new THREE.BoxGeometry(14, towerHL, 20),
+            new THREE.MeshStandardMaterial({ map: towerTexL, roughness: 0.75 })
+          );
+          towerL.position.set(-42, towerHL / 2, s);
+          rightSideProps.add(towerL);
+
+          const towerInfoR = shopVariants[(seed + 7) % shopVariants.length];
+          const towerTexR = createBuildingFacadeTexture(towerInfoR[0], towerInfoR[1]);
+          const towerHR = 26 + ((seed + 5) % 18);
+          const towerR = new THREE.Mesh(
+            new THREE.BoxGeometry(14, towerHR, 20),
+            new THREE.MeshStandardMaterial({ map: towerTexR, roughness: 0.75 })
+          );
+          towerR.position.set(42, towerHR / 2, s);
+          leftSideProps.add(towerR);
+        }
+
+        // Street lamp post with glow bulb & roadside trees
         [-11, 11].forEach((lx) => {
-          const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 8), new THREE.MeshStandardMaterial({ color: 0x52525b, metalness: 0.7 }));
+          const pole = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.09, 0.12, 8),
+            new THREE.MeshStandardMaterial({ color: 0x52525b, metalness: 0.7 })
+          );
           pole.position.set(lx, 4, s);
-          const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 8), new THREE.MeshStandardMaterial({ color: 0xfef3c7, emissive: 0xfef08a, emissiveIntensity: 1.2 }));
+          const bulb = new THREE.Mesh(
+            new THREE.SphereGeometry(0.24, 8, 8),
+            new THREE.MeshStandardMaterial({ color: 0xfef3c7, emissive: 0xfef08a, emissiveIntensity: 1.4 })
+          );
           bulb.position.set(lx, 8.2, s);
+
           if (lx < 0) {
             rightSideProps.add(pole, bulb);
           } else {
             leftSideProps.add(pole, bulb);
           }
         });
+
+        if (seed % 3 === 0) {
+          [-12.2, 12.2].forEach((tx) => {
+            const tree = new THREE.Group();
+            const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+            trunk.position.y = 1;
+            const leaves = new THREE.Mesh(treeGeo, leafMat);
+            leaves.position.y = 3.8;
+            tree.add(trunk, leaves);
+            tree.position.set(tx, 0, s + 6);
+            if (tx < 0) rightSideProps.add(tree);
+            else leftSideProps.add(tree);
+          });
+        }
       }
 
       // 3D Road Speed Bump / Asphalt Ridge across lanes
@@ -744,7 +848,7 @@ export class ThreeDrivingEngine {
         const bumpMat = new THREE.MeshStandardMaterial({
           color: 0x332a20,
           roughness: 0.9,
-          metalness: 0.1
+          metalness: 0.1,
         });
         const bumpMesh = new THREE.Mesh(bumpGeo, bumpMat);
         bumpMesh.rotation.z = Math.PI / 2;
@@ -755,7 +859,7 @@ export class ThreeDrivingEngine {
 
       // Overhead gantry signs on every other segment
       if (i % 2 === 1) {
-        const signTex = createSignboardTexture('LAGOS–IBADAN EXPRESSWAY', 'IKEJA → OSHODI → SURULERE → CMS', '#047857');
+        const signTex = createSignboardTexture('LAGOS–IBADAN EXPRESSWAY', 'IKEJA → OSHODI → YABA → CMS', '#047857');
         const sign = new THREE.Mesh(new THREE.BoxGeometry(18, 3.2, 0.35), new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.35 }));
         sign.position.set(0, 8.0, 0);
         group.add(sign);
@@ -772,18 +876,19 @@ export class ThreeDrivingEngine {
     }
 
     // ================================================
-    // STARTING MOTOR PARK, BRANCHING SHORTCUTS & MAJOR LANDMARKS
+    // STARTING MOTOR PARK, MULTIPLE INTERSECTIONS, 3RD MAINLAND BRIDGE ROADBLOCK & LANDMARKS
     // ================================================
     this.buildBusPark();
     this.buildBranchingShortcuts();
+    this.buildThirdMainlandRoadblocks();
     this.buildIkejaArea();
     this.buildOshodiArea();
     this.buildSurulereArea();
   }
 
   /**
-   * Builds 3D 90-Degree Intersecting Road Shortcuts & Branching Bypass Lanes
-   * cutting through procedural buildings and looping back onto the main expressway!
+   * Builds Multiple 90-Degree Road Intersections on BOTH sides (-X and +X) leading to different districts
+   * (Allen Ave, Toyin St / Alausa, Mushin / Ladipo, Surulere / Bode Thomas) lined with urban buildings!
    */
   private buildBranchingShortcuts() {
     const asphaltTex = createAsphaltTexture();
@@ -793,18 +898,36 @@ export class ThreeDrivingEngine {
 
     const shortcutConfigs = [
       {
-        name: 'ALLEN AVE SHORTCUT BYPASS',
-        subtitle: 'TURN RIGHT • BYPASS GO-SLOW TRAFFIC (+35% SPEED)',
+        name: 'ALLEN AVE / COMPUTER VILLAGE BYPASS',
+        subtitle: 'TURN RIGHT ↪ BYPASS GO-SLOW TRAFFIC (+35% SPEED)',
         startZ: 340,
         endZ: 840,
+        side: 'RIGHT' as const,
         laneCenterX: -18.5,
       },
       {
-        name: 'MUSHIN EXPRESS SHORTCUT',
-        subtitle: 'TURN RIGHT • FAST INNER-STREET BYPASS (+35% SPEED)',
-        startZ: 1150,
-        endZ: 1700,
+        name: 'TOYIN ST / ALAUSA SECRETARIAT LINK',
+        subtitle: 'TURN LEFT ↩ FAST COMMERCIAL CORRIDOR (+35% SPEED)',
+        startZ: 660,
+        endZ: 1100,
+        side: 'LEFT' as const,
+        laneCenterX: 18.5,
+      },
+      {
+        name: 'MUSHIN / LADIPO AUTO PARTS BYPASS',
+        subtitle: 'TURN RIGHT ↪ INNER-STREET SHORTCUT (+35% SPEED)',
+        startZ: 1280,
+        endZ: 1800,
+        side: 'RIGHT' as const,
         laneCenterX: -18.5,
+      },
+      {
+        name: 'SURULERE / BODE THOMAS EXPRESS LINK',
+        subtitle: 'TURN LEFT ↩ STADIUM BYPASS CORRIDOR (+35% SPEED)',
+        startZ: 2320,
+        endZ: 2880,
+        side: 'LEFT' as const,
+        laneCenterX: 18.5,
       },
     ];
 
@@ -812,120 +935,252 @@ export class ThreeDrivingEngine {
       const group = new THREE.Group();
       const lengthZ = sc.endZ - sc.startZ;
       const midZ = (sc.startZ + sc.endZ) / 2;
+      const sideSign = sc.side === 'RIGHT' ? -1 : 1;
 
-      // 1. Entry 90-Degree Right-Turn Intersection Box at startZ (x = -9 to -23.5)
-      const entryRoad = new THREE.Mesh(new THREE.PlaneGeometry(16, 24), shortcutMat);
+      // 1. Entry 90-Degree Intersection Road Box at startZ
+      const entryRoad = new THREE.Mesh(new THREE.PlaneGeometry(16, 26), shortcutMat);
       entryRoad.rotation.x = -Math.PI / 2;
-      entryRoad.position.set(-16.5, 0.02, sc.startZ);
+      entryRoad.position.set(sideSign * 16.5, 0.03, sc.startZ);
       group.add(entryRoad);
 
-      // 2. Main Parallel Shortcut Street Box cutting through procedural buildings (z = startZ..endZ)
-      const bypassRoad = new THREE.Mesh(new THREE.PlaneGeometry(10, lengthZ), shortcutMat);
+      // 2. Main Parallel District Street Box cutting through urban buildings (z = startZ..endZ)
+      const bypassRoad = new THREE.Mesh(new THREE.PlaneGeometry(10.5, lengthZ), shortcutMat);
       bypassRoad.rotation.x = -Math.PI / 2;
-      bypassRoad.position.set(sc.laneCenterX, 0.02, midZ);
+      bypassRoad.position.set(sc.laneCenterX, 0.03, midZ);
       group.add(bypassRoad);
 
-      // 3. Exit 90-Degree Left-Turn Intersection Box looping back onto main road at endZ
-      const exitRoad = new THREE.Mesh(new THREE.PlaneGeometry(16, 24), shortcutMat);
+      // 3. Exit 90-Degree Intersection Road Box looping back onto main expressway at endZ
+      const exitRoad = new THREE.Mesh(new THREE.PlaneGeometry(16, 26), shortcutMat);
       exitRoad.rotation.x = -Math.PI / 2;
-      exitRoad.position.set(-16.5, 0.02, sc.endZ);
+      exitRoad.position.set(sideSign * 16.5, 0.03, sc.endZ);
       group.add(exitRoad);
 
-      // 4. Center Dashed Yellow Line & Mini-Map Layer-1 Highlight Strip along Shortcut
+      // 4. Center Dashed Yellow Line & Layer-1 Satellite Mini-Map Highlight Strip
       for (let z = sc.startZ; z <= sc.endZ; z += 14) {
         const dash = new THREE.Mesh(new THREE.PlaneGeometry(0.25, 7), yellowLineMat);
         dash.rotation.x = -Math.PI / 2;
-        dash.position.set(sc.laneCenterX, 0.04, z);
+        dash.position.set(sc.laneCenterX, 0.05, z);
         group.add(dash);
       }
 
-      // Layer-1 Mini-Map bright emerald path strip so shortcut pops on satellite Mini-Map!
       const miniMapPath = new THREE.Mesh(
-        new THREE.PlaneGeometry(3.2, lengthZ),
+        new THREE.PlaneGeometry(3.5, lengthZ),
         new THREE.MeshBasicMaterial({ color: 0x10b981 })
       );
       miniMapPath.rotation.x = -Math.PI / 2;
-      miniMapPath.position.set(sc.laneCenterX, 0.2, midZ);
+      miniMapPath.position.set(sc.laneCenterX, 0.25, midZ);
       miniMapPath.layers.set(1);
       group.add(miniMapPath);
 
       const miniMapEntry = new THREE.Mesh(
-        new THREE.PlaneGeometry(14, 4.5),
+        new THREE.PlaneGeometry(14, 5),
         new THREE.MeshBasicMaterial({ color: 0x10b981 })
       );
       miniMapEntry.rotation.x = -Math.PI / 2;
-      miniMapEntry.position.set(-14.5, 0.2, sc.startZ);
+      miniMapEntry.position.set(sideSign * 14.5, 0.25, sc.startZ);
       miniMapEntry.layers.set(1);
       group.add(miniMapEntry);
 
       const miniMapExit = new THREE.Mesh(
-        new THREE.PlaneGeometry(14, 4.5),
+        new THREE.PlaneGeometry(14, 5),
         new THREE.MeshBasicMaterial({ color: 0x10b981 })
       );
       miniMapExit.rotation.x = -Math.PI / 2;
-      miniMapExit.position.set(-14.5, 0.2, sc.endZ);
+      miniMapExit.position.set(sideSign * 14.5, 0.25, sc.endZ);
       miniMapExit.layers.set(1);
       group.add(miniMapExit);
 
       // 5. Glowing Entry & Exit Guidance Chevrons on the road surface
-      [-10.5, -13.5, -16.5].forEach((cx, idx) => {
+      [10.5, 13.5, 16.5].forEach((absX, idx) => {
+        const cx = sideSign * absX;
         const entryChev = new THREE.Mesh(new THREE.ConeGeometry(0.9, 2.2, 3), idx % 2 === 0 ? greenNeonMat : yellowLineMat);
         entryChev.rotation.x = Math.PI / 2;
-        entryChev.rotation.z = Math.PI / 4; // Pointing right-forward into shortcut
-        entryChev.position.set(cx, 0.08, sc.startZ - 4 + idx * 3);
+        entryChev.rotation.z = -sideSign * (Math.PI / 4);
+        entryChev.position.set(cx, 0.09, sc.startZ - 4 + idx * 3);
         group.add(entryChev);
 
         const exitChev = new THREE.Mesh(new THREE.ConeGeometry(0.9, 2.2, 3), idx % 2 === 0 ? greenNeonMat : yellowLineMat);
         exitChev.rotation.x = Math.PI / 2;
-        exitChev.rotation.z = -Math.PI / 4; // Pointing left-forward back onto expressway
-        exitChev.position.set(cx, 0.08, sc.endZ - 4 + idx * 3);
+        exitChev.rotation.z = sideSign * (Math.PI / 4);
+        exitChev.position.set(cx, 0.09, sc.endZ - 4 + idx * 3);
         group.add(exitChev);
       });
 
-      // 6. Overhead Shortcut Entrance & Rejoin Signboards
-      const entrySignTex = createSignboardTexture(`↪ ${sc.name}`, sc.subtitle, '#15803d');
+      // 6. Overhead Intersection Entrance & Rejoin Signboards
+      const entrySignTex = createSignboardTexture(sc.name, sc.subtitle, '#15803d');
       const entrySign = new THREE.Mesh(
-        new THREE.BoxGeometry(11, 2.2, 0.3),
+        new THREE.BoxGeometry(11.5, 2.3, 0.32),
         new THREE.MeshStandardMaterial({ map: entrySignTex, roughness: 0.3 })
       );
-      entrySign.position.set(-13.5, 6.2, sc.startZ - 10);
+      entrySign.position.set(sideSign * 13.5, 6.4, sc.startZ - 10);
       group.add(entrySign);
 
-      const exitSignTex = createSignboardTexture('↩ REJOIN MAIN EXPRESSWAY', 'MERGE LEFT ONTO LAGOS CORRIDOR', '#0284c7');
+      const exitSignTex = createSignboardTexture('↩ REJOIN MAIN EXPRESSWAY', 'MERGE BACK ONTO LAGOS CORRIDOR', '#0284c7');
       const exitSign = new THREE.Mesh(
         new THREE.BoxGeometry(9.5, 2.0, 0.3),
         new THREE.MeshStandardMaterial({ map: exitSignTex, roughness: 0.3 })
       );
-      exitSign.position.set(-16.5, 5.8, sc.endZ - 6);
+      exitSign.position.set(sideSign * 16.5, 5.8, sc.endZ - 6);
       group.add(exitSign);
 
-      // 7. Procedural Shortcut Block Buildings lining the outer edge (x = -27.5) and inner island (x = -11.8)
+      // 7. Dense Urban District Buildings along the Shortcut Street
       const shortcutBuildings = [
         ['ALLEN ROUNDABOUT PLAZA', '#0f766e'],
         ['BALA SUYA & SHAWARMA SPOT', '#b91c1c'],
         ['LAGOS ISLAND MICROFINANCE', '#1d4ed8'],
         ['MAMA CHINEDU BUKKA JOINT', '#b45309'],
+        ['LADIPO AUTO SPARES PLAZA', '#4338ca'],
+        ['SURULERE SHOPPING ARCADE', '#15803d'],
       ];
-      for (let bz = sc.startZ + 38; bz < sc.endZ - 35; bz += 45) {
+      for (let bz = sc.startZ + 28; bz < sc.endZ - 26; bz += 26) {
         const bInfo = shortcutBuildings[Math.abs(Math.round(bz)) % shortcutBuildings.length];
         const bTex = createBuildingFacadeTexture(bInfo[0], bInfo[1]);
-        const bHeight = 14 + (bz % 8);
-        // Outer shortcut building
-        const outerB = new THREE.Mesh(
-          new THREE.BoxGeometry(8, bHeight, 22),
-          new THREE.MeshStandardMaterial({ map: bTex, roughness: 0.85 })
-        );
-        outerB.position.set(-28.0, bHeight / 2, bz);
-        group.add(outerB);
-
+        const bHeight = 14 + (bz % 10);
         // Inner island building separating shortcut from main highway
         const innerB = new THREE.Mesh(
-          new THREE.BoxGeometry(3.0, 11, 20),
+          new THREE.BoxGeometry(2.8, bHeight * 0.75, 16),
           new THREE.MeshStandardMaterial({ map: bTex, roughness: 0.85 })
         );
-        innerB.position.set(-11.8, 5.5, bz);
+        innerB.position.set(sideSign * 11.8, (bHeight * 0.75) / 2, bz);
         group.add(innerB);
       }
+
+      this.scene.add(group);
+    });
+  }
+
+  /**
+   * Builds the 🌉 3RD MAINLAND BRIDGE INTERSECTIONS (at z = 600m and z = 2020m)
+   * with a Giant Overhead Highway Banner ("3RD MAINLAND BRIDGE — LOCKED") and a
+   * Full 3D Physical Roadblock (Concrete Jersey Barriers, Chevron Barricades, Cones & Police Van)!
+   */
+  private buildThirdMainlandRoadblocks() {
+    const asphaltTex = createAsphaltTexture();
+    const rampMat = new THREE.MeshStandardMaterial({ map: asphaltTex, roughness: 0.8, metalness: 0.1 });
+    const concreteMat = new THREE.MeshStandardMaterial({ color: 0x9ca3af, roughness: 0.85 });
+    const redBarrierMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.5 });
+    const whiteBarrierMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.5 });
+    const yellowHazardMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.35 });
+    const blackHazardMat = new THREE.MeshStandardMaterial({ color: 0x09090b, roughness: 0.6 });
+
+    const bridgeIntersections = [
+      {
+        z: 600,
+        side: 'RIGHT' as const,
+        title: '🌉 3RD MAINLAND BRIDGE → LAGOS ISLAND / IKOYI',
+        subtitle: '🔒 LOCKED ROUTE • FEDERAL MINISTRY OF WORKS ROADBLOCK AHEAD',
+      },
+      {
+        z: 2020,
+        side: 'LEFT' as const,
+        title: '🌉 3RD MAINLAND BRIDGE (OWORONSHOKI RAMP)',
+        subtitle: '🔒 BRIDGE CLOSED FOR EXPANSION • ROADBLOCK ACTIVE',
+      },
+    ];
+
+    bridgeIntersections.forEach((br) => {
+      const group = new THREE.Group();
+      group.position.set(0, 0, br.z);
+      const sideSign = br.side === 'RIGHT' ? -1 : 1;
+
+      // 1. Wide Highway Off-Ramp branching toward the Lagoon Bridge
+      const rampRoad = new THREE.Mesh(new THREE.PlaneGeometry(24, 28), rampMat);
+      rampRoad.rotation.x = -Math.PI / 2;
+      rampRoad.position.set(sideSign * 19, 0.03, 0);
+      group.add(rampRoad);
+
+      // Elevated Concrete Bridge Flyover Deck rising in the background beyond the roadblock
+      const elevatedDeck = new THREE.Mesh(new THREE.BoxGeometry(36, 1.4, 14), concreteMat);
+      elevatedDeck.position.set(sideSign * 38, 3.8, 0);
+      elevatedDeck.rotation.z = -sideSign * 0.14;
+      group.add(elevatedDeck);
+
+      // Bridge Lagoon Pillars & Suspension Cables Silhouette
+      [-1, 1].forEach((pz) => {
+        const pylon = new THREE.Mesh(new THREE.BoxGeometry(1.8, 22, 1.8), concreteMat);
+        pylon.position.set(sideSign * 36, 11, pz * 6.5);
+        group.add(pylon);
+      });
+
+      // 2. Giant Overhead Federal Highway Gantry Banner Across Main Road + Ramp Entrance
+      const bannerTex = createSignboardTexture(br.title, br.subtitle, '#047857');
+      const mainBanner = new THREE.Mesh(
+        new THREE.BoxGeometry(22, 3.2, 0.45),
+        new THREE.MeshStandardMaterial({ map: bannerTex, roughness: 0.3 })
+      );
+      mainBanner.position.set(sideSign * 5.5, 8.2, -8);
+      group.add(mainBanner);
+
+      // Dedicated Ramp Entrance "3RD MAINLAND BRIDGE - LOCKED / ROAD CLOSED" Gantry
+      const lockedTex = createSignboardTexture(
+        '🚧 3RD MAINLAND BRIDGE (LOCKED)',
+        '⛔ ROADBLOCK ACTIVE • DO NOT ENTER • STAY ON MAINLAND EXPRESS',
+        '#b91c1c'
+      );
+      const rampGantry = new THREE.Mesh(
+        new THREE.BoxGeometry(0.45, 2.8, 20),
+        new THREE.MeshStandardMaterial({ map: lockedTex, roughness: 0.3 })
+      );
+      rampGantry.position.set(sideSign * 11.2, 5.4, 0);
+      group.add(rampGantry);
+
+      [-9.5, 9.5].forEach((gz) => {
+        const col = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.32, 6.2), concreteMat);
+        col.position.set(sideSign * 11.2, 3.1, gz);
+        group.add(col);
+      });
+
+      // 3. PHYSICAL 3D ROADBLOCK BARRICADE ACROSS THE RAMP MOUTH (x = sideSign * 10.5)
+      for (let bz = -10; bz <= 10; bz += 3.2) {
+        const isRed = Math.abs(Math.round(bz)) % 2 === 0;
+        // Concrete Jersey Barrier block
+        const jersey = new THREE.Mesh(
+          new THREE.BoxGeometry(1.1, 1.25, 2.8),
+          isRed ? redBarrierMat : whiteBarrierMat
+        );
+        jersey.position.set(sideSign * 10.2, 0.62, bz);
+        group.add(jersey);
+
+        // Top Yellow/Black Hazard Barricade Board
+        const hazardBoard = new THREE.Mesh(
+          new THREE.BoxGeometry(0.25, 0.65, 2.7),
+          isRed ? yellowHazardMat : blackHazardMat
+        );
+        hazardBoard.position.set(sideSign * 10.2, 1.65, bz);
+        group.add(hazardBoard);
+
+        // Flashing Red Warning Beacon Light on top of each barrier
+        const beacon = new THREE.Mesh(
+          new THREE.SphereGeometry(0.22, 8, 8),
+          new THREE.MeshBasicMaterial({ color: isRed ? 0xff0000 : 0xfacc15 })
+        );
+        beacon.position.set(sideSign * 10.2, 2.15, bz);
+        group.add(beacon);
+
+        // Orange Traffic Cone in front of the barrier
+        const cone = new THREE.Mesh(
+          new THREE.ConeGeometry(0.32, 0.85, 10),
+          new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.4 })
+        );
+        cone.position.set(sideSign * 8.9, 0.42, bz);
+        group.add(cone);
+      }
+
+      // 4. Parked Police / LASTMA Enforcement Vehicle Guarding Behind the Roadblock
+      const policeGuard = this.createProceduralPoliceCar();
+      policeGuard.position.set(sideSign * 13.8, 0.05, 0);
+      policeGuard.rotation.y = sideSign * 0.45;
+      group.add(policeGuard);
+
+      // 5. Layer-1 Satellite Mini-Map Red Roadblock Marker
+      const miniMapBlock = new THREE.Mesh(
+        new THREE.PlaneGeometry(14, 16),
+        new THREE.MeshBasicMaterial({ color: 0xef4444 })
+      );
+      miniMapBlock.rotation.x = -Math.PI / 2;
+      miniMapBlock.position.set(sideSign * 14.5, 0.4, 0);
+      miniMapBlock.layers.set(1);
+      group.add(miniMapBlock);
 
       this.scene.add(group);
     });
@@ -1870,46 +2125,118 @@ export class ThreeDrivingEngine {
       danfoGroup.add(flap, flapStripe);
     });
 
-    // Rear boot door (animated trunk)
+    // 15b. Recessed Rear Trunk Cavity & Outward-Opening Rear Boot Tailgate
+    const bootCavity = new THREE.Mesh(
+      new THREE.BoxGeometry(1.94, 1.28, 0.42),
+      new THREE.MeshStandardMaterial({ color: 0x09090b, roughness: 0.9 })
+    );
+    bootCavity.position.set(0, 1.54, -2.28);
+    danfoGroup.add(bootCavity);
+
+    // Rear boot door (Hinged at top y = 2.32, swings OUTWARDS & UPWARDS when opened!)
     const bootDoor = new THREE.Group();
-    bootDoor.position.set(0, 2.32, -2.46);
-    const bootDoorPanel = new THREE.Mesh(new THREE.BoxGeometry(2.12, 1.48, 0.08), yellowMat);
-    bootDoorPanel.position.set(0, -0.74, 0);
-    const bootDoorStripe = new THREE.Mesh(new THREE.BoxGeometry(2.14, 0.12, 0.09), blackStripeMat);
-    bootDoorStripe.position.set(0, -1.0, 0);
-    bootDoor.add(bootDoorPanel, bootDoorStripe);
+    bootDoor.position.set(0, 2.32, -2.47);
+    const bootDoorPanel = new THREE.Mesh(new THREE.BoxGeometry(2.08, 1.44, 0.08), yellowMat);
+    bootDoorPanel.position.set(0, -0.72, -0.02);
+    const bootDoorWindow = new THREE.Mesh(new THREE.BoxGeometry(1.82, 0.58, 0.09), glassMat);
+    bootDoorWindow.position.set(0, -0.36, -0.02);
+    const bootDoorStripe = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.12, 0.095), blackStripeMat);
+    bootDoorStripe.position.set(0, -1.02, -0.02);
+    const bootHandle = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.06, 0.12), chromeMat);
+    bootHandle.position.set(0, -1.32, -0.05);
+    bootDoor.add(bootDoorPanel, bootDoorWindow, bootDoorStripe, bootHandle);
     danfoGroup.add(bootDoor);
 
+    // Visible Cargo Bags inside Rear Trunk Cavity when Boot is Opened
     const bootLuggage = new THREE.Group();
-    bootLuggage.position.set(0, 0.85, -2.05);
+    bootLuggage.position.set(0, 1.05, -2.22);
+    const trunkBag1 = new THREE.Mesh(
+      new THREE.BoxGeometry(0.65, 0.48, 0.45),
+      new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.7 })
+    );
+    trunkBag1.position.set(-0.45, 0.24, 0);
+    const trunkBag2 = new THREE.Mesh(
+      new THREE.BoxGeometry(0.68, 0.52, 0.45),
+      new THREE.MeshStandardMaterial({ color: 0x2563eb, roughness: 0.7 })
+    );
+    trunkBag2.position.set(0.38, 0.26, 0);
+    bootLuggage.add(trunkBag1, trunkBag2);
     danfoGroup.add(bootLuggage);
 
-    // 16. Passenger Sliding Door (animated with window & stripes)
+    // 16. Deep Open Passenger Doorway Entrance Cavity, Step-Well, Grab Rail & Sliding Door
+    // Dark recessed cabin doorway opening on both sides so when the sliding door moves back, you clearly see the open entrance!
+    [-1.13, 1.13].forEach((dx) => {
+      const doorwayVoid = new THREE.Mesh(
+        new THREE.BoxGeometry(0.16, 1.62, 1.3),
+        new THREE.MeshStandardMaterial({ color: 0x050507, roughness: 0.95 })
+      );
+      doorwayVoid.position.set(dx, 1.48, 0.42);
+      danfoGroup.add(doorwayVoid);
+
+      // Silver diamond-plate entry steps at bottom of doorway
+      const stepPlate = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.08, 1.24), chromeMat);
+      stepPlate.position.set(dx, 0.68, 0.42);
+      danfoGroup.add(stepPlate);
+
+      // Yellow vertical passenger grab pole inside doorway
+      const grabPole = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 1.55, 10), yellowMat);
+      grabPole.position.set(dx * 0.98, 1.48, 1.0);
+      danfoGroup.add(grabPole);
+
+      // Exterior black metal sliding door track rail along side body
+      const slideTrack = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.05, 2.65), darkMat);
+      slideTrack.position.set(dx * 1.03, 1.56, -0.22);
+      danfoGroup.add(slideTrack);
+    });
+
+    // Warm interior step-well light that illuminates when the sliding door opens
+    this.doorStepLight = new THREE.PointLight(0xfacc15, 0, 4.5);
+    this.doorStepLight.position.set(1.25, 1.85, 0.42);
+    danfoGroup.add(this.doorStepLight);
+
+    // Passenger Sliding Door (Pops out on track and slides rearward to expose the open doorway cavity!)
     const slidingDoor = new THREE.Group();
-    slidingDoor.position.set(1.16, 0, 0);
-    const doorPanel = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.62, 1.32), yellowMat);
-    doorPanel.position.set(0, 1.46, 0.42);
-    const doorStripe1 = new THREE.Mesh(new THREE.BoxGeometry(0.095, 0.13, 1.34), blackStripeMat);
+    slidingDoor.position.set(1.18, 0, 0);
+    const doorPanel = new THREE.Mesh(new THREE.BoxGeometry(0.09, 1.64, 1.32), yellowMat);
+    doorPanel.position.set(0, 1.48, 0.42);
+    const doorGlass = new THREE.Mesh(new THREE.BoxGeometry(0.105, 0.68, 1.12), glassMat);
+    doorGlass.position.set(0, 1.88, 0.42);
+    const doorStripe1 = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.13, 1.34), blackStripeMat);
     doorStripe1.position.set(0, 1.32, 0.42);
-    const doorStripe2 = new THREE.Mesh(new THREE.BoxGeometry(0.095, 0.13, 1.34), blackStripeMat);
+    const doorStripe2 = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.13, 1.34), blackStripeMat);
     doorStripe2.position.set(0, 1.02, 0.42);
-    const doorHandle = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.05, 0.18), chromeMat);
-    doorHandle.position.set(0.03, 1.48, 0.92);
-    slidingDoor.add(doorPanel, doorStripe1, doorStripe2, doorHandle);
+    const doorHandle = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.06, 0.22), chromeMat);
+    doorHandle.position.set(0.05, 1.46, 0.92);
+    slidingDoor.add(doorPanel, doorGlass, doorStripe1, doorStripe2, doorHandle);
     danfoGroup.add(slidingDoor);
 
-    // 17. Conductor at doorway
+    // 17. Conductor Character (Stands on the street beside the bus in Walk Mode, never stuck to the door!)
     const conductor = new THREE.Group();
-    conductor.position.set(1.2, 0.85, 0.42);
-    const condBody = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.8, 12), new THREE.MeshStandardMaterial({ color: 0x2563eb }));
-    const condHead = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 12), new THREE.MeshStandardMaterial({ color: 0x3e2723 }));
-    condHead.position.y = 0.55;
-    const condCap = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.06, 12), new THREE.MeshStandardMaterial({ color: 0xf59e0b }));
-    condCap.position.y = 0.68;
-    const condLegs = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.6, 0.2), new THREE.MeshStandardMaterial({ color: 0x1f2937 }));
-    condLegs.position.y = -0.55;
-    const condArm = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.45, 0.1), new THREE.MeshStandardMaterial({ color: 0x3e2723 }));
-    condArm.position.set(0.2, 0.2, 0);
+    conductor.position.set(1.25, 0.85, 0.42);
+    const condBody = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.18, 0.22, 0.78, 12),
+      new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.6 })
+    );
+    const condHead = new THREE.Mesh(
+      new THREE.SphereGeometry(0.15, 12, 12),
+      new THREE.MeshStandardMaterial({ color: 0x3e2723, roughness: 0.7 })
+    );
+    condHead.position.y = 0.56;
+    const condCap = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.16, 0.16, 0.07, 12),
+      new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.4 })
+    );
+    condCap.position.y = 0.69;
+    const condLegs = new THREE.Mesh(
+      new THREE.BoxGeometry(0.3, 0.65, 0.2),
+      new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.8 })
+    );
+    condLegs.position.y = -0.58;
+    const condArm = new THREE.Mesh(
+      new THREE.BoxGeometry(0.11, 0.48, 0.11),
+      new THREE.MeshStandardMaterial({ color: 0x3e2723, roughness: 0.7 })
+    );
+    condArm.position.set(0.22, 0.2, 0);
     conductor.add(condBody, condHead, condCap, condLegs, condArm);
     conductor.visible = false;
     danfoGroup.add(conductor);
@@ -2027,6 +2354,7 @@ export class ThreeDrivingEngine {
     danfoGroup.add(driverSeat);
 
     const paxShirtColors = [0x1d4ed8, 0xdc2626, 0x15803d, 0x9333ea, 0xd97706, 0x0284c7];
+    this.cabinPassengerMeshes = [];
     [1.65, 0.5, -0.65, -1.75].forEach((pz, rIdx) => {
       const bench = new THREE.Mesh(new THREE.BoxGeometry(2.04, 0.07, 0.46), woodBenchMat);
       bench.position.set(0, 1.05, pz);
@@ -2036,22 +2364,28 @@ export class ThreeDrivingEngine {
       benchBack.position.set(0, 1.35, pz - 0.22);
       danfoGroup.add(benchBack);
 
-      // Add seated commuters inside the Danfo cabin so the bus looks alive!
-      if (rIdx > 0) {
-        [-0.58, 0.05, 0.62].forEach((px, cIdx) => {
-          const paxTorso = new THREE.Mesh(
-            new THREE.BoxGeometry(0.34, 0.42, 0.24),
-            new THREE.MeshStandardMaterial({ color: paxShirtColors[(rIdx + cIdx) % paxShirtColors.length], roughness: 0.6 })
-          );
-          paxTorso.position.set(px, 1.32, pz - 0.04);
-          const paxHead = new THREE.Mesh(
-            new THREE.SphereGeometry(0.12, 10, 10),
-            new THREE.MeshStandardMaterial({ color: 0x3e2723, roughness: 0.7 })
-          );
-          paxHead.position.set(px, 1.64, pz - 0.04);
-          danfoGroup.add(paxTorso, paxHead);
-        });
-      }
+      // Create dynamic 3D seated passenger figures (initially hidden because bus starts empty at 0/14!)
+      [-0.64, -0.18, 0.28, 0.68].forEach((px, cIdx) => {
+        if (rIdx === 0 && cIdx < 2) return; // Leave front driver seat & steering area open
+        const paxGroup = new THREE.Group();
+        const paxTorso = new THREE.Mesh(
+          new THREE.BoxGeometry(0.32, 0.42, 0.24),
+          new THREE.MeshStandardMaterial({
+            color: paxShirtColors[(rIdx + cIdx) % paxShirtColors.length],
+            roughness: 0.6,
+          })
+        );
+        paxTorso.position.set(px, 1.32, pz - 0.04);
+        const paxHead = new THREE.Mesh(
+          new THREE.SphereGeometry(0.12, 10, 10),
+          new THREE.MeshStandardMaterial({ color: 0x3e2723, roughness: 0.7 })
+        );
+        paxHead.position.set(px, 1.64, pz - 0.04);
+        paxGroup.add(paxTorso, paxHead);
+        paxGroup.visible = false; // Starts EMPTY until passengers board at the bus stop!
+        danfoGroup.add(paxGroup);
+        this.cabinPassengerMeshes.push(paxGroup);
+      });
     });
 
     // 22. 4 Deep-Dish Chrome Rim Wheels & Commercial Tires
@@ -3275,23 +3609,52 @@ export class ThreeDrivingEngine {
       rBrakeMat.color.setHex(0x500707);
     }
 
-    // 6. Sliding Passenger Door Animation
+    // 6. Sliding Passenger Door Animation (Pops outward on rail and slides 1.35m back to reveal open step-well!)
     const targetDoorPos = doorState === 'OPEN' ? 1.0 : 0.0;
-    this.doorSlidePos = THREE.MathUtils.lerp(this.doorSlidePos, targetDoorPos, dt * 8);
-    this.slidingDoorGroup.position.z = 0.85 - this.doorSlidePos * 1.15;
-    this.slidingDoorGroup.position.x = 1.1 + this.doorSlidePos * 0.05;
+    this.doorSlidePos = THREE.MathUtils.lerp(this.doorSlidePos, targetDoorPos, dt * 8.5);
+    this.slidingDoorGroup.position.z = -this.doorSlidePos * 1.35;
+    this.slidingDoorGroup.position.x = 1.18 + Math.sin(this.doorSlidePos * Math.PI * 0.5) * 0.14;
+    if (this.doorStepLight) {
+      this.doorStepLight.intensity = this.doorSlidePos * 2.8;
+    }
 
-    // 6b. Rear Boot (Trunk) Door Animation (Door swings up when luggage loaded)
-    const targetBootAngle = params.bootState === 'OPEN' ? Math.PI * 0.42 : 0.0;
-    this.bootDoorAngle = THREE.MathUtils.lerp(this.bootDoorAngle, targetBootAngle, dt * 6);
-    this.bootDoorGroup.rotation.x = -this.bootDoorAngle;
+    // 6a. Dynamically show/hide 3D Seated Passengers inside the Danfo cabin matching exact passengerCount!
+    const currentPaxCount = params.passengerCount || 0;
+    this.cabinPassengerMeshes.forEach((pMesh, idx) => {
+      pMesh.visible = idx < currentPaxCount;
+    });
 
-    // 7. Conductor Mesh at Doorway
-    if (hasConductor && this.doorSlidePos > 0.3) {
-      this.conductorMesh.visible = true;
-      this.conductorClapTimer += dt * 6;
-      const slapSwing = Math.sin(this.conductorClapTimer) * 0.3;
-      if (this.conductorMesh.children.length >= 5) { this.conductorMesh.children[4].rotation.z = slapSwing; }
+    // 6b. Rear Boot (Trunk) Door Animation (Swings OUTWARDS & UPWARDS away from the bus when opened!)
+    const targetBootAngle = params.bootState === 'OPEN' ? Math.PI * 0.58 : 0.0;
+    this.bootDoorAngle = THREE.MathUtils.lerp(this.bootDoorAngle, targetBootAngle, dt * 6.5);
+    this.bootDoorGroup.rotation.x = this.bootDoorAngle; // Positive X rotation lifts downward-hanging tailgate OUTWARDS (-Z)!
+    if (this.bootLuggageGroup) {
+      this.bootLuggageGroup.visible = this.bootDoorAngle > 0.15;
+    }
+
+    // 7. Conductor Character Positioning (In Walk Mode he stands on the street beside the bus, NEVER stuck to the door!)
+    if (hasConductor) {
+      if (isSteppedDown) {
+        this.conductorMesh.visible = true;
+        this.conductorMesh.position.set(2.05, 0.72, 0.45);
+        this.conductorMesh.rotation.y = Math.PI * 0.25;
+        this.conductorClapTimer += dt * 5;
+        const waveSwing = Math.sin(this.conductorClapTimer) * 0.35;
+        if (this.conductorMesh.children.length >= 5) {
+          this.conductorMesh.children[4].rotation.z = waveSwing;
+        }
+      } else if (this.doorSlidePos > 0.25) {
+        this.conductorMesh.visible = true;
+        this.conductorMesh.position.set(1.22, 0.85, 0.42);
+        this.conductorMesh.rotation.y = 0;
+        this.conductorClapTimer += dt * 6;
+        const slapSwing = Math.sin(this.conductorClapTimer) * 0.3;
+        if (this.conductorMesh.children.length >= 5) {
+          this.conductorMesh.children[4].rotation.z = slapSwing;
+        }
+      } else {
+        this.conductorMesh.visible = false;
+      }
     } else {
       this.conductorMesh.visible = false;
     }
@@ -3542,28 +3905,20 @@ export class ThreeDrivingEngine {
     // ========================================================
     const busZ = this.busRoot.position.z;
     this.roadSegments.forEach((seg) => {
-      while (seg.position.z < busZ - 120) {
-        seg.position.z += 480;
+      while (seg.position.z < busZ - 140) {
+        seg.position.z += 720;
       }
-      while (seg.position.z > busZ + 360) {
-        seg.position.z -= 480;
+      while (seg.position.z > busZ + 580) {
+        seg.position.z -= 720;
       }
       const sz = seg.position.z;
-      // Open right-side (-X) curbs/buildings at Oshodi Park (z < 60), Conoil Gas Bay (z ~ 210), and Shortcuts (z = 340..840, 1150..1700)
+      // Keep street buildings visible everywhere down the expressway (only open segment 0 for the starting Oshodi Bus Park yard!)
       if (seg.userData && seg.userData.rightSideProps) {
-        const hideRight =
-          (sz >= -60 && sz <= 60) ||
-          (sz >= 150 && sz <= 270) ||
-          (sz >= 290 && sz <= 890) ||
-          (sz >= 1100 && sz <= 1750);
-        seg.userData.rightSideProps.visible = !hideRight;
+        const isAtStartingBusPark = sz >= -35 && sz <= 35;
+        seg.userData.rightSideProps.visible = !isAtStartingBusPark;
       }
-      // Open left-side (+X) curbs/buildings at Total Energies (z ~ 520) and Oando (z ~ 1750)
       if (seg.userData && seg.userData.leftSideProps) {
-        const hideLeft =
-          (sz >= 460 && sz <= 580) ||
-          (sz >= 1690 && sz <= 1810);
-        seg.userData.leftSideProps.visible = !hideLeft;
+        seg.userData.leftSideProps.visible = true;
       }
     });
 
