@@ -13,6 +13,7 @@ import { LAGOS_NPCS, LagosNpc } from '../game/npcData';
 import { NpcInteractionModal } from './NpcInteractionModal';
 import { GasStationServiceModal } from './GasStationServiceModal';
 import { MechanicServiceModal } from './MechanicServiceModal';
+import { CustomCarShopModal } from './CustomCarShopModal';
 import { PASSENGER_NAMES, SAMPLE_DELIVERY_JOBS } from '../game/config';
 import { 
   Fuel, 
@@ -165,18 +166,19 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
   } | null>(null);
 
   const [walkInteractTarget, setWalkInteractTarget] = useState<{
-    type: 'GAS' | 'MECHANIC' | 'BUS' | 'BANK' | 'POS_LADY';
+    type: 'GAS' | 'MECHANIC' | 'BUS' | 'BANK' | 'POS_LADY' | 'CUSTOM_CAR';
     name: string;
     data?: any;
   } | null>(null);
   const walkInteractTargetRef = useRef<{
-    type: 'GAS' | 'MECHANIC' | 'BUS' | 'BANK' | 'POS_LADY';
+    type: 'GAS' | 'MECHANIC' | 'BUS' | 'BANK' | 'POS_LADY' | 'CUSTOM_CAR';
     name: string;
     data?: any;
   } | null>(null);
 
   const [isGasModalOpen, setIsGasModalOpen] = useState<boolean>(false);
   const [isMechanicModalOpen, setIsMechanicModalOpen] = useState<boolean>(false);
+  const [isCustomCarModalOpen, setIsCustomCarModalOpen] = useState<boolean>(false);
 
   // Gas Station, Mechanic Drive-In Compound & Roadside Shop Drive-In States
   const [activeGasStation, setActiveGasStation] = useState<GasStationBay | null>(null);
@@ -894,6 +896,9 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
             return;
           } else if (target?.type === 'MECHANIC') {
             setIsMechanicModalOpen(true);
+            return;
+          } else if (target?.type === 'CUSTOM_CAR') {
+            setIsCustomCarModalOpen(true);
             return;
           } else if (target?.type === 'BUS') {
             toggleStepDown();

@@ -14,7 +14,8 @@ import {
   createNairaNoteTexture,
   createBankCorporateTexture,
   createBankQueueDisplayTexture,
-  createPosUmbrellaSignTexture
+  createPosUmbrellaSignTexture,
+  createCustomCarShopTexture
 } from './textures';
 import { getCustomBillboards, createBillboardTexture, BillboardAd } from '../billboards';
 import { RoadManager, StreetNavigationTelemetry } from './RoadManager';
@@ -188,6 +189,9 @@ export class ThreeDrivingEngine {
   private bankBranchZone: { id: string; name: string; box: THREE.Box3; bankX: number; bankZ: number } | null = null;
   private posUmbrellaLadies: Array<{ id: string; name: string; junctionName: string; x: number; z: number; group: THREE.Group }> = [];
   private bankQueueCustomers: THREE.Group[] = [];
+  // 🎨 Custom Car & Slogan Shop Compound
+  private customCarShopZone: { id: string; name: string; box: THREE.Box3; shopX: number; shopZ: number } | null = null;
+  private rearWindowSloganMesh: THREE.Mesh | null = null;
   private exhaustParticles: THREE.Points;
   private exhaustPositions: Float32Array;
   private rainParticles: THREE.Points | null = null;
@@ -322,6 +326,7 @@ export class ThreeDrivingEngine {
     this.setupOshodiBRTStations();
     this.setupCommercialBankBranch();
     this.setupPosUmbrellaLadies();
+    this.setupCustomCarShop();
 
     // 8. Overhead Highway Billboards (Flutterwave, OPay, Chowdeck, Custom Ads)
     this.setupBillboards();
@@ -420,6 +425,10 @@ export class ThreeDrivingEngine {
     }
     // 12. Eko Zenith Commercial Bank Customer Parking Bay (z = 920..980 on Left +X side)
     if (z >= 920 && z <= 980) {
+      maxX = Math.max(maxX, 21.5);
+    }
+    // 13. Alaba Custom Danfo & Slogan Signwriter Drive-In Apron (z = 1430..1490 on Left +X side)
+    if (z >= 1430 && z <= 1490) {
       maxX = Math.max(maxX, 21.5);
     }
 
@@ -3013,6 +3022,117 @@ export class ThreeDrivingEngine {
   }
 
   /**
+   * 🎨 Builds the 3D Alaba Custom Danfo & Slogan Signwriter Drive-In Compound!
+   * Located at z = 1460m on Left side (+X). Players can drive in onto the custom detailing pad
+   * or walk in to pick rear window slogans like "No Condition Is Permanent", "Face Your Front", etc.
+   */
+  private setupCustomCarShop() {
+    const shopZ = 1460;
+    const shopX = 16.5;
+    const group = new THREE.Group();
+    group.position.set(shopX, 0, shopZ);
+
+    const concreteMat = new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.85 });
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.7 });
+    const goldTrimMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.3, metalness: 0.4 });
+    const tinRoofMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.5, roughness: 0.6 });
+
+    // 1. Concrete Detailing Bay & Driveway Apron
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(18, 44), concreteMat);
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.set(0, 0.025, 0);
+    group.add(floor);
+
+    // Glowing Amber Custom Workstation Pad
+    const pad = new THREE.Mesh(
+      new THREE.PlaneGeometry(7.5, 18),
+      new THREE.MeshBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0.35 })
+    );
+    pad.rotation.x = -Math.PI / 2;
+    pad.position.set(-1.5, 0.06, 0);
+    group.add(pad);
+
+    // Mini-Map Layer 1 Beacon (Amber)
+    const miniMapBeacon = new THREE.Mesh(
+      new THREE.PlaneGeometry(10, 20),
+      new THREE.MeshBasicMaterial({ color: 0xf59e0b })
+    );
+    miniMapBeacon.rotation.x = -Math.PI / 2;
+    miniMapBeacon.position.set(0, 6.0, 0);
+    miniMapBeacon.layers.set(1);
+    group.add(miniMapBeacon);
+
+    // 2. Perimeter Compound Walls
+    const backWall = new THREE.Mesh(new THREE.BoxGeometry(0.6, 2.8, 42), wallMat);
+    backWall.position.set(8.2, 1.4, 0);
+    group.add(backWall);
+
+    [-20.5, 20.5].forEach((wz) => {
+      const sideWall = new THREE.Mesh(new THREE.BoxGeometry(15, 2.5, 0.6), wallMat);
+      sideWall.position.set(1.0, 1.25, wz);
+      group.add(sideWall);
+    });
+
+    // 3. Overhead Gantry Signboard: "🎨 ALABA CUSTOM DANFO & SIGNWRITER"
+    const signTex = createCustomCarShopTexture(
+      'ALABA CUSTOM DANFO & SIGNWRITER',
+      'REAR WINDOW SLOGANS • BODY KITS • ARTWORK • HORNS'
+    );
+    const gantrySign = new THREE.Mesh(
+      new THREE.BoxGeometry(0.5, 2.0, 24),
+      new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.25 })
+    );
+    gantrySign.position.set(-6.2, 5.0, 0);
+    group.add(gantrySign);
+
+    // Roadside Perpendicular Pointer Sign
+    const approachSign = new THREE.Mesh(
+      new THREE.BoxGeometry(9.0, 1.8, 0.35),
+      new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.25 })
+    );
+    approachSign.position.set(-2.5, 4.6, -18);
+    group.add(approachSign);
+
+    // 4. Detailing Shed
+    const shed = new THREE.Mesh(new THREE.BoxGeometry(9.0, 0.4, 22), tinRoofMat);
+    shed.position.set(3.5, 4.8, 0);
+    group.add(shed);
+
+    // Paint Cans & Signwriting Stencils Table
+    const table = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.9, 3.2), goldTrimMat);
+    table.position.set(6.2, 0.45, 6.0);
+    group.add(table);
+
+    // Signwriter NPC (Bro Shola in stylish artist apron)
+    const artist = new THREE.Group();
+    const aHead = new THREE.Mesh(new THREE.SphereGeometry(0.15, 10, 10), new THREE.MeshStandardMaterial({ color: 0x3e2723 }));
+    aHead.position.y = 1.62;
+    const aCap = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.17, 0.08, 12), new THREE.MeshStandardMaterial({ color: 0xdc2626 }));
+    aCap.position.y = 1.72;
+    const aBody = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.85, 0.25), new THREE.MeshStandardMaterial({ color: 0xfacc15 }));
+    aBody.position.y = 1.12;
+    artist.add(aHead, aCap, aBody);
+    artist.position.set(2.2, 0, 5.2);
+    group.add(artist);
+
+    this.scene.add(group);
+
+    const minX = 10.2;
+    const maxX = 25.5;
+    const zoneBox = new THREE.Box3(
+      new THREE.Vector3(minX, -1.0, shopZ - 16),
+      new THREE.Vector3(maxX, 6.0, shopZ + 16)
+    );
+    this.customCarShopZone = {
+      id: 'custom-car-alaba',
+      name: 'Alaba Custom Danfo & Signwriter',
+      box: zoneBox,
+      shopX,
+      shopZ,
+    };
+  }
+
+  /**
    * Builds 3D Highway Overhead Gantries & Large Billboards for Brands & Custom Owner Ads
    */
   private setupBillboards() {
@@ -3530,6 +3650,38 @@ export class ThreeDrivingEngine {
     rearGlass.position.set(0, 1.96, -2.48);
     rearGlass.rotation.y = Math.PI;
     danfoGroup.add(rearGlass);
+
+    // Rear Windshield Lagos Slogan Decal Plate (e.g. "NO CONDITION IS PERMANENT")
+    const sloganCanvas = document.createElement('canvas');
+    sloganCanvas.width = 512;
+    sloganCanvas.height = 128;
+    const sCtx = sloganCanvas.getContext('2d')!;
+    sCtx.fillStyle = '#111827';
+    sCtx.fillRect(0, 0, 512, 128);
+    sCtx.strokeStyle = '#facc15';
+    sCtx.lineWidth = 6;
+    sCtx.strokeRect(4, 4, 504, 120);
+    sCtx.fillStyle = '#fde047';
+    sCtx.font = '900 32px sans-serif';
+    sCtx.textAlign = 'center';
+    sCtx.textBaseline = 'middle';
+    sCtx.fillText('NO CONDITION IS PERMANENT', 256, 64);
+
+    const sloganTex = new THREE.CanvasTexture(sloganCanvas);
+    const rearSloganMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.5, 0.36),
+      new THREE.MeshStandardMaterial({
+        map: sloganTex,
+        roughness: 0.4,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1,
+      })
+    );
+    rearSloganMesh.position.set(0, 1.94, -2.485);
+    rearSloganMesh.rotation.y = Math.PI;
+    danfoGroup.add(rearSloganMesh);
+    this.rearWindowSloganMesh = rearSloganMesh;
 
     // 15. Sculpted Rear Tailgate, Multi-Lens Taillights, Exhaust Tip & Bumper
     const rearBumper = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.24, 0.28), darkMat);
@@ -6637,13 +6789,65 @@ export class ThreeDrivingEngine {
       }
     }
 
+    // 🎨 Custom Car & Slogan Signwriter compound check
+    let nearbyCustom: { id: string; name: string; x: number; z: number; dist: number } | null = null;
+    if (this.customCarShopZone) {
+      const cX = this.customCarShopZone.shopX;
+      const cZ = this.customCarShopZone.shopZ;
+      const dist = Math.hypot(p.x - cX, p.z - cZ);
+      if (dist < 28) {
+        nearbyCustom = {
+          id: this.customCarShopZone.id,
+          name: this.customCarShopZone.name,
+          x: cX,
+          z: cZ,
+          dist,
+        };
+      }
+    }
+
     return {
       nearbyGasAttendant: nearbyGas,
       nearbyMechanic: nearbyMech,
       nearbyBank: nearbyBank,
       nearbyPosLady: nearbyPos,
+      nearbyCustomCarShop: nearbyCustom,
       busDistance: busDist,
     };
+  }
+
+  public getIntersectingCustomCarShopZone(): { id: string; name: string } | null {
+    if (!this.customCarShopZone || !this.busRoot) return null;
+    const busPos = this.busRoot.position;
+    if (this.customCarShopZone.box.containsPoint(busPos)) {
+      return { id: this.customCarShopZone.id, name: this.customCarShopZone.name };
+    }
+    return null;
+  }
+
+  public setVehicleSlogan(slogan: string) {
+    if (!this.rearWindowSloganMesh) return;
+    const sloganCanvas = document.createElement('canvas');
+    sloganCanvas.width = 512;
+    sloganCanvas.height = 128;
+    const sCtx = sloganCanvas.getContext('2d')!;
+    sCtx.fillStyle = '#111827';
+    sCtx.fillRect(0, 0, 512, 128);
+    sCtx.strokeStyle = '#facc15';
+    sCtx.lineWidth = 6;
+    sCtx.strokeRect(4, 4, 504, 120);
+    sCtx.fillStyle = '#fde047';
+    sCtx.font = '900 32px sans-serif';
+    sCtx.textAlign = 'center';
+    sCtx.textBaseline = 'middle';
+    sCtx.fillText((slogan || 'NO CONDITION IS PERMANENT').toUpperCase(), 256, 64);
+
+    const mat = this.rearWindowSloganMesh.material as THREE.MeshStandardMaterial;
+    if (mat && mat.map) {
+      mat.map.dispose();
+    }
+    mat.map = new THREE.CanvasTexture(sloganCanvas);
+    mat.needsUpdate = true;
   }
 
   public getIntersectingBankZone(): { id: string; name: string } | null {

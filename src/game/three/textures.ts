@@ -536,3 +536,45 @@ export function createPosUmbrellaSignTexture(
 
   return new THREE.CanvasTexture(canvas);
 }
+
+export function createCustomCarShopTexture(
+  shopName: string = 'ALABA CUSTOM DANFO & SIGNWRITER',
+  subText: string = 'REAR WINDOW SLOGANS • BODY KITS • ARTWORK • HORNS'
+): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 192;
+  const ctx = canvas.getContext('2d')!;
+
+  const grad = ctx.createLinearGradient(0, 0, 512, 192);
+  grad.addColorStop(0, '#78350f');
+  grad.addColorStop(0.5, '#b45309');
+  grad.addColorStop(1, '#92400e');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 512, 192);
+
+  // Yellow trim
+  ctx.fillStyle = '#facc15';
+  ctx.fillRect(0, 0, 512, 14);
+  ctx.fillRect(0, 178, 512, 14);
+
+  // Border
+  ctx.strokeStyle = '#fef08a';
+  ctx.lineWidth = 6;
+  ctx.strokeRect(8, 8, 496, 176);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '900 28px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(`🎨 ${shopName.toUpperCase()}`, 256, 68);
+
+  ctx.fillStyle = '#fde047';
+  ctx.font = 'bold 18px sans-serif';
+  ctx.fillText('NO CONDITION IS PERMANENT • NO KING AS GOD', 256, 108);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '700 14px sans-serif';
+  ctx.fillText(subText, 256, 148);
+
+  return new THREE.CanvasTexture(canvas);
+}
