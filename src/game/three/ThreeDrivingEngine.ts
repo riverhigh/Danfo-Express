@@ -14,6 +14,7 @@ import {
   createNairaNoteTexture 
 } from './textures';
 import { getCustomBillboards, createBillboardTexture, BillboardAd } from '../billboards';
+import { RoadManager, StreetNavigationTelemetry } from './RoadManager';
 
 export interface SceneUpdateParams {
   speedKmH: number;
@@ -67,6 +68,14 @@ export class ThreeDrivingEngine {
   private bumpCooldown: number = 0;
   private lastCollisionAlertTime: number = 0;
   private pendingCollisionMessage: string | null = null;
+  private roadManager!: RoadManager;
+  private smoothedSteerNorm: number = 0;
+  private smoothedBodyRoll: number = 0;
+  private smoothedBodyPitch: number = 0;
+  private smoothedCamYaw: number = 0;
+  private smoothedCamX: number = 0;
+  private smoothedFollowDist: number = 8.8;
+  private mirrorRenderTick: number = 0;
   private container: HTMLElement;
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
@@ -139,9 +148,9 @@ export class ThreeDrivingEngine {
   private conductorMesh: THREE.Group;
   private cabinPassengerMeshes: THREE.Group[] = [];
   private doorStepLight!: THREE.PointLight;
-  private leftFrontWheel: THREE.Mesh;
-  private rightFrontWheel: THREE.Mesh;
-  private rearWheels: THREE.Mesh[] = [];
+  private leftFrontWheel: THREE.Group;
+  private rightFrontWheel: THREE.Group;
+  private rearWheels: THREE.Group[] = [];
   private leftBlinker: THREE.Mesh;
   private rightBlinker: THREE.Mesh;
   private leftBrakeLight: THREE.Mesh;
@@ -316,7 +325,8 @@ export class ThreeDrivingEngine {
     this.driverCharacterGroup.visible = false;
     this.scene.add(this.driverCharacterGroup);
 
-    // 7. Gas Stations, Mechanic Compounds & Oshodi NPC BRT Terminals along Highway
+    // 7. Gas Stations, Mechanic Compounds, Oshodi NPC BRT Terminals & 4-Part Modular RoadManager
+    this.roadManager = new RoadManager(this.scene);
     this.setupGasStations();
     this.setupMechanicCompounds();
     this.setupOshodiBRTStations();
@@ -417,7 +427,23 @@ export class ThreeDrivingEngine {
       maxX = Math.max(maxX, 25.5);
     }
 
+    // 12. Modular RoadManager T-Junctions, 4-Way Intersections, Roundabouts & Active Market Side Streets
+    if (this.roadManager) {
+      const tileBounds = this.roadManager.getCorridorBoundsAtZ(z);
+      const currX = this.busRoot ? this.busRoot.position.x : 0;
+      if (tileBounds.canTurnRight || currX < -9.5) {
+        minX = Math.min(minX, -24.5);
+      }
+      if (tileBounds.canTurnLeft || currX > 9.5) {
+        maxX = Math.max(maxX, 24.5);
+      }
+    }
+
     return { minX, maxX };
+  }
+
+  public getStreetNavigationTelemetry(): StreetNavigationTelemetry | null {
+    return this.roadManager ? this.roadManager.getTelemetry() : null;
   }
 
   /**
@@ -511,12 +537,7 @@ export class ThreeDrivingEngine {
   public isOnShortcutBranch(): boolean {
     if (!this.busRoot) return false;
     const x = this.busRoot.position.x;
-    const z = this.busRoot.position.z;
-    const inShortcut1 = z >= 335 && z <= 845 && x < -10.2;
-    const inShortcut2 = z >= 655 && z <= 1105 && x > 10.2;
-    const inShortcut3 = z >= 1275 && z <= 1805 && x < -10.2;
-    const inShortcut4 = z >= 2315 && z <= 2885 && x > 10.2;
-    return inShortcut1 || inShortcut2 || inShortcut3 || inShortcut4;
+    return Math.abs(x) > 10.2;
   }
 
   /**
@@ -714,11 +735,11 @@ export class ThreeDrivingEngine {
     const curbTex = createCurbTexture();
 
     const roadLength = 120;
-    const segmentCount = 6; // 6 segments = 720m continuous dense urban horizon!
+    const segmentCount = 8; // 8 segments = 960m continuous urban horizon with full 150m+ rear mirror buffer!
 
     for (let i = 0; i < segmentCount; i++) {
       const group = new THREE.Group();
-      group.position.z = i * roadLength;
+      group.position.z = (i - 1) * roadLength; // Starts at -120m so rear mirror buffer is populated immediately at z=0!
 
       // 1. Asphalt Roadway (wider — real expressway)
       const roadGeo = new THREE.PlaneGeometry(20, roadLength);
@@ -3009,21 +3030,40 @@ export class ThreeDrivingEngine {
       });
     });
 
-    // 22. 4 Deep-Dish Chrome Rim Wheels & Commercial Tires
+    // 22. 4 Zero-Wobble Deep-Dish Chrome Rim Wheels (Decoupled Steering Knuckle Y + Concentric Spin Hub X)
     const createDanfoWheel = (wx: number, wz: number) => {
-      const wGroup = new THREE.Group();
-      wGroup.position.set(wx, 0.4, wz);
-      const tire = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.28, 28), tireMat);
+      // Outer Steering Knuckle Group: ONLY rotates around vertical kingpin Y-axis (Zero gimbal wobble!)
+      const wSteerKnuckle = new THREE.Group();
+      wSteerKnuckle.rotation.order = 'YXZ';
+      wSteerKnuckle.position.set(wx, 0.4, wz);
+
+      // Inner Concentric Wheel Spin Hub: ONLY rotates around horizontal axle X-axis
+      const wSpinHub = new THREE.Group();
+      wSpinHub.rotation.order = 'XYZ';
+
+      const tire = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.28, 32), tireMat);
       tire.rotation.z = Math.PI / 2;
-      const chromeRing = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.27, 0.29, 24), chromeMat);
+      const chromeRing = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.27, 0.29, 28), chromeMat);
       chromeRing.rotation.z = Math.PI / 2;
-      const innerDish = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.21, 0.295, 20), rimMat);
+      const innerDish = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.21, 0.295, 24), rimMat);
       innerDish.rotation.z = Math.PI / 2;
-      const centerCap = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.31, 16), darkMat);
+      const centerCap = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.085, 0.312, 16), darkMat);
       centerCap.rotation.z = Math.PI / 2;
-      wGroup.add(tire, chromeRing, innerDish, centerCap);
-      danfoGroup.add(wGroup);
-      return wGroup;
+      wSpinHub.add(tire, chromeRing, innerDish, centerCap);
+
+      // 5 Symmetric Chrome Spokes & Lug Bolts so concentric wheel rotation is visually crisp and balanced
+      for (let s = 0; s < 5; s++) {
+        const angle = (s * Math.PI * 2) / 5;
+        const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.302, 0.036, 0.19), chromeMat);
+        spoke.position.set(0, Math.cos(angle) * 0.11, Math.sin(angle) * 0.11);
+        spoke.rotation.x = -angle;
+        wSpinHub.add(spoke);
+      }
+
+      wSteerKnuckle.add(wSpinHub);
+      wSteerKnuckle.userData.spinHub = wSpinHub;
+      danfoGroup.add(wSteerKnuckle);
+      return wSteerKnuckle;
     };
 
     const lfWheel = createDanfoWheel(1.13, 1.6);
@@ -4207,42 +4247,69 @@ export class ThreeDrivingEngine {
     }
     this.busRoot.position.y = this.chassisBody.position.y;
 
+    // Smoothly interpolate steering angle & suspension banking roll/pitch
+    this.smoothedSteerNorm = THREE.MathUtils.lerp(
+      this.smoothedSteerNorm,
+      steerNorm,
+      Math.min(1.0, dt * 15.0)
+    );
+
     // Smoothly apply true integrated vehicle heading yaw (bus only turns its nose as it drives forward!)
     if (params.headingYaw !== undefined) {
-      this.busHeadingYaw = THREE.MathUtils.lerp(this.busHeadingYaw, params.headingYaw, Math.min(1.0, dt * 16));
+      this.busHeadingYaw = THREE.MathUtils.lerp(this.busHeadingYaw, params.headingYaw, Math.min(1.0, dt * 18.0));
     } else if (speedMps > 0.05 && !isSteppedDown) {
-      const wheelAngleRad = -steerNorm * 0.46;
+      const wheelAngleRad = -this.smoothedSteerNorm * 0.46;
       const yawRate = turnDir * (speedMps / 3.6) * Math.tan(wheelAngleRad) * 1.15;
-      const selfAlign = (1 - Math.abs(steerNorm) * 0.65) * (0.85 + speedMps * 0.1);
+      const selfAlign = (1 - Math.abs(this.smoothedSteerNorm) * 0.65) * (0.85 + speedMps * 0.1);
       this.busHeadingYaw += (yawRate - this.busHeadingYaw * selfAlign) * dt;
-      this.busHeadingYaw = Math.max(-0.46, Math.min(0.46, this.busHeadingYaw));
+      this.busHeadingYaw = Math.max(-0.48, Math.min(0.48, this.busHeadingYaw));
     }
 
     // Natural suspension banking roll proportional to actual forward speed & turn rate (zero roll when stopped!)
-    const speedFactorForRoll = Math.min(1.0, speedMps / 11.0);
-    const targetBodyRoll = steerNorm * speedFactorForRoll * 0.042;
+    const speedFactorForRoll = Math.min(1.0, speedMps / 12.0);
+    const targetBodyRoll = this.smoothedSteerNorm * speedFactorForRoll * 0.032;
+    this.smoothedBodyRoll = THREE.MathUtils.lerp(this.smoothedBodyRoll, targetBodyRoll, Math.min(1.0, dt * 12.0));
+
+    const targetBodyPitch = isBraking && speedMps > 1 ? 0.014 : (throttle > 0.1 && speedMps > 1 ? -0.008 : 0);
+    this.smoothedBodyPitch = THREE.MathUtils.lerp(this.smoothedBodyPitch, targetBodyPitch, Math.min(1.0, dt * 10.0));
+
     this.busRoot.rotation.order = 'YXZ';
     this.busRoot.rotation.y = this.busHeadingYaw;
-    this.busRoot.rotation.z = targetBodyRoll;
-    this.busRoot.rotation.x = 0;
+    this.busRoot.rotation.z = this.smoothedBodyRoll;
+    this.busRoot.rotation.x = this.smoothedBodyPitch;
 
-    const uprightQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, this.busHeadingYaw, targetBodyRoll, 'YXZ'));
+    const uprightQuat = new THREE.Quaternion().setFromEuler(
+      new THREE.Euler(this.smoothedBodyPitch, this.busHeadingYaw, this.smoothedBodyRoll, 'YXZ')
+    );
     this.chassisBody.quaternion.set(uprightQuat.x, uprightQuat.y, uprightQuat.z, uprightQuat.w);
     this.chassisBody.angularVelocity.set(0, 0, 0);
 
-    // Update wheel transforms and front steering wheel angles (Left turns Left, Right turns Right)
+    // Update wheel transforms: Decoupled Steering Knuckle (Y) + Inner Spin Hub (X) -> ZERO WHEEL WOBBLE!
     for (let i = 0; i < this.vehicle.wheelInfos.length; i++) {
       this.vehicle.updateWheelTransform(i);
     }
-    this.leftFrontWheel.rotation.y = -steerNorm * 0.52;
-    this.rightFrontWheel.rotation.y = -steerNorm * 0.52;
 
-    const currentPhysSpeedMps = speedMps;
-    this.wheelRotationRad += (gear === 'R' ? -1 : 1) * currentPhysSpeedMps * dt * 2.8;
-    this.leftFrontWheel.rotation.x = this.wheelRotationRad;
-    this.rightFrontWheel.rotation.x = this.wheelRotationRad;
+    const frontSteerAngle = -this.smoothedSteerNorm * 0.48;
+    // Outer knuckle strictly handles Y-axis steering yaw
+    this.leftFrontWheel.rotation.set(0, frontSteerAngle, 0);
+    this.rightFrontWheel.rotation.set(0, frontSteerAngle, 0);
+
+    // Inner spinHub strictly handles concentric X-axis rolling spin (v / r where r = 0.4m => * 2.5 rad/m)
+    this.wheelRotationRad = (this.wheelRotationRad + (gear === 'R' ? -1 : 1) * speedMps * dt * 2.5) % (Math.PI * 200);
+
+    const lfSpinHub = this.leftFrontWheel.userData?.spinHub as THREE.Group | undefined;
+    const rfSpinHub = this.rightFrontWheel.userData?.spinHub as THREE.Group | undefined;
+    if (lfSpinHub) lfSpinHub.rotation.set(this.wheelRotationRad, 0, 0);
+    if (rfSpinHub) rfSpinHub.rotation.set(this.wheelRotationRad, 0, 0);
+
     this.rearWheels.forEach((w) => {
-      w.rotation.x = this.wheelRotationRad;
+      w.rotation.set(0, 0, 0);
+      const rSpinHub = w.userData?.spinHub as THREE.Group | undefined;
+      if (rSpinHub) {
+        rSpinHub.rotation.set(this.wheelRotationRad, 0, 0);
+      } else {
+        w.rotation.x = this.wheelRotationRad;
+      }
     });
 
     // 3. Cockpit 3D Steering Wheel: Fixed rotation direction & hidden in FIRST_PERSON (unless stepped down)
@@ -4268,36 +4335,19 @@ export class ThreeDrivingEngine {
     const accelRatio = isEngineRunning ? (throttle > 0 ? Math.min(1.0, 0.25 + throttle * 0.75) : 0.04) : 0;
     this.accelNeedle.rotation.z = -Math.PI * 0.75 + accelRatio * (Math.PI * 1.4);
 
-    // Road Bump & Suspension Spring Bounce Physics
-    const bumpInterval = 140; // bump every 140 meters along highway
-    const distMod = (roadDistanceTraveled + 30) % bumpInterval;
-    const isCrossingBump = distMod < 2.8 && speedKmH > 6;
-
-    if (isCrossingBump && this.bumpCooldown <= 0) {
-      this.bumpCooldown = 0.9;
-      this.bumpImpulse = Math.min(1.0, speedKmH / 38);
-      this.bumpTimer = 0;
-      if (speedKmH > 22) {
-        soundEngine.playPotholeThud();
-      }
-    }
-
-    if (this.bumpCooldown > 0) {
-      this.bumpCooldown -= dt;
-    }
-
+    // Smooth Collision Impulse Damping (No random invisible highway bumps!)
     if (this.bumpImpulse > 0.01) {
       this.bumpTimer += dt * 14;
-      const decay = Math.exp(-this.bumpTimer * 0.45);
-      const bounceY = Math.abs(Math.sin(this.bumpTimer)) * this.bumpImpulse * 0.22 * decay;
-      const pitchWobble = Math.sin(this.bumpTimer * 1.2) * this.bumpImpulse * 0.07 * decay;
-      const rollWobble = Math.cos(this.bumpTimer * 0.9) * this.bumpImpulse * 0.035 * decay;
+      const decay = Math.exp(-this.bumpTimer * 0.55);
+      const bounceY = Math.abs(Math.sin(this.bumpTimer)) * this.bumpImpulse * 0.14 * decay;
+      const pitchWobble = Math.sin(this.bumpTimer * 1.2) * this.bumpImpulse * 0.04 * decay;
+      const rollWobble = Math.cos(this.bumpTimer * 0.9) * this.bumpImpulse * 0.025 * decay;
 
       this.busBody.position.y = -0.85 + bounceY;
       this.busBody.rotation.x = pitchWobble;
       this.busBody.rotation.z = rollWobble;
 
-      this.bumpImpulse *= Math.pow(0.12, dt);
+      this.bumpImpulse *= Math.pow(0.08, dt);
     } else {
       this.busBody.position.y = -0.85;
       this.busBody.rotation.x = 0;
@@ -4557,42 +4607,42 @@ export class ThreeDrivingEngine {
         const isReversing = gear === 'R';
         const speedRatio = Math.min(1.0, speedKmH / 95);
 
-        const targetFov = THREE.MathUtils.lerp(64, 76, speedRatio);
-        this.dynamicFov = THREE.MathUtils.lerp(this.dynamicFov, targetFov, dt * 5.0);
+        const targetFov = THREE.MathUtils.lerp(64, 73, speedRatio);
+        this.dynamicFov = THREE.MathUtils.lerp(this.dynamicFov, targetFov, Math.min(1.0, dt * 6.0));
         this.camera.fov = this.dynamicFov;
 
-        const accelOffsetZ = throttle > 0.1 ? throttle * 0.7 : 0;
-        const brakeOffsetZ = isBraking ? 0.8 : 0;
-        const followDist = isReversing ? -9.2 : (8.8 + accelOffsetZ - brakeOffsetZ);
-        const baseHeightY = isReversing ? 3.55 : (3.45 - accelOffsetZ * 0.15 + (isBraking ? 0.25 : 0));
+        const accelOffsetZ = throttle > 0.1 ? throttle * 0.55 : 0;
+        const brakeOffsetZ = isBraking ? 0.55 : 0;
+        const desiredFollowDist = isReversing ? -9.2 : (8.8 + accelOffsetZ - brakeOffsetZ);
+        const baseHeightY = isReversing ? 3.55 : (3.45 - accelOffsetZ * 0.12 + (isBraking ? 0.18 : 0));
 
         const userYaw = params.cameraLookYaw || 0;
         const userPitch = params.cameraLookPitch || 0;
-        const totalCameraAngle = this.busHeadingYaw * 0.65 - userYaw;
-
-        const camTargetPos = new THREE.Vector3(
-          this.busRoot.position.x - Math.sin(totalCameraAngle) * followDist,
-          Math.max(1.4, this.busRoot.position.y + baseHeightY + userPitch * 3.0),
-          this.busRoot.position.z - Math.cos(totalCameraAngle) * followDist
-        );
-
-        const lookAheadDist = isReversing ? -10.0 : (5.0 + speedRatio * 4.5);
-        const lookPos = new THREE.Vector3(
-          this.busRoot.position.x + Math.sin(this.busHeadingYaw) * lookAheadDist,
-          this.busRoot.position.y + 1.45 - (isBraking ? 0.15 : 0),
-          this.busRoot.position.z + Math.cos(this.busHeadingYaw) * lookAheadDist
-        );
+        const desiredCamAngle = this.busHeadingYaw * 0.68 - userYaw;
 
         if (modeJustChanged) {
-          this.currentChaseCamPos.copy(camTargetPos);
-          this.currentChaseLookTarget.copy(lookPos);
+          this.smoothedCamYaw = desiredCamAngle;
+          this.smoothedCamX = this.busRoot.position.x;
+          this.smoothedFollowDist = desiredFollowDist;
         } else {
-          this.currentChaseCamPos.lerp(camTargetPos, Math.min(1.0, dt * 10.0));
-          this.currentChaseLookTarget.lerp(lookPos, Math.min(1.0, dt * 12.0));
+          this.smoothedCamYaw = THREE.MathUtils.lerp(this.smoothedCamYaw, desiredCamAngle, Math.min(1.0, dt * 11.0));
+          this.smoothedCamX = THREE.MathUtils.lerp(this.smoothedCamX, this.busRoot.position.x, Math.min(1.0, dt * 14.0));
+          this.smoothedFollowDist = THREE.MathUtils.lerp(this.smoothedFollowDist, desiredFollowDist, Math.min(1.0, dt * 9.0));
         }
 
-        this.camera.position.copy(this.currentChaseCamPos);
-        this.camera.lookAt(this.currentChaseLookTarget);
+        // Lock longitudinal Z directly relative to busRoot.position.z so there is ZERO frame-time rubber-banding jitter!
+        this.camera.position.set(
+          this.smoothedCamX - Math.sin(this.smoothedCamYaw) * this.smoothedFollowDist,
+          Math.max(1.4, this.busRoot.position.y + baseHeightY + userPitch * 3.0),
+          this.busRoot.position.z - Math.cos(this.smoothedCamYaw) * this.smoothedFollowDist
+        );
+
+        const lookAheadDist = isReversing ? -10.0 : (5.5 + speedRatio * 4.0);
+        this.camera.lookAt(
+          this.smoothedCamX + Math.sin(this.busHeadingYaw) * lookAheadDist,
+          this.busRoot.position.y + 1.45 - (isBraking ? 0.1 : 0),
+          this.busRoot.position.z + Math.cos(this.busHeadingYaw) * lookAheadDist
+        );
         this.camera.updateProjectionMatrix();
       } else if (params.cameraMode === 'ORBIT') {
         this.camera.up.set(0, 1, 0);
@@ -4638,15 +4688,21 @@ export class ThreeDrivingEngine {
     }
 
     // ========================================================
-    // 12. CONTINUOUS ROAD STREAMING AROUND DANFO BUS POSITION
+    // 12. 4-PART MODULAR ROAD MANAGER & 150M REAR MIRROR BUFFER
+    // [ FRONT SPAWNER (+250m) ] ➔ [ Active Driving Zone ] ➔ [ 150m Mirror Buffer ] ➔ [ Safe Despawn ]
     // ========================================================
     const busZ = this.busRoot.position.z;
+    if (this.roadManager) {
+      this.roadManager.update(this.busRoot.position.x, busZ);
+    }
+
+    // Retain road & building segments up to 220m behind center (160m behind front edge!) so Side Mirrors never lose reflections!
     this.roadSegments.forEach((seg) => {
-      while (seg.position.z < busZ - 140) {
-        seg.position.z += 720;
+      while (seg.position.z < busZ - 220) {
+        seg.position.z += 960;
       }
-      while (seg.position.z > busZ + 580) {
-        seg.position.z -= 720;
+      while (seg.position.z > busZ + 740) {
+        seg.position.z -= 960;
       }
       const sz = seg.position.z;
       // Keep street buildings visible everywhere down the expressway (open right side at Oshodi Park & Oshodi BRT Terminals!)
@@ -4882,8 +4938,8 @@ export class ThreeDrivingEngine {
         }
       }
 
-      // Recycle Ahead / Behind Player onto a guaranteed clear spot!
-      if (t.position.z < busZ - 75) {
+      // Recycle Ahead / Behind Player only after exceeding the 150m Rear Mirror Buffer!
+      if (t.position.z < busZ - 155) {
         let spawnZ = Math.max(55, busZ + 210 + (i % 6) * 28);
         let chosenLane = lanes[i % lanes.length];
         for (let attempt = 0; attempt < 8; attempt++) {
@@ -5055,8 +5111,9 @@ export class ThreeDrivingEngine {
       this.rightMirrorCamera.lookAt(rightTarget);
 
       this.renderer.setScissorTest(true);
+      this.mirrorRenderTick = (this.mirrorRenderTick + 1) % 3;
 
-      if (this.leftMirrorCanvas) {
+      if (this.leftMirrorCanvas && this.mirrorRenderTick === 0) {
         this.renderer.setViewport(0, 0, mW, mH);
         this.renderer.setScissor(0, 0, mW, mH);
         this.renderer.render(this.scene, this.leftMirrorCamera);
@@ -5079,7 +5136,7 @@ export class ThreeDrivingEngine {
         }
       }
 
-      if (this.rightMirrorCanvas) {
+      if (this.rightMirrorCanvas && this.mirrorRenderTick === 1) {
         this.renderer.setViewport(0, 0, mW, mH);
         this.renderer.setScissor(0, 0, mW, mH);
         this.renderer.render(this.scene, this.rightMirrorCamera);
@@ -5106,7 +5163,7 @@ export class ThreeDrivingEngine {
     }
 
     // 17b. Render Top-Down Orthographic Mini-Map Pass (using renderer.setViewport & copying to Top-Right Mini-Map HUD)
-    if (this.miniMapCanvas && fullW > 200 && fullH > 200) {
+    if (this.miniMapCanvas && fullW > 200 && fullH > 200 && this.mirrorRenderTick === 2) {
       const mmSize = 180;
       const dpr = this.renderer.getPixelRatio();
       const srcMm = Math.round(mmSize * dpr);
@@ -5211,6 +5268,9 @@ export class ThreeDrivingEngine {
 
   public dispose() {
     window.removeEventListener('resize', this.onResize);
+    if (this.roadManager) {
+      this.roadManager.dispose();
+    }
     this.renderer.dispose();
     if (this.container && this.container.contains(this.renderer.domElement)) {
       this.container.removeChild(this.renderer.domElement);

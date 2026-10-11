@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { ThreeDrivingEngine } from '../game/three/ThreeDrivingEngine';
+import { StreetNavigationTelemetry } from '../game/three/RoadManager';
 import { GameState, CameraViewMode, GearPosition, DoorState, JunctionStop, GasStationBay, RoadsideShop, Passenger, PassengerArchetype, DeliveryJob } from '../types/game';
 import { soundEngine } from '../audio/soundEngine';
 import { MiniMap } from './MiniMap';
@@ -176,6 +177,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
   const [hudComfort, setHudComfort] = useState<number>(gameState.bus.comfortMeter);
   const [currentDist, setCurrentDist] = useState<number>(0);
   const [activeJuncIndex, setActiveJuncIndex] = useState<number>(gameState.activeJunctionIndex || 0);
+  const [streetTelemetry, setStreetTelemetry] = useState<StreetNavigationTelemetry | null>(null);
 
   // Start parked inside the Oshodi Danfo Bus Park (-15.5m lateral offset) when beginning a shift
   const initialLaneOffset = (gameState.distanceTraveledMeters || 0) < 10 ? -15.5 : 0;
@@ -734,7 +736,9 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
     while (deltaAngle < -180) deltaAngle += 360;
     const clamped = Math.max(-90, Math.min(90, wheelDragRef.current.startSteeringAngle + deltaAngle));
     simRef.current.steeringAngle = clamped;
-    setWheelVisualAngle(clamped);
+    if (wheelElementRef.current) {
+      wheelElementRef.current.style.transform = `rotate(${clamped.toFixed(1)}deg)`;
+    }
   };
 
   const handleWheelPointerUp = () => {
@@ -934,17 +938,18 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       const sim = simRef.current;
       const inp = inputsRef.current;
 
-      // 1. Natural progressive steering wheel steer & self-centering spring (Responsive & agile)
+      // 1. Progressive Damped Steering Wheel Input & Self-Centering Spring (Zero 60FPS React Re-render Stutter!)
       if (inp.steerLeft) {
-        sim.steeringAngle = Math.max(-90, sim.steeringAngle - 380 * dt);
-        setWheelVisualAngle(sim.steeringAngle);
+        sim.steeringAngle = Math.max(-90, sim.steeringAngle - 275 * dt);
       } else if (inp.steerRight) {
-        sim.steeringAngle = Math.min(90, sim.steeringAngle + 380 * dt);
-        setWheelVisualAngle(sim.steeringAngle);
+        sim.steeringAngle = Math.min(90, sim.steeringAngle + 275 * dt);
       } else if (!inp.isDraggingWheel && !inp.gyroEnabled) {
-        sim.steeringAngle = sim.steeringAngle * Math.pow(0.015, dt);
-        if (Math.abs(sim.steeringAngle) < 0.25) sim.steeringAngle = 0;
-        setWheelVisualAngle(sim.steeringAngle);
+        sim.steeringAngle = sim.steeringAngle * Math.pow(0.025, dt);
+        if (Math.abs(sim.steeringAngle) < 0.2) sim.steeringAngle = 0;
+      }
+      // Update Steering Wheel DOM directly at 60 FPS without triggering full React component re-renders
+      if (wheelElementRef.current) {
+        wheelElementRef.current.style.transform = `rotate(${sim.steeringAngle.toFixed(1)}deg)`;
       }
       const steerFactor = sim.steeringAngle / 90;
 
@@ -1007,21 +1012,21 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         sim.heat = Math.max(10, sim.heat - 4.5 * fanMult * dt);
       }
 
-      // True Ackermann / Bicycle Vehicle Turning Kinematics + Dynamic Shortcut & Gas Bay Bounds
+      // True Ackermann / Bicycle Vehicle Turning Kinematics + Dynamic Modular Street & Turnoff Bounds
       if (sim.isSteppedDown) {
         sim.speed = 0;
       } else if (sim.speed > 0.05) {
         const speedMps = (sim.speed * 1000) / 3600;
         const turnDir = inp.gear === 'R' ? -1 : 1;
 
-        const wheelAngleRad = -steerFactor * 0.46;
-        const wheelbase = 3.45;
-        const effectiveTurnSpeed = Math.min(speedMps, 14.5);
-        const yawRate = turnDir * (effectiveTurnSpeed / wheelbase) * Math.tan(wheelAngleRad) * 1.38;
+        const wheelAngleRad = -steerFactor * 0.42;
+        const wheelbase = 3.55;
+        const effectiveTurnSpeed = Math.min(speedMps, 13.5);
+        const yawRate = turnDir * (effectiveTurnSpeed / wheelbase) * Math.tan(wheelAngleRad) * 1.25;
 
-        const selfAlignRate = (1 - Math.abs(steerFactor) * 0.65) * (0.9 + speedMps * 0.12);
+        const selfAlignRate = (1 - Math.abs(steerFactor) * 0.6) * (1.1 + speedMps * 0.14);
         sim.headingYaw += (yawRate - sim.headingYaw * selfAlignRate) * dt;
-        sim.headingYaw = Math.max(-0.52, Math.min(0.52, sim.headingYaw));
+        sim.headingYaw = Math.max(-0.48, Math.min(0.48, sim.headingYaw));
 
         sim.laneOffset += Math.sin(sim.headingYaw) * speedMps * dt;
         const allowedBounds = engineRef.current
@@ -1030,10 +1035,10 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
 
         if (sim.laneOffset <= allowedBounds.minX) {
           sim.laneOffset = allowedBounds.minX;
-          if (sim.headingYaw < 0) sim.headingYaw *= Math.pow(0.04, dt);
+          if (sim.headingYaw < 0) sim.headingYaw *= Math.pow(0.02, dt);
         } else if (sim.laneOffset >= allowedBounds.maxX) {
           sim.laneOffset = allowedBounds.maxX;
-          if (sim.headingYaw > 0) sim.headingYaw *= Math.pow(0.04, dt);
+          if (sim.headingYaw > 0) sim.headingYaw *= Math.pow(0.02, dt);
         }
 
         // Check if driving on a 90-degree Branching Shortcut Bypass Lane (+35% route progress!)
@@ -1488,6 +1493,10 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         setCurrentDist(sim.distanceTraveled);
         setActiveJuncIndex(sim.activeJunctionIndex);
         setIsBoarding(sim.isBoarding);
+        setWheelVisualAngle(sim.steeringAngle);
+        if (engineRef.current) {
+          setStreetTelemetry(engineRef.current.getStreetNavigationTelemetry());
+        }
         if (activeGasStationRef.current) {
           setRefuelLitersPumped(Number(refuelStatsRef.current.liters.toFixed(1)));
           setRefuelCostNaira(Math.round(refuelStatsRef.current.cost));
@@ -2389,6 +2398,70 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
               </div>
             </div>
           </div>
+
+          {/* 🧭 TOP-LEFT DYNAMIC GPS STREET & TURNOFF MINIMAP WIDGET (RoadManager 4-Part Architecture) */}
+          {streetTelemetry && (
+            <div
+              onClick={onOpenMap}
+              className="absolute left-1.5 top-[92px] sm:top-[112px] z-30 pointer-events-auto bg-stone-950/92 border border-amber-400/75 rounded-xl px-2 py-1.5 shadow-[0_6px_18px_rgba(0,0,0,0.88)] backdrop-blur-sm max-w-[188px] sm:max-w-[224px] cursor-pointer hover:border-amber-300 transition-all"
+              title="Dynamic Modular Street Grid & Turnoff GPS (Click to open Full Corridor Map)"
+            >
+              <div className="flex items-center gap-1.5">
+                {/* Dynamic Turnoff Arrow Indicator */}
+                <div
+                  className={`w-6 h-6 rounded-lg flex items-center justify-center font-black text-xs shrink-0 border ${
+                    streetTelemetry.currentCorridor !== 'MAIN_EXPRESSWAY'
+                      ? 'bg-emerald-500/25 border-emerald-400 text-emerald-300'
+                      : streetTelemetry.upcomingTurnDirection !== 'STRAIGHT' && streetTelemetry.upcomingTurnDistanceM <= 85
+                      ? 'bg-amber-400 text-stone-950 border-amber-200 animate-pulse'
+                      : 'bg-stone-900 border-stone-700 text-amber-400'
+                  }`}
+                >
+                  {streetTelemetry.upcomingTurnDirection === 'RIGHT'
+                    ? '↪'
+                    : streetTelemetry.upcomingTurnDirection === 'LEFT'
+                    ? '↩'
+                    : streetTelemetry.upcomingTurnDirection === 'BOTH'
+                    ? '☩'
+                    : streetTelemetry.upcomingTurnDirection === 'MERGE_MAIN'
+                    ? '⤴'
+                    : '⬆'}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-1 text-[7px] font-mono">
+                    <span
+                      className={`font-black truncate ${
+                        streetTelemetry.currentCorridor !== 'MAIN_EXPRESSWAY'
+                          ? 'text-emerald-400'
+                          : 'text-amber-400'
+                      }`}
+                    >
+                      {streetTelemetry.currentCorridor === 'MAIN_EXPRESSWAY'
+                        ? streetTelemetry.currentTileType.replace(/_/g, ' ')
+                        : 'MARKET SIDE-STREET'}
+                    </span>
+                    <span className="text-stone-400 shrink-0">
+                      [{streetTelemetry.gridX},{streetTelemetry.gridZ}]
+                    </span>
+                  </div>
+                  <div className="text-[8px] sm:text-[9px] font-bold text-white truncate leading-tight">
+                    {streetTelemetry.currentStreetName}
+                  </div>
+                </div>
+              </div>
+              <div className="mt-1 pt-0.5 border-t border-stone-800/90 flex items-center justify-between gap-1 text-[7px] font-mono">
+                <span className="text-sky-300 truncate">
+                  {streetTelemetry.upcomingTurnLabel} ({streetTelemetry.upcomingTurnDistanceM}m)
+                </span>
+                <span
+                  className="px-1 rounded bg-emerald-950/90 border border-emerald-500/40 text-emerald-300 shrink-0"
+                  title="150-Meter Rear Mirror Buffer Active"
+                >
+                  🪞150m:{streetTelemetry.mirrorBufferedTilesCount}
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* RIGHT SIDE MIRROR (Positioned cleanly beside the Top-Right Orthographic Mini-Map) */}
           <div className="absolute right-[112px] sm:right-[142px] top-10 z-30 pointer-events-none flex items-center">
