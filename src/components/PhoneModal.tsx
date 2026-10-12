@@ -5,6 +5,7 @@ import { soundEngine } from '../audio/soundEngine';
 import { 
   X, 
   ArrowLeft, 
+  ChevronLeft,
   Briefcase, 
   MessageSquare, 
   Building2, 
@@ -21,7 +22,13 @@ import {
   AlertTriangle,
   Send,
   Plus,
-  CookingPot
+  CookingPot,
+  GraduationCap,
+  Sun,
+  Lock,
+  RotateCw,
+  ExternalLink,
+  Globe
 } from 'lucide-react';
 
 interface PhoneModalProps {
@@ -34,7 +41,18 @@ interface PhoneModalProps {
   onOpenPosOrBank?: (mode: 'POS_KIOSK' | 'BANK_HALL') => void;
 }
 
-type PhoneApp = 'HOME' | 'JOBS' | 'MESSAGES' | 'BANK' | 'CHOWDECK' | 'HOUSING' | 'BOUTIQUE' | 'RIDE' | 'GUIDE';
+type PhoneApp = 
+  | 'HOME' 
+  | 'JOBS' 
+  | 'MESSAGES' 
+  | 'BANK' 
+  | 'CHOWDECK' 
+  | 'HOUSING' 
+  | 'BOUTIQUE' 
+  | 'RIDE' 
+  | 'GUIDE'
+  | 'AGS'
+  | 'SOLAR_FIRST';
 
 export const PhoneModal: React.FC<PhoneModalProps> = ({
   isOpen,
@@ -47,6 +65,7 @@ export const PhoneModal: React.FC<PhoneModalProps> = ({
 }) => {
   const [activeApp, setActiveApp] = useState<PhoneApp>('HOME');
   const [selectedMessage, setSelectedMessage] = useState<PhoneMessage | null>(null);
+  const [iframeKey, setIframeKey] = useState<number>(0);
 
   if (!isOpen) return null;
 
@@ -218,14 +237,16 @@ export const PhoneModal: React.FC<PhoneModalProps> = ({
           </div>
         </div>
 
-        {/* Phone Close Button */}
-        <button
-          onClick={onClose}
-          className="absolute top-12 right-6 z-40 bg-stone-900/90 hover:bg-stone-800 text-stone-200 px-3 py-1 rounded-full text-xs font-bold border border-stone-700 flex items-center gap-1 shadow-md transition-transform active:scale-95"
-        >
-          <X className="w-3 h-3" />
-          <span>Close</span>
-        </button>
+        {/* Phone Close Button (Visible on Home Screen; routed apps feature dedicated in-phone navigation bars) */}
+        {activeApp !== 'AGS' && activeApp !== 'SOLAR_FIRST' && (
+          <button
+            onClick={onClose}
+            className="absolute top-12 right-6 z-40 bg-stone-900/90 hover:bg-stone-800 text-stone-200 px-3 py-1 rounded-full text-xs font-bold border border-stone-700 flex items-center gap-1 shadow-md transition-transform active:scale-95"
+          >
+            <X className="w-3 h-3" />
+            <span>Close</span>
+          </button>
+        )}
 
         {/* ======================================================== */}
         {/* APP VIEW ROUTER OR HOME SCREEN */}
@@ -245,8 +266,8 @@ export const PhoneModal: React.FC<PhoneModalProps> = ({
                 </p>
               </div>
 
-              {/* Main Apps Grid (Matching Screenshot) */}
-              <div className="grid grid-cols-4 gap-y-5 gap-x-3 my-auto pt-4">
+              {/* Main Apps Grid (Matching Screenshot + AGS & SolarFirst Web Apps) */}
+              <div className="grid grid-cols-4 gap-y-4 gap-x-3 my-auto pt-3">
                 {/* 1. Jobs */}
                 <button
                   onClick={() => setActiveApp('JOBS')}
@@ -294,6 +315,38 @@ export const PhoneModal: React.FC<PhoneModalProps> = ({
                     <HelpCircle className="w-7 h-7 text-stone-950" />
                   </div>
                   <span className="text-[11px] font-medium text-stone-200">Guide</span>
+                </button>
+
+                {/* 5. AGS (Education & School Portal) */}
+                <button
+                  onClick={() => {
+                    soundEngine.playCoin();
+                    addFeedMessage('🎓 AGS: Connecting to https://www.myags.school portal...');
+                    setActiveApp('AGS');
+                  }}
+                  className="flex flex-col items-center gap-1.5 active:scale-95 transition-transform group"
+                >
+                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-700 via-indigo-900 to-slate-900 border border-blue-400/50 group-hover:border-blue-300 flex items-center justify-center shadow-lg shadow-indigo-950/60 relative overflow-hidden ring-1 ring-amber-400/30">
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent pointer-events-none" />
+                    <GraduationCap className="w-7 h-7 text-amber-300 drop-shadow-md" />
+                  </div>
+                  <span className="text-[11px] font-semibold text-stone-200">AGS</span>
+                </button>
+
+                {/* 6. SolarFirst (Clean Energy & Solar Solutions) */}
+                <button
+                  onClick={() => {
+                    soundEngine.playCoin();
+                    addFeedMessage('☀️ SolarFirst: Connecting to https://www.getsolarfirst.com clean energy portal...');
+                    setActiveApp('SOLAR_FIRST');
+                  }}
+                  className="flex flex-col items-center gap-1.5 active:scale-95 transition-transform group"
+                >
+                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-400 via-orange-500 to-emerald-600 border border-yellow-300/50 group-hover:border-yellow-200 flex items-center justify-center shadow-lg shadow-amber-950/60 relative overflow-hidden ring-1 ring-emerald-400/30">
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent pointer-events-none" />
+                    <Sun className="w-7 h-7 text-yellow-100 drop-shadow-md" />
+                  </div>
+                  <span className="text-[11px] font-semibold text-stone-200 truncate max-w-[72px]">SolarFirst</span>
                 </button>
               </div>
 
@@ -845,6 +898,98 @@ export const PhoneModal: React.FC<PhoneModalProps> = ({
                 <div className="p-3 bg-stone-900 border border-stone-800 rounded-xl">
                   <strong className="text-amber-400 block mb-1">3. Life & Housing:</strong>
                   You start in a Mushin "Face-Me-I-Face-You" room. Pay your rent and NEPA bills on time or get padlocked! Save up to buy a Lekki Duplex!
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ======================================================== */}
+          {/* APP 9 & 10: WEB-VIEW ROUTED APPS (AGS & SOLARFIRST) */}
+          {/* ======================================================== */}
+          {(activeApp === 'AGS' || activeApp === 'SOLAR_FIRST') && (
+            <div className="flex-1 bg-stone-950 flex flex-col overflow-hidden">
+              {/* IN-PHONE NAVIGATION BAR */}
+              <div className="h-12 border-b border-stone-800 bg-stone-900/95 backdrop-blur px-3 flex items-center justify-between gap-2 shrink-0 z-30">
+                {/* Back Arrow '<' to return to the phone's app home screen */}
+                <button
+                  onClick={() => setActiveApp('HOME')}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-stone-800 hover:bg-stone-700 active:scale-95 text-stone-200 border border-stone-700 text-xs font-bold transition-all shadow-sm shrink-0"
+                  title="Return to Phone Home Screen"
+                  aria-label="Back to home screen"
+                >
+                  <ChevronLeft className="w-4 h-4 text-amber-400 -mr-0.5" />
+                  <span className="font-mono text-sm leading-none font-black text-amber-400">&lt;</span>
+                  <span className="text-[11px] text-stone-300 ml-0.5">Home</span>
+                </button>
+
+                {/* In-Phone Browser Address & Routing Display */}
+                <div className="flex-1 min-w-0 bg-stone-950/90 border border-stone-800 rounded-xl px-2.5 py-1 flex items-center justify-between gap-1 shadow-inner">
+                  <div className="flex items-center gap-1.5 min-w-0 truncate">
+                    <Lock className="w-3 h-3 text-emerald-400 shrink-0" />
+                    <span className="text-[11px] font-mono text-stone-200 truncate font-semibold">
+                      {activeApp === 'AGS' ? 'myags.school' : 'getsolarfirst.com'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-0.5 shrink-0">
+                    <button
+                      onClick={() => setIframeKey((k) => k + 1)}
+                      className="p-1 text-stone-400 hover:text-white rounded transition-colors"
+                      title="Reload Page"
+                    >
+                      <RotateCw className="w-3 h-3" />
+                    </button>
+                    <a
+                      href={activeApp === 'AGS' ? 'https://www.myags.school' : 'https://www.getsolarfirst.com'}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-1 text-stone-400 hover:text-amber-400 rounded transition-colors"
+                      title="Open in new window"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                </div>
+
+                {/* Global 'X Close' button to exit phone completely */}
+                <button
+                  onClick={onClose}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-rose-950/80 hover:bg-rose-900 active:scale-95 text-rose-200 border border-rose-800/70 text-xs font-bold transition-all shadow-sm shrink-0"
+                  title="Exit Phone Completely"
+                  aria-label="Close phone"
+                >
+                  <X className="w-3.5 h-3.5 text-rose-300" />
+                  <span className="text-[11px]">Close</span>
+                </button>
+              </div>
+
+              {/* Embedded Iframe View Container */}
+              <div className="flex-1 relative flex flex-col bg-white overflow-hidden">
+                <iframe
+                  key={iframeKey}
+                  src={activeApp === 'AGS' ? 'https://www.myags.school' : 'https://www.getsolarfirst.com'}
+                  title={activeApp === 'AGS' ? 'AGS School Portal' : 'SolarFirst Clean Energy'}
+                  className="w-full flex-1 border-0 bg-white"
+                  sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+                  allow="fullscreen; autoplay; clipboard-write; encrypted-media"
+                />
+
+                {/* In-Phone View Status Ribbon */}
+                <div className="h-7 bg-stone-950 border-t border-stone-800 px-3 flex items-center justify-between text-[10px] text-stone-400 shrink-0 select-none">
+                  <div className="flex items-center gap-1.5 truncate">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                    <span className="truncate">
+                      {activeApp === 'AGS' ? '🎓 AGS Education Portal' : '☀️ SolarFirst Clean Solar Solutions'}
+                    </span>
+                  </div>
+                  <a
+                    href={activeApp === 'AGS' ? 'https://www.myags.school' : 'https://www.getsolarfirst.com'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-amber-400 hover:text-amber-300 flex items-center gap-1 shrink-0 font-medium font-mono"
+                  >
+                    <span>Direct Web</span>
+                    <ExternalLink className="w-2.5 h-2.5" />
+                  </a>
                 </div>
               </div>
             </div>

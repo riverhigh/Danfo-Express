@@ -494,6 +494,13 @@ class DanfoSoundEngine {
   }
 
   /**
+   * Gear shifter clunk when changing gears (P -> R -> N -> D)
+   */
+  public playGearShift() {
+    this.playReverseGearEngaged();
+  }
+
+  /**
    * Coin / Cash chime when fares are collected
    */
   public playCoin() {

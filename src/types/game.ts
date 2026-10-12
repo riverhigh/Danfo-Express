@@ -14,6 +14,7 @@ export type PassengerArchetype =
   | 'PREACHER';       // Loud, affects surrounding passenger patience
 
 export type LagosDestination = 
+  | 'Ikeja Motor Park'
   | 'Mangoro / Cement'
   | 'Ikeja Along'
   | 'Ikeja Underbridge'

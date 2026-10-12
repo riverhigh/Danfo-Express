@@ -7269,6 +7269,8 @@ export class ThreeDrivingEngine {
     nearbyMechanic: { id: string; name: string; specialty: string; x: number; z: number; dist: number } | null;
     nearbyBank: { id: string; name: string; branch: string; x: number; z: number; dist: number; insideHall: boolean } | null;
     nearbyPosLady: { id: string; name: string; junctionName: string; x: number; z: number; dist: number } | null;
+    nearbyCustomCarShop: { id: string; name: string; x: number; z: number; dist: number } | null;
+    nearbyMarketVendor: { id: string; name: string; specialty: string; x: number; z: number; dist: number } | null;
     busDistance: number;
   } {
     const p = this.driverWalkPos;
