@@ -54,6 +54,7 @@ export interface SceneUpdateParams {
   walkMoveX?: number;
   walkMoveZ?: number;
   passengerCount?: number;
+  isDashHidden?: boolean;
 }
 
 export class ThreeDrivingEngine {
@@ -79,6 +80,9 @@ export class ThreeDrivingEngine {
   private smoothedCamYaw: number = 0;
   private smoothedCamX: number = 0;
   private smoothedFollowDist: number = 8.8;
+  private smoothedFirstPersonZ: number = 2.35;
+  private smoothedFirstPersonY: number = 2.02;
+  private smoothedFirstPersonFov: number = 68;
   private mirrorRenderTick: number = 0;
   private container: HTMLElement;
   private scene: THREE.Scene;
@@ -6638,11 +6642,16 @@ export class ThreeDrivingEngine {
         // FIRST PERSON / DR. DRIVING BUS COCKPIT VIEW:
         const headBob = speedKmH > 10 ? Math.sin(Date.now() * 0.02) * 0.005 : 0;
 
-        const cx = 0.0;   // Centered commanding windscreen view for Dr. Driving bus cockpit
-        const cy = 2.02;  // Natural Danfo bus driver eye height looking cleanly down the road
-        const cz = 2.35;  // Positioned right at the front windshield glass
+        const cx = 0.0;
+        const targetCz = params.isDashHidden ? 2.75 : 2.35; // Glides smoothly past dashboard console onto front windshield glass
+        const targetCy = params.isDashHidden ? 2.08 : 2.02;
+        const targetFov = params.isDashHidden ? 74 : 68;    // Expands FOV for panoramic road perspective
 
-        const localCamPos = new THREE.Vector3(cx, cy + headBob, cz);
+        this.smoothedFirstPersonZ = THREE.MathUtils.lerp(this.smoothedFirstPersonZ, targetCz, Math.min(1.0, dt * 7.0));
+        this.smoothedFirstPersonY = THREE.MathUtils.lerp(this.smoothedFirstPersonY, targetCy, Math.min(1.0, dt * 7.0));
+        this.smoothedFirstPersonFov = THREE.MathUtils.lerp(this.smoothedFirstPersonFov, targetFov, Math.min(1.0, dt * 7.0));
+
+        const localCamPos = new THREE.Vector3(cx, this.smoothedFirstPersonY + headBob, this.smoothedFirstPersonZ);
         localCamPos.applyQuaternion(this.busRoot.quaternion);
         localCamPos.add(this.busRoot.position);
         this.camera.position.copy(localCamPos);
@@ -6659,7 +6668,7 @@ export class ThreeDrivingEngine {
         this.camera.rotation.y = baseYaw + this.busHeadingYaw + clampedLookYaw;
         this.camera.rotation.x = -0.035 + pitchG + clampedLookPitch;
         this.camera.rotation.z = 0;
-        this.camera.fov = 68;
+        this.camera.fov = this.smoothedFirstPersonFov;
         this.camera.updateProjectionMatrix();
       }
     }

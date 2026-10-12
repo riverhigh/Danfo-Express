@@ -98,6 +98,12 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
   const [isBoarding, setIsBoarding] = useState<boolean>(false);
   const [cameraMode, setCameraMode] = useState<CameraViewMode>('FIRST_PERSON');
   const cameraModeRef = useRef<CameraViewMode>('FIRST_PERSON');
+  const [isDashHidden, setIsDashHidden] = useState<boolean>(false);
+  const isDashHiddenRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    isDashHiddenRef.current = isDashHidden;
+  }, [isDashHidden]);
 
   // Zuuks Gas Station Continuous Refueling, Shortcut Bypass, & Danfo Core Loop States
   const [isRefueling, setIsRefueling] = useState<boolean>(false);
@@ -1062,7 +1068,15 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         setGear('N');
         inputsRef.current.gear = 'N';
       }
-      if (e.key === ' ' || e.key === 'h' || e.key === 'H') handleHorn();
+      if (e.key === ' ') handleHorn();
+      if (e.key === 'h' || e.key === 'H' || e.key === 'u' || e.key === 'U') {
+        setIsDashHidden((prev) => {
+          const nextVal = !prev;
+          isDashHiddenRef.current = nextVal;
+          addFeedMessage(nextVal ? '👁️ HUD MODE: Clean Windshield View' : '🎛️ DASHBOARD RESTORED');
+          return nextVal;
+        });
+      }
       if (e.key === 'o' || e.key === 'O') toggleDoor();
       if (e.key === 'b' || e.key === 'B') toggleBoot();
       if (e.key === 'p' || e.key === 'P') onOpenPhone();
@@ -1715,6 +1729,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
               walkMoveX: walkJoyRef.current.x,
               walkMoveZ: walkJoyRef.current.y,
               passengerCount: passengersCountRef.current,
+              isDashHidden: isDashHiddenRef.current,
             },
             dt
           );
@@ -1812,7 +1827,6 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
 
   // ── Retractable panel states ──────────────────────────────────────
   const [showTopHUD, setShowTopHUD] = React.useState(true);
-  const [isDashHidden, setIsDashHidden] = React.useState(false);
   const [showLeftPanel, setShowLeftPanel] = React.useState(true);
   const [showRightPanel, setShowRightPanel] = React.useState(true);
 
@@ -2622,15 +2636,323 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
             </>
           )}
 
-          {/* Floating "▲ SHOW DASH" Pill at bottom center when Dash is hidden */}
+          {/* ═══════ FLOATING MINIMALIST HUD VIEW (ACTIVATED WHEN DASHBOARD IS HIDDEN) ═══════ */}
+          {/* Matches Truckers of Europe 3 / Clean Cockpit Windshield Mode (IMG_6774): Translucent controls, circular digital cluster, and unobstructed road view */}
           {isDashHidden && (
-            <button
-              onClick={() => setIsDashHidden(false)}
-              className="absolute bottom-[max(8px,env(safe-area-inset-bottom,4px))] left-1/2 -translate-x-1/2 z-50 pointer-events-auto px-4 py-1.5 bg-stone-950/95 hover:bg-stone-900 border-2 border-amber-400 rounded-full text-[9px] font-mono font-black text-amber-300 hover:text-white flex items-center gap-1.5 shadow-2xl backdrop-blur active:scale-95 transition-all"
-              title="Restore Cockpit Dashboard"
-            >
-              <span>▲ SHOW DASH</span>
-            </button>
+            <div className="absolute inset-x-0 bottom-0 z-40 pointer-events-none select-none pb-[max(8px,env(safe-area-inset-bottom,4px))] px-3 flex items-end justify-between">
+              {/* ── LEFT HUD: Quick Toggles + Floating Transparent Steering Wheel + Circular HUD Cluster ── */}
+              <div className="flex items-end gap-2 sm:gap-3 pointer-events-auto">
+                {/* Floating Quick Switches Column */}
+                <div className="flex flex-col gap-1 mb-1">
+                  <div className="flex gap-1">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        triggerTurnSignal('LEFT');
+                      }}
+                      className={`w-7 h-6 rounded-lg border text-[8px] font-mono font-black backdrop-blur-md shadow-lg ${
+                        turnSignal === 'LEFT'
+                          ? 'bg-emerald-400 text-stone-950 border-emerald-200'
+                          : 'bg-stone-950/70 border-white/20 text-stone-200 hover:bg-stone-900/90'
+                      }`}
+                      title="Left Blinker"
+                    >
+                      ◀L
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        triggerTurnSignal('RIGHT');
+                      }}
+                      className={`w-7 h-6 rounded-lg border text-[8px] font-mono font-black backdrop-blur-md shadow-lg ${
+                        turnSignal === 'RIGHT'
+                          ? 'bg-emerald-400 text-stone-950 border-emerald-200'
+                          : 'bg-stone-950/70 border-white/20 text-stone-200 hover:bg-stone-900/90'
+                      }`}
+                      title="Right Blinker"
+                    >
+                      R▶
+                    </button>
+                  </div>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleHazards();
+                      }}
+                      className={`w-7 h-6 rounded-lg border text-[8px] font-mono font-black backdrop-blur-md shadow-lg ${
+                        hazardLights
+                          ? 'bg-rose-500 text-white border-rose-200 animate-pulse'
+                          : 'bg-rose-950/70 border-rose-500/40 text-rose-200 hover:bg-rose-900/90'
+                      }`}
+                      title="Hazard Lights"
+                    >
+                      ⚠️
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleDoor();
+                      }}
+                      className={`w-7 h-6 rounded-lg border text-[8px] font-mono font-bold backdrop-blur-md shadow-lg ${
+                        doorState === 'OPEN'
+                          ? 'bg-amber-400 text-stone-950 border-amber-200'
+                          : 'bg-stone-950/70 border-white/20 text-stone-200 hover:bg-stone-900/90'
+                      }`}
+                      title="Passenger Door (O)"
+                    >
+                      🚪
+                    </button>
+                  </div>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        cycleCameraMode();
+                      }}
+                      className="px-1.5 h-6 rounded-lg border border-sky-400/50 bg-sky-950/70 backdrop-blur-md text-sky-200 hover:text-white text-[7.5px] font-mono font-black shadow-lg"
+                      title="Switch Camera View (V)"
+                    >
+                      🎥 CAM
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setTouchControlMode((v) => (v === 'WHEEL' ? 'JOYSTICK' : 'WHEEL'));
+                      }}
+                      className="px-1.5 h-6 rounded-lg border border-amber-400/50 bg-stone-950/70 backdrop-blur-md text-amber-300 hover:text-white text-[7.5px] font-mono font-black shadow-lg"
+                      title="Toggle Wheel vs Virtual Joystick"
+                    >
+                      {touchControlMode === 'WHEEL' ? '🕹️ JOY' : '🎡 WHL'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Floating Translucent Steering Wheel OR Virtual Joystick */}
+                {touchControlMode === 'JOYSTICK' ? (
+                  <div className="flex items-center justify-center shrink-0 select-none touch-none w-[112px] h-[112px] bg-stone-950/50 backdrop-blur-md rounded-full border border-white/15 shadow-2xl">
+                    <NippleJoystick
+                      size={86}
+                      label="JOYSTICK"
+                      onMove={(vec) => {
+                        const clamped = Math.max(-135, Math.min(135, vec.x * 135));
+                        simRef.current.steeringAngle = clamped;
+                        setWheelVisualAngle(clamped);
+                      }}
+                      onEnd={() => {
+                        simRef.current.steeringAngle = 0;
+                        setWheelVisualAngle(0);
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <div className="relative flex items-center justify-center shrink-0">
+                    <div
+                      id="alt-steering-wheel"
+                      onPointerDown={handleWheelPointerDown}
+                      onPointerMove={handleWheelPointerMove}
+                      onPointerUp={handleWheelPointerUp}
+                      onPointerCancel={handleWheelPointerUp}
+                      className="relative w-[116px] h-[116px] sm:w-[128px] sm:h-[128px] rounded-full cursor-grab active:cursor-grabbing touch-none select-none flex items-center justify-center bg-stone-950/40 backdrop-blur-sm border-2 border-white/20 shadow-2xl"
+                      style={{
+                        transform: `rotate(${wheelVisualAngle}deg)`,
+                        filter: 'drop-shadow(0 10px 20px rgba(0,0,0,0.8))',
+                      }}
+                    >
+                      <svg viewBox="0 0 200 200" className="w-full h-full overflow-visible pointer-events-none opacity-90">
+                        <circle cx="100" cy="100" r="88" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="12" />
+                        <line x1="22" y1="100" x2="80" y2="100" stroke="rgba(255,255,255,0.45)" strokeWidth="8" strokeLinecap="round" />
+                        <line x1="178" y1="100" x2="120" y2="100" stroke="rgba(255,255,255,0.45)" strokeWidth="8" strokeLinecap="round" />
+                        <line x1="100" y1="120" x2="100" y2="182" stroke="rgba(255,255,255,0.45)" strokeWidth="8" strokeLinecap="round" />
+                        <circle cx="100" cy="100" r="32" fill="#18181b" stroke="#facc15" strokeWidth="2.5" />
+                        <circle cx="100" cy="100" r="86" fill="none" stroke="rgba(250,204,21,0.6)" strokeWidth="2" strokeDasharray="14 10" />
+                        <rect x="96" y="8" width="8" height="14" rx="2" fill="#facc15" />
+                      </svg>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleHorn();
+                        }}
+                        className="absolute w-10 h-10 rounded-full bg-gradient-to-b from-amber-400 to-amber-500 active:scale-95 text-stone-950 font-black text-[8px] font-['Bungee'] flex items-center justify-center shadow-lg border-2 border-stone-900 pointer-events-auto"
+                      >
+                        HORN
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Floating Circular Digital Speedometer & Tachometer Gauge (Matching IMG_6774 / IMG_6769) */}
+                <div className="relative w-[88px] h-[88px] sm:w-[98px] sm:h-[98px] rounded-full bg-stone-950/80 backdrop-blur-md border-[2.5px] border-rose-500/80 shadow-2xl flex flex-col items-center justify-center shrink-0 mb-1">
+                  <div className="absolute inset-1 rounded-full border border-white/10 pointer-events-none" />
+                  <div className="flex items-center gap-1.5 text-[8px] font-black leading-none">
+                    <span className={turnSignal === 'LEFT' || hazardLights ? 'text-emerald-400 animate-pulse' : 'text-stone-600'}>◀</span>
+                    <span className="font-mono text-stone-400 text-[7px] uppercase tracking-wider">{gear === 'R' ? 'REV' : gear === 'D' ? 'DRIVE' : gear}</span>
+                    <span className={turnSignal === 'RIGHT' || hazardLights ? 'text-emerald-400 animate-pulse' : 'text-stone-600'}>▶</span>
+                  </div>
+                  <div className="flex items-baseline gap-0.5 my-0.5">
+                    <span className="text-xl sm:text-2xl font-black font-mono text-amber-300 tabular-nums leading-none tracking-tight">
+                      {hudSpeed}
+                    </span>
+                    <span className="text-[6.5px] font-mono font-bold text-stone-400">KM/H</span>
+                  </div>
+                  <div className="w-14 bg-stone-900 h-1 rounded-full overflow-hidden border border-stone-700/60 mt-0.5">
+                    <div
+                      className="h-full bg-gradient-to-r from-emerald-400 via-amber-400 to-rose-500 transition-all duration-100"
+                      style={{ width: `${Math.min(100, Math.round((hudRPM / 5200) * 100))}%` }}
+                    />
+                  </div>
+                  <span className="text-[6.5px] font-mono text-emerald-400 font-bold mt-0.5">
+                    GEAR: {gear} • {Math.round(simRef.current.fuel)}% FUEL
+                  </span>
+                </div>
+              </div>
+
+              {/* ── CENTER HUD: Floating Restore Dashboard Pill ── */}
+              <div className="flex flex-col items-center pointer-events-auto mb-2">
+                <button
+                  onClick={() => setIsDashHidden(false)}
+                  className="px-3.5 py-1.5 bg-stone-950/85 hover:bg-stone-900 border-2 border-amber-400/90 rounded-full text-[9px] font-mono font-black text-amber-300 hover:text-white flex items-center gap-1.5 shadow-2xl backdrop-blur-md active:scale-95 transition-all"
+                  title="Restore Full Physical Cockpit Dashboard"
+                >
+                  <span>▲ SHOW DASHBOARD</span>
+                </button>
+              </div>
+
+              {/* ── RIGHT HUD: Floating Vertical Gear Selector + Translucent Pedals ── */}
+              <div className="flex items-end gap-2.5 sm:gap-3 pointer-events-auto">
+                {/* Floating Gear Selector (R - N - D - P) */}
+                <div className="flex flex-col bg-stone-950/85 backdrop-blur-md border-2 border-white/20 p-1 rounded-xl shadow-2xl h-[94px] w-8 justify-between shrink-0 mb-1">
+                  {(['R', 'N', 'D', 'P'] as const).map((g) => (
+                    <button
+                      key={g}
+                      type="button"
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setGear(g);
+                        inputsRef.current.gear = g;
+                        if (!inputsRef.current.isEngineRunning) {
+                          addFeedMessage('🔑 Engine is OFF! Start the engine (E / K) before driving.');
+                        } else if (g === 'R') {
+                          soundEngine.playReverseGearEngaged();
+                          soundEngine.playReverseBeep();
+                        }
+                      }}
+                      className={`w-full h-[19px] rounded-md font-mono font-black text-[9px] transition-all flex items-center justify-center cursor-pointer ${
+                        gear === g
+                          ? g === 'R'
+                            ? 'bg-rose-600 text-white shadow ring-2 ring-rose-400 animate-pulse'
+                            : g === 'D'
+                            ? 'bg-amber-400 text-stone-950 shadow ring-1 ring-amber-200'
+                            : 'bg-sky-400 text-stone-950 shadow'
+                          : 'text-stone-400 hover:text-white'
+                      }`}
+                    >
+                      {g}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Floating Translucent Brake Pedal */}
+                <button
+                  type="button"
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch {}
+                    inputsRef.current.gas = false;
+                    setIsGasPressed(false);
+                    inputsRef.current.brake = true;
+                    setIsBrakePressed(true);
+                    soundEngine.playAirBrakeHiss();
+                  }}
+                  onPointerUp={(e) => {
+                    e.stopPropagation();
+                    try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
+                    inputsRef.current.brake = false;
+                    setIsBrakePressed(false);
+                  }}
+                  onPointerCancel={(e) => {
+                    e.stopPropagation();
+                    inputsRef.current.brake = false;
+                    setIsBrakePressed(false);
+                  }}
+                  onPointerLeave={() => {
+                    if (inputsRef.current.brake) {
+                      inputsRef.current.brake = false;
+                      setIsBrakePressed(false);
+                    }
+                  }}
+                  className={`w-14 sm:w-16 h-[72px] sm:h-[80px] rounded-2xl flex flex-col items-center justify-between py-2 px-1.5 select-none touch-none transition-all cursor-pointer backdrop-blur-md shadow-2xl mb-1 ${
+                    isBrakePressed
+                      ? 'bg-rose-950/95 border-2 border-rose-400 translate-y-0.5 scale-95 shadow-[0_0_20px_rgba(244,63,94,0.9)]'
+                      : 'bg-stone-950/70 border-2 border-white/25 hover:border-rose-400/80 shadow-lg'
+                  }`}
+                >
+                  <div className="w-full h-1 bg-white/20 rounded-full pointer-events-none" />
+                  <div className="flex flex-col items-center leading-none pointer-events-none">
+                    <span className={`text-[10px] font-mono font-black ${isBrakePressed ? 'text-rose-300' : 'text-rose-400'}`}>
+                      BRAKE
+                    </span>
+                    <span className="text-[6.5px] text-stone-400 font-mono mt-0.5">STOP</span>
+                  </div>
+                  <div className="w-full h-1 bg-white/20 rounded-full pointer-events-none" />
+                </button>
+
+                {/* Floating Translucent Gas / Accelerator Pedal */}
+                <button
+                  type="button"
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch {}
+                    if (!inputsRef.current.isEngineRunning) {
+                      addFeedMessage('🔑 ENGINE IS OFF! Press Engine Start/Stop (E or K) first!');
+                      return;
+                    }
+                    if (inputsRef.current.gear === 'N' || inputsRef.current.gear === 'P') {
+                      setGear('D');
+                      inputsRef.current.gear = 'D';
+                    }
+                    inputsRef.current.brake = false;
+                    setIsBrakePressed(false);
+                    inputsRef.current.gas = true;
+                    setIsGasPressed(true);
+                  }}
+                  onPointerUp={(e) => {
+                    e.stopPropagation();
+                    try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
+                    inputsRef.current.gas = false;
+                    setIsGasPressed(false);
+                  }}
+                  onPointerCancel={(e) => {
+                    e.stopPropagation();
+                    inputsRef.current.gas = false;
+                    setIsGasPressed(false);
+                  }}
+                  onPointerLeave={() => {
+                    if (inputsRef.current.gas) {
+                      inputsRef.current.gas = false;
+                      setIsGasPressed(false);
+                    }
+                  }}
+                  className={`w-14 sm:w-16 h-[98px] sm:h-[108px] rounded-2xl flex flex-col items-center justify-between py-2.5 px-1.5 select-none touch-none transition-all cursor-pointer backdrop-blur-md shadow-2xl mb-1 ${
+                    isGasPressed
+                      ? 'bg-amber-400 text-stone-950 border-2 border-amber-200 translate-y-0.5 scale-95 shadow-[0_0_24px_rgba(251,191,36,0.95)]'
+                      : 'bg-stone-950/70 border-2 border-amber-400/80 hover:border-amber-300 shadow-lg'
+                  }`}
+                >
+                  <div className="w-full h-1 bg-amber-400/40 rounded-full pointer-events-none" />
+                  <div className="w-full h-1 bg-amber-400/40 rounded-full pointer-events-none" />
+                  <div className="flex flex-col items-center leading-none my-0.5 pointer-events-none">
+                    <span className={`text-[11px] font-mono font-black tracking-wider ${isGasPressed ? 'text-stone-950' : 'text-amber-400'}`}>
+                      GAS
+                    </span>
+                    <span className={`text-[6.5px] font-mono font-bold mt-0.5 ${isGasPressed ? 'text-stone-900' : 'text-stone-400'}`}>DRIVE</span>
+                  </div>
+                  <div className="w-full h-1 bg-amber-400/40 rounded-full pointer-events-none" />
+                  <div className="w-full h-1 bg-amber-400/40 rounded-full pointer-events-none" />
+                </button>
+              </div>
+            </div>
           )}
 
           {/* Full-Width Molded Bus Dashboard Console (left-0 right-0 bottom-0) */}
@@ -2644,10 +2966,10 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
             {/* Dash Hide Button on top center of Dash */}
             <button
               onClick={() => setIsDashHidden(true)}
-              className="absolute -top-4 left-1/2 -translate-x-1/2 z-50 px-3 h-4 bg-stone-900/95 border border-stone-600 rounded-t-lg text-[8px] font-mono font-bold text-amber-400 hover:text-white flex items-center gap-1 shadow"
-              title="Hide Dashboard Completely"
+              className="absolute -top-4 left-1/2 -translate-x-1/2 z-50 px-3.5 h-4.5 bg-stone-900/95 hover:bg-stone-800 border border-stone-600 rounded-t-lg text-[8px] font-mono font-bold text-amber-400 hover:text-white flex items-center gap-1 shadow cursor-pointer active:scale-95 transition-all"
+              title="Hide Dashboard & Enable Floating HUD Windshield Mode"
             >
-              ▼ HIDE DASH
+              ▼ HIDE DASH (HUD MODE)
             </button>
 
             <div className="relative w-full h-full bg-gradient-to-b from-stone-800/98 via-stone-900 to-stone-950 border-t-[3px] border-stone-600/90 rounded-t-[20px] shadow-[0_-8px_24px_rgba(0,0,0,0.95)] flex items-center justify-between pl-2 sm:pl-4 pr-[192px] sm:pr-[232px] py-1.5 overflow-visible">
