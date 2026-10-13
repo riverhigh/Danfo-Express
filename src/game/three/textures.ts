@@ -578,3 +578,54 @@ export function createCustomCarShopTexture(
 
   return new THREE.CanvasTexture(canvas);
 }
+
+export function createPoliceLastmaSignTexture(
+  stationTitle: string = 'NIGERIA POLICE FORCE & LASTMA JOINT ENFORCEMENT COMMAND',
+  subText: string = 'ZONE 2 AREA HEADQUARTERS • TRAFFIC COMPLIANCE & IMPOUND YARD'
+): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 192;
+  const ctx = canvas.getContext('2d')!;
+
+  // Left half police dark navy blue, Right half LASTMA wine / burgundy
+  const grad = ctx.createLinearGradient(0, 0, 512, 0);
+  grad.addColorStop(0, '#0f172a'); // Police Navy
+  grad.addColorStop(0.48, '#1e293b');
+  grad.addColorStop(0.52, '#4a0410'); // LASTMA Wine/Burgundy
+  grad.addColorStop(1, '#831843');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 512, 192);
+
+  // Top header stripe: Police Blue/Yellow/Green on left, LASTMA Cream/Wine on right
+  ctx.fillStyle = '#0284c7'; ctx.fillRect(0, 0, 170, 14);
+  ctx.fillStyle = '#facc15'; ctx.fillRect(170, 0, 86, 14);
+  ctx.fillStyle = '#fef08a'; ctx.fillRect(256, 0, 128, 14); // Cream
+  ctx.fillStyle = '#9f1239'; ctx.fillRect(384, 0, 128, 14); // Wine
+
+  // Yellow trim border
+  ctx.strokeStyle = '#facc15';
+  ctx.lineWidth = 5;
+  ctx.strokeRect(6, 6, 500, 180);
+
+  // Main text
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '900 22px sans-serif';
+  ctx.fillText('🇳🇬 ' + stationTitle, 256, 58);
+
+  // Subheaders
+  ctx.fillStyle = '#fde047';
+  ctx.font = 'bold 16px sans-serif';
+  ctx.fillText('👮 NPF HIGHWAY PATROL  |  🚦 LASTMA TRAFFIC CORRECTION', 256, 102);
+
+  ctx.fillStyle = '#cbd5e1';
+  ctx.font = '700 13px sans-serif';
+  ctx.fillText(subText, 256, 145);
+
+  ctx.fillStyle = '#f43f5e';
+  ctx.font = '800 11px sans-serif';
+  ctx.fillText('ONE-WAY & OBSTRUCTION OFFENDERS WILL BE TOWED • FINES ENFORCED', 256, 172);
+
+  return new THREE.CanvasTexture(canvas);
+}

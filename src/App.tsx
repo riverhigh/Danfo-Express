@@ -723,32 +723,8 @@ export default function App() {
           </button>
         </nav>
 
-        {/* Zone 3: Distinct Wallet Cash vs Bank Account Balance & Audio */}
-        <div className="flex items-center gap-2 font-mono shrink-0">
-          {/* Wallet Cash Button (Opens POS Kiosk) */}
-          <button
-            onClick={() => openPosOrBank('POS_KIOSK')}
-            className="px-3 py-1.5 rounded-xl bg-stone-950 hover:bg-stone-800 border border-emerald-500/40 text-left transition-colors cursor-pointer"
-            title="Cash in Wallet — Click to use POS Agent (Withdraw/Deposit up to ₦100,000)"
-          >
-            <span className="text-[9px] text-stone-400 block leading-none">WALLET CASH</span>
-            <span className="text-xs font-black text-emerald-400 tabular-nums">
-              ₦{walletNaira.toLocaleString()}
-            </span>
-          </button>
-
-          {/* Bank Account Button (Opens Nigerian Bank Hall Queue) */}
-          <button
-            onClick={() => openPosOrBank('BANK_HALL')}
-            className="px-3 py-1.5 rounded-xl bg-stone-950 hover:bg-stone-800 border border-sky-500/40 text-left transition-colors cursor-pointer"
-            title="Bank Account Balance — Click to enter Nigerian Bank Hall (Withdrawals >₦100,000)"
-          >
-            <span className="text-[9px] text-stone-400 block leading-none">BANK ACCOUNT</span>
-            <span className="text-xs font-black text-sky-400 tabular-nums">
-              ₦{bankBalanceNaira.toLocaleString()}
-            </span>
-          </button>
-
+        {/* Zone 3: Audio Toggle */}
+        <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={toggleAudio}
             className="p-2.5 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 transition-colors cursor-pointer"
@@ -769,401 +745,100 @@ export default function App() {
         {/* CLEAN MAIN MENU (SINGLE PLAYER | MULTIPLAYER | SETTINGS)        */}
         {/* ════════════════════════════════════════════════════════════════ */}
         {gameState.screen === 'MENU' && (
-          <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-5 max-w-6xl mx-auto w-full space-y-5">
-            {/* PWA Install Banner (Only shown when user requests or on mobile) */}
-            <PwaInstallBanner forceShow={showPwaModal} onClose={() => setShowPwaModal(false)} />
-
+          <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 max-w-4xl mx-auto w-full flex flex-col justify-center">
             {/* ──────────────────────────────────────────────────────────── */}
             {/* 1. SINGLE PLAYER VIEW                                        */}
             {/* ──────────────────────────────────────────────────────────── */}
             {mainMenuTab === 'SINGLE_PLAYER' && (
-              <div className="space-y-5">
-                {/* Clean Sub-Navigation Strip for Single Player */}
-                <div className="flex flex-wrap items-center justify-between gap-3 bg-stone-900/90 p-2 rounded-2xl border border-stone-800">
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={() => setSinglePlayerSubView('SHIFT_DISPATCH')}
-                      className={`px-3.5 py-2 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer whitespace-nowrap ${
-                        singlePlayerSubView === 'SHIFT_DISPATCH'
-                          ? 'bg-amber-400 text-stone-950 font-black'
-                          : 'text-stone-300 hover:text-white'
-                      }`}
-                    >
-                      Highway Shift
-                    </button>
-                    <button
-                      onClick={() => setSinglePlayerSubView('MISSIONS')}
-                      className={`px-3.5 py-2 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer whitespace-nowrap ${
-                        singlePlayerSubView === 'MISSIONS'
-                          ? 'bg-amber-400 text-stone-950 font-black'
-                          : 'text-stone-300 hover:text-white'
-                      }`}
-                    >
-                      Driving Missions
-                    </button>
-                    <button
-                      onClick={() => setSinglePlayerSubView('GARAGE')}
-                      className={`px-3.5 py-2 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer whitespace-nowrap ${
-                        singlePlayerSubView === 'GARAGE'
-                          ? 'bg-amber-400 text-stone-950 font-black'
-                          : 'text-stone-300 hover:text-white'
-                      }`}
-                    >
-                      Upgrades &amp; Conductor
-                    </button>
+              <div className="bg-stone-900/95 border-2 border-stone-800 rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl backdrop-blur-md">
+                {/* Hero Header */}
+                <div className="flex flex-wrap items-center justify-between gap-4 border-b border-stone-800/80 pb-5">
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-2xl bg-amber-400 border-2 border-amber-200 flex items-center justify-center text-3xl shadow-lg">
+                      🚌
+                    </div>
+                    <div>
+                      <div className="text-xs font-mono font-bold text-amber-400 uppercase tracking-widest">
+                        Single Player · Lagos Expressway
+                      </div>
+                      <h2 className="text-2xl sm:text-3xl font-black font-['Bungee'] text-white">
+                        {activeBusPreset.name}
+                      </h2>
+                      <div className="text-xs text-stone-400 font-mono mt-0.5">
+                        {activeBusPreset.capacity} Seats · {activeBusPreset.maxSpeed} km/h Max Speed · Slogan: <span className="text-amber-400 font-bold">"{selectedSlogan}"</span>
+                      </div>
+                    </div>
                   </div>
 
-                  {/* Quick Life & Banking Actions */}
-                  <div className="flex flex-wrap items-center gap-2 font-mono">
-                    <button
-                      onClick={() => openPosOrBank('POS_KIOSK')}
-                      className="px-3 py-1.5 rounded-xl bg-stone-950 hover:bg-stone-800 border border-sky-400/50 text-sky-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-                    >
-                      <CreditCard className="w-3.5 h-3.5" />
-                      <span>POS Agent (≤₦100k)</span>
-                    </button>
-                    <button
-                      onClick={() => openPosOrBank('BANK_HALL')}
-                      className="px-3 py-1.5 rounded-xl bg-stone-950 hover:bg-stone-800 border border-rose-400/50 text-rose-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-                    >
-                      <Building2 className="w-3.5 h-3.5" />
-                      <span>Bank Hall (&gt;₦100k)</span>
-                    </button>
-                    <button
-                      onClick={() => setIsHome2DOpen(true)}
-                      className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-stone-950 text-xs font-black flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-                    >
-                      <Home className="w-3.5 h-3.5" />
-                      <span>Go Home (2D)</span>
-                    </button>
-                    <button
-                      onClick={() => setIsPhoneOpen(true)}
-                      className="relative px-3 py-1.5 rounded-xl bg-stone-950 hover:bg-stone-800 border border-stone-700 text-stone-200 text-xs font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-                    >
-                      <Smartphone className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Phone</span>
-                      {unreadCount > 0 && (
-                        <span className="text-rose-400 font-black">({unreadCount})</span>
-                      )}
-                    </button>
+                  <div className="bg-stone-950 px-4 py-2 rounded-2xl border border-stone-800 text-right font-mono">
+                    <div className="text-[10px] text-stone-400 uppercase">Driver Street Cred</div>
+                    <div className="text-sm font-black text-amber-400">{streetCred} Cred</div>
                   </div>
                 </div>
 
-                {/* SUBVIEW A: HIGHWAY SHIFT DISPATCH */}
-                {singlePlayerSubView === 'SHIFT_DISPATCH' && (
-                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-                    {/* Left 7 Cols: Active Bus & Shift Launch */}
-                    <div className="lg:col-span-7 space-y-4">
-                      <div className="bg-stone-900 border border-stone-800 rounded-3xl p-5 space-y-5">
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <div className="text-xs font-mono text-amber-400 font-bold">
-                              Oshodi Motor Park · Bay #01 · 20 Real Lagos Bus Stops
-                            </div>
-                            <h2 className="text-2xl font-black font-['Bungee'] text-white mt-1">
-                              {activeBusPreset.name}
-                            </h2>
-                            <p className="text-xs text-stone-400 mt-0.5">
-                              {activeBusPreset.capacity} Seats · {activeBusPreset.maxSpeed} km/h Max Speed · Conductor:{' '}
-                              <span className="text-emerald-400 font-semibold">
-                                {gameState.conductor.hasConductor ? gameState.conductor.name : 'Solo Driver'}
-                              </span>
-                            </p>
-                          </div>
-
-                          <button
-                            onClick={() => setIsConductorModalOpen(true)}
-                            className="px-3.5 py-2 rounded-xl bg-stone-950 hover:bg-stone-800 border border-stone-700 text-emerald-300 font-mono font-bold text-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-                          >
-                            <Users className="w-3.5 h-3.5" />
-                            <span>Change Conductor</span>
-                          </button>
-                        </div>
-
-                        {/* Shift Schedule Selector */}
-                        <div className="space-y-2">
-                          <div className="text-xs font-mono text-stone-400 font-semibold">
-                            Select Shift Schedule (Ikeja ➔ Maryland ➔ Oshodi ➔ Yaba ➔ CMS)
-                          </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                            {(Object.keys(SHIFT_CONFIGS) as ShiftTimeOfDay[]).map((sKey) => {
-                              const cfg = SHIFT_CONFIGS[sKey];
-                              const isSelected = selectedShiftId === sKey;
-                              return (
-                                <button
-                                  key={sKey}
-                                  onClick={() => setSelectedShiftId(sKey)}
-                                  className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
-                                    isSelected
-                                      ? 'bg-amber-400/15 border-amber-400 text-white'
-                                      : 'bg-stone-950 border-stone-800 text-stone-400 hover:border-stone-700'
-                                  }`}
-                                >
-                                  <div>
-                                    <div className="flex items-center justify-between text-[10px] font-mono font-bold text-amber-400">
-                                      <span>{cfg.startTime}</span>
-                                      {cfg.floodRisk && <span className="text-sky-400">Rain</span>}
-                                    </div>
-                                    <div className="font-bold text-xs text-white mt-1">{cfg.title}</div>
-                                    <p className="text-[11px] text-stone-400 mt-1 line-clamp-2">{cfg.subtitle}</p>
-                                  </div>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        {/* Slogan Sticker Picker */}
-                        <div className="space-y-1.5">
-                          <div className="text-xs font-mono text-stone-400">
-                            Rear Window Slogan: <strong className="text-amber-400">"{selectedSlogan}"</strong>
-                          </div>
-                          <div className="flex flex-wrap gap-1.5">
-                            {SLOGANS.map((slogan) => (
-                              <button
-                                key={slogan}
-                                onClick={() => setSelectedSlogan(slogan)}
-                                className={`px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold border transition-all cursor-pointer ${
-                                  selectedSlogan === slogan
-                                    ? 'bg-amber-400 text-stone-950 border-amber-200 font-black'
-                                    : 'bg-stone-950 text-stone-400 border-stone-800 hover:text-white'
-                                }`}
-                              >
-                                {slogan}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Primary Launch CTA */}
+                {/* Shift Schedule Selection */}
+                <div className="space-y-3">
+                  <div className="text-xs font-mono text-stone-300 font-bold uppercase tracking-wider">
+                    Select Shift Schedule:
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {(Object.keys(SHIFT_CONFIGS) as ShiftTimeOfDay[]).map((sKey) => {
+                      const cfg = SHIFT_CONFIGS[sKey];
+                      const isSelected = selectedShiftId === sKey;
+                      return (
                         <button
-                          onClick={() => handleStartShift(false)}
-                          className="w-full py-4 px-6 bg-amber-400 hover:bg-amber-300 active:scale-[0.99] text-stone-950 font-black font-['Bungee'] text-base sm:text-lg rounded-2xl shadow-lg flex items-center justify-center gap-3 transition-all cursor-pointer"
+                          key={sKey}
+                          onClick={() => setSelectedShiftId(sKey)}
+                          className={`p-4 rounded-2xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between ${
+                            isSelected
+                              ? 'bg-amber-400/20 border-amber-400 text-white shadow-lg'
+                              : 'bg-stone-950/80 border-stone-800 text-stone-400 hover:border-stone-700'
+                          }`}
                         >
-                          <span>START ENGINE &amp; DRIVE</span>
-                          <ArrowRight className="w-5 h-5" />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Right 5 Cols: Wallet vs Bank & POS / Bank Branch Access */}
-                    <div className="lg:col-span-5 space-y-4">
-                      {/* Wallet vs Bank Card */}
-                      <div className="bg-stone-900 border border-stone-800 rounded-3xl p-5 space-y-4">
-                        <div className="flex items-center justify-between">
                           <div>
-                            <h3 className="text-sm font-black font-['Bungee'] text-amber-400">
-                              WALLET CASH &amp; BANKING
-                            </h3>
-                            <p className="text-xs text-stone-400 mt-0.5">
-                              POS limit is ₦100,000 · Visit the Bank Teller for &gt;₦100,000
-                            </p>
+                            <div className="flex items-center justify-between text-xs font-mono font-bold text-amber-400">
+                              <span>{cfg.startTime}</span>
+                              {cfg.floodRisk && <span className="text-sky-400">Rain</span>}
+                            </div>
+                            <div className="font-black text-sm text-white mt-1.5">{cfg.title}</div>
+                            <p className="text-xs text-stone-400 mt-1 line-clamp-2">{cfg.subtitle}</p>
                           </div>
-                          <button
-                            onClick={() => soundEngine.playBankQueueChime('B-044', 2, true)}
-                            className="p-2 rounded-xl bg-stone-950 hover:bg-stone-800 border border-stone-800 text-amber-400 cursor-pointer"
-                            title="Hear Nigerian Bank Queue Sound"
-                          >
-                            <Volume2 className="w-4 h-4" />
-                          </button>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3 font-mono">
-                          <div className="p-3.5 rounded-2xl bg-stone-950 border border-stone-800">
-                            <span className="text-[10px] text-stone-400 block">WALLET (CASH)</span>
-                            <span className="text-base font-black text-emerald-400 tabular-nums mt-0.5 block">
-                              ₦{walletNaira.toLocaleString()}
-                            </span>
-                            <span className="text-[10px] text-stone-500">Pocket cash on hand</span>
-                          </div>
-
-                          <div className="p-3.5 rounded-2xl bg-stone-950 border border-stone-800">
-                            <span className="text-[10px] text-stone-400 block">EKO ZENITH BANK</span>
-                            <span className="text-base font-black text-sky-400 tabular-nums mt-0.5 block">
-                              ₦{bankBalanceNaira.toLocaleString()}
-                            </span>
-                            <span className="text-[10px] text-stone-500">Savings account</span>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                          <button
-                            onClick={() => openPosOrBank('POS_KIOSK')}
-                            className="py-3 px-3.5 rounded-2xl bg-stone-950 hover:bg-stone-800 border border-sky-400/50 text-sky-300 font-mono text-xs font-bold flex items-center justify-center gap-2 cursor-pointer"
-                          >
-                            <CreditCard className="w-4 h-4" />
-                            <span>POS Agent (Max ₦100k)</span>
-                          </button>
-
-                          <button
-                            onClick={() => openPosOrBank('BANK_HALL')}
-                            className="py-3 px-3.5 rounded-2xl bg-rose-500 hover:bg-rose-400 text-white font-mono text-xs font-black flex items-center justify-center gap-2 shadow cursor-pointer"
-                          >
-                            <Building2 className="w-4 h-4" />
-                            <span>Enter Bank (&gt;₦100k)</span>
-                          </button>
-                        </div>
-
-                        {/* Traditional Kolo & Ajo Savings */}
-                        <div className="pt-2 border-t border-stone-800 grid grid-cols-2 gap-2">
-                          <button
-                            onClick={() => setIsKoloOpen(true)}
-                            className="py-2 px-3 rounded-xl bg-stone-950 hover:bg-stone-800 border border-stone-800 text-amber-300 font-mono text-xs font-bold cursor-pointer tabular-nums"
-                          >
-                            🏺 Kolo: ₦{saveData.koloBalanceNaira.toLocaleString()}
-                          </button>
-                          <button
-                            onClick={() => setIsAjoOpen(true)}
-                            className="py-2 px-3 rounded-xl bg-stone-950 hover:bg-stone-800 border border-stone-800 text-purple-300 font-mono text-xs font-bold cursor-pointer tabular-nums"
-                          >
-                            🤝🏾 Ajo: ₦{saveData.ajoContributionsNaira.toLocaleString()}
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Route Overview Card */}
-                      <div className="bg-stone-900 border border-stone-800 rounded-3xl p-4 flex items-center justify-between gap-3">
-                        <div>
-                          <div className="text-xs font-bold text-white">
-                            20 Real-World Lagos Bus Stops (with UIDs)
-                          </div>
-                          <div className="text-[11px] text-stone-400">
-                            Mangoro ➔ Ikeja ➔ Maryland ➔ Oshodi BRT ➔ Yaba ➔ CMS
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => setIsMapOpen(true)}
-                          className="px-3 py-2 rounded-xl bg-stone-950 hover:bg-stone-800 border border-stone-700 text-sky-300 font-mono text-xs font-bold cursor-pointer whitespace-nowrap shrink-0"
-                        >
-                          View Route Map
                         </button>
-                      </div>
-                    </div>
+                      );
+                    })}
                   </div>
-                )}
+                </div>
 
-                {/* SUBVIEW B: DRIVING MISSIONS */}
-                {singlePlayerSubView === 'MISSIONS' && (
-                  <div className="bg-stone-900 border border-stone-800 rounded-3xl p-5">
-                    <MissionSelector
-                      selectedMissionId={selectedMissionId}
-                      onSelectMission={(m) => setSelectedMissionId(m.id)}
-                      onStartMission={handleStartMission}
-                    />
+                {/* Slogan Picker */}
+                <div className="space-y-2">
+                  <div className="text-xs font-mono text-stone-400">
+                    Rear Windshield Slogan:
                   </div>
-                )}
-
-                {/* SUBVIEW C: GARAGE UPGRADES & CONDUCTORS */}
-                {singlePlayerSubView === 'GARAGE' && (
-                  <div className="space-y-5">
-                    <div className="p-5 bg-stone-900 border border-stone-800 rounded-3xl space-y-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div>
-                          <h3 className="font-bold text-base text-amber-400">
-                            Hire Your Lagos Conductor (Agbero)
-                          </h3>
-                          <p className="text-xs text-stone-400">
-                            Calls out destinations at bus stops and collects passenger fares automatically.
-                          </p>
-                        </div>
-                        <div className="font-mono text-xs text-stone-300 bg-stone-950 px-3 py-1.5 rounded-xl border border-stone-800">
-                          Active:{' '}
-                          <strong className="text-amber-400">
-                            {gameState.conductor.hasConductor ? gameState.conductor.name : 'Solo Driver'}
-                          </strong>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        {CONDUCTOR_ROSTER.map((c) => {
-                          const isCurrent = gameState.conductor.hasConductor && gameState.conductor.id === c.id;
-                          return (
-                            <div
-                              key={c.id}
-                              className={`p-4 rounded-2xl border flex flex-col justify-between ${
-                                isCurrent
-                                  ? 'bg-amber-400/15 border-amber-400'
-                                  : 'bg-stone-950 border-stone-800'
-                              }`}
-                            >
-                              <div>
-                                <div className="flex items-center justify-between mb-1">
-                                  <span className="font-bold text-sm text-amber-400">{c.name}</span>
-                                  <span className="text-xs font-mono font-bold text-emerald-400 tabular-nums">
-                                    ₦{c.dailyFee.toLocaleString()}/day
-                                  </span>
-                                </div>
-                                <div className="text-xs text-stone-300 mb-2">"{c.nickname}"</div>
-                                <p className="text-xs text-stone-400 mb-3">{c.description}</p>
-                              </div>
-                              <button
-                                onClick={() => handleHireConductor(c.id)}
-                                className={`w-full py-2 rounded-xl font-bold text-xs transition-colors cursor-pointer ${
-                                  isCurrent
-                                    ? 'bg-emerald-500 text-stone-950 font-black'
-                                    : 'bg-stone-800 hover:bg-amber-400 hover:text-stone-950 text-stone-200'
-                                }`}
-                              >
-                                {isCurrent ? 'On Duty' : `Hire (₦${c.dailyFee.toLocaleString()})`}
-                              </button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {UPGRADE_CATALOG.map((item) => {
-                        const isOwned = gameState.bus.upgrades[item.id];
-                        const canAfford = walletNaira >= item.costNaira;
-                        return (
-                          <div
-                            key={item.id}
-                            className={`p-4 rounded-2xl border flex flex-col justify-between ${
-                              isOwned ? 'bg-emerald-950/20 border-emerald-500/50' : 'bg-stone-900 border-stone-800'
-                            }`}
-                          >
-                            <div>
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="font-bold text-sm text-amber-400">
-                                  {item.icon} {item.name}
-                                </span>
-                                <span className="font-mono text-xs font-bold tabular-nums">
-                                  {isOwned ? (
-                                    <span className="text-emerald-400">Installed</span>
-                                  ) : (
-                                    `₦${item.costNaira.toLocaleString()}`
-                                  )}
-                                </span>
-                              </div>
-                              <p className="text-xs text-stone-300 mb-2">{item.description}</p>
-                              <div className="text-xs font-semibold text-emerald-400">✓ {item.benefit}</div>
-                            </div>
-                            <div className="mt-4 pt-2 border-t border-stone-800 flex justify-end">
-                              {isOwned ? (
-                                <span className="text-xs font-bold text-emerald-400 flex items-center gap-1">
-                                  <Check className="w-4 h-4" /> Mounted on 3D Bus
-                                </span>
-                              ) : (
-                                <button
-                                  onClick={() => handlePurchaseUpgrade(item.id, item.costNaira)}
-                                  disabled={!canAfford}
-                                  className={`px-4 py-2 font-bold text-xs rounded-xl cursor-pointer ${
-                                    canAfford
-                                      ? 'bg-amber-400 hover:bg-amber-300 text-stone-950 font-black'
-                                      : 'bg-stone-800 text-stone-500 cursor-not-allowed'
-                                  }`}
-                                >
-                                  Buy &amp; Install (₦{item.costNaira.toLocaleString()})
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                  <div className="flex flex-wrap gap-2">
+                    {SLOGANS.map((slogan) => (
+                      <button
+                        key={slogan}
+                        onClick={() => setSelectedSlogan(slogan)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold border transition-all cursor-pointer ${
+                          selectedSlogan === slogan
+                            ? 'bg-amber-400 text-stone-950 border-amber-200 font-black shadow'
+                            : 'bg-stone-950 text-stone-400 border-stone-800 hover:text-white'
+                        }`}
+                      >
+                        "{slogan}"
+                      </button>
+                    ))}
                   </div>
-                )}
+                </div>
+
+                {/* Primary PLAY Button */}
+                <button
+                  onClick={() => handleStartShift(false)}
+                  className="w-full py-5 px-8 bg-amber-400 hover:bg-amber-300 active:scale-[0.99] text-stone-950 font-black font-['Bungee'] text-lg sm:text-xl rounded-2xl shadow-[0_8px_30px_rgba(250,204,21,0.35)] flex items-center justify-center gap-3 transition-all cursor-pointer"
+                >
+                  <span>START ENGINE &amp; DRIVE</span>
+                  <ArrowRight className="w-6 h-6" />
+                </button>
               </div>
             )}
 

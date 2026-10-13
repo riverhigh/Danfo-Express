@@ -14,6 +14,7 @@ import { NpcInteractionModal } from './NpcInteractionModal';
 import { GasStationServiceModal } from './GasStationServiceModal';
 import { MechanicServiceModal } from './MechanicServiceModal';
 import { CustomCarShopModal } from './CustomCarShopModal';
+import { PoliceLastmaModal } from './PoliceLastmaModal';
 import { PASSENGER_NAMES, SAMPLE_DELIVERY_JOBS } from '../game/config';
 import { 
   Fuel, 
@@ -172,12 +173,12 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
   } | null>(null);
 
   const [walkInteractTarget, setWalkInteractTarget] = useState<{
-    type: 'GAS' | 'MECHANIC' | 'BUS' | 'BANK' | 'POS_LADY' | 'CUSTOM_CAR' | 'MARKET_VENDOR';
+    type: 'GAS' | 'MECHANIC' | 'BUS' | 'BANK' | 'POS_LADY' | 'CUSTOM_CAR' | 'MARKET_VENDOR' | 'POLICE_LASTMA';
     name: string;
     data?: any;
   } | null>(null);
   const walkInteractTargetRef = useRef<{
-    type: 'GAS' | 'MECHANIC' | 'BUS' | 'BANK' | 'POS_LADY' | 'CUSTOM_CAR' | 'MARKET_VENDOR';
+    type: 'GAS' | 'MECHANIC' | 'BUS' | 'BANK' | 'POS_LADY' | 'CUSTOM_CAR' | 'MARKET_VENDOR' | 'POLICE_LASTMA';
     name: string;
     data?: any;
   } | null>(null);
@@ -185,6 +186,15 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
   const [isGasModalOpen, setIsGasModalOpen] = useState<boolean>(false);
   const [isMechanicModalOpen, setIsMechanicModalOpen] = useState<boolean>(false);
   const [isCustomCarModalOpen, setIsCustomCarModalOpen] = useState<boolean>(false);
+  const [isPoliceModalOpen, setIsPoliceModalOpen] = useState<boolean>(false);
+  const [activePoliceCompound, setActivePoliceCompound] = useState<{
+    id: string;
+    name: string;
+    insideOffice: boolean;
+  } | null>(null);
+  const [impoundFineDue, setImpoundFineDue] = useState<number>(0);
+  const [impoundReason, setImpoundReason] = useState<string>('');
+  const [hasRoadClearancePass, setHasRoadClearancePass] = useState<boolean>(false);
   const [activeMarketVendor, setActiveMarketVendor] = useState<{
     id: string;
     name: string;
@@ -914,6 +924,9 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           } else if (target?.type === 'MARKET_VENDOR') {
             setActiveMarketVendor(target.data);
             return;
+          } else if (target?.type === 'POLICE_LASTMA') {
+            setIsPoliceModalOpen(true);
+            return;
           } else if (target?.type === 'BUS') {
             toggleStepDown();
             return;
@@ -972,7 +985,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         return;
       }
 
-      // ZUUKS ENGINE-OFF LOCKOUT: Prevent moving or auto-starting when pressing gas or shifting gears while Engine is OFF!
+      // NATURAL DRIVING ACCELERATOR & BRAKE INPUTS (NEVER OVERWRITES USER'S SELECTED GEAR):
       if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
         if (!inputsRef.current.isEngineRunning) {
           inputsRef.current.gas = false;
@@ -980,26 +993,8 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           addFeedMessage('🔑 ENGINE IS OFF! Turn on the engine (K / E) before driving!');
           return;
         }
-        if (inputsRef.current.gear === 'R') {
-          if (simRef.current.speed > 1.2) {
-            // Reversing at speed: Up/W applies smooth brakes
-            inputsRef.current.brake = true;
-            setIsBrakePressed(true);
-            inputsRef.current.gas = false;
-            setIsGasPressed(false);
-            soundEngine.playAirBrakeHiss();
-            return;
-          } else {
-            // At stop: Shift to Drive!
-            setGear('D');
-            inputsRef.current.gear = 'D';
-            inputsRef.current.brake = false;
-            setIsBrakePressed(false);
-            soundEngine.playGearShift();
-          }
-        } else if (inputsRef.current.gear === 'N' || inputsRef.current.gear === 'P') {
-          setGear('D');
-          inputsRef.current.gear = 'D';
+        if (inputsRef.current.gear === 'N' || inputsRef.current.gear === 'P') {
+          addFeedMessage('💡 Shift to D (Drive) or R (Reverse) to accelerate!');
         }
         inputsRef.current.gas = true;
         setIsGasPressed(true);
@@ -1013,37 +1008,11 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           addFeedMessage('🔑 ENGINE IS OFF! Turn on the engine (K / E) before driving.');
           return;
         }
-        if (inputsRef.current.gear === 'D' || inputsRef.current.gear === 'L') {
-          if (simRef.current.speed > 1.2) {
-            // Moving forward: Down/S is BRAKE!
-            inputsRef.current.brake = true;
-            setIsBrakePressed(true);
-            inputsRef.current.gas = false;
-            setIsGasPressed(false);
-            soundEngine.playAirBrakeHiss();
-            return;
-          } else {
-            // At stop: Shift to Reverse and accelerate backwards!
-            setGear('R');
-            inputsRef.current.gear = 'R';
-            inputsRef.current.brake = false;
-            setIsBrakePressed(false);
-            inputsRef.current.gas = true;
-            setIsGasPressed(true);
-            soundEngine.playReverseGearEngaged();
-            soundEngine.playReverseBeep();
-            return;
-          }
-        } else if (inputsRef.current.gear === 'R') {
-          // In reverse: S/Down accelerates backwards!
-          inputsRef.current.gas = true;
-          setIsGasPressed(true);
-          inputsRef.current.brake = false;
-          setIsBrakePressed(false);
-        } else {
-          inputsRef.current.brake = true;
-          setIsBrakePressed(true);
-        }
+        inputsRef.current.brake = true;
+        setIsBrakePressed(true);
+        inputsRef.current.gas = false;
+        setIsGasPressed(false);
+        soundEngine.playAirBrakeHiss();
       }
       if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
         inputsRef.current.steerLeft = true;
@@ -1108,10 +1077,6 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
         inputsRef.current.brake = false;
         setIsBrakePressed(false);
-        if (inputsRef.current.gear === 'R') {
-          inputsRef.current.gas = false;
-          setIsGasPressed(false);
-        }
         if (walkJoyRef.current.y > 0) {
           walkJoyRef.current.y = 0;
           setWalkJoyVisual((v) => ({ ...v, y: 0 }));
@@ -1241,41 +1206,50 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         const speedMps = (sim.speed * 1000) / 3600;
         const isReversing = inp.gear === 'R';
 
-        if (isReversing) {
-          // NATURAL, INTUITIVE REVERSING KINEMATICS:
-          // Steering wheel clockwise (steerFactor > 0) steers rear towards right (-X).
-          // Front swings left (+X), so heading yaw is positive.
-          const targetRevHeadingYaw = steerFactor * 0.85;
-          const revTurnRate = 8.5; // Smooth realistic commercial bus turn rate, zero twitch
-          if (Math.abs(steerFactor) > 0.01) {
-            sim.headingYaw += (targetRevHeadingYaw - sim.headingYaw) * Math.min(1.0, revTurnRate * dt);
-          } else {
-            sim.headingYaw = THREE.MathUtils.damp(sim.headingYaw, 0, 7.5, dt);
-            if (Math.abs(sim.headingYaw) < 0.002) sim.headingYaw = 0;
-          }
-          sim.headingYaw = Math.max(-1.15, Math.min(1.15, sim.headingYaw));
+        const wheelbase = 3.6; // Meters (realistic bus wheelbase)
 
-          // Vehicle rolls backwards along its oriented heading vector:
-          // Rear moves towards -X when steerFactor > 0
-          sim.laneOffset += -Math.sin(sim.headingYaw) * speedMps * dt;
+        if (isReversing) {
+          // NATURAL BICYCLE REVERSING KINEMATICS:
+          // Steering wheel turned clockwise/right (steerFactor > 0) pivots rear towards the right (-X).
+          // Angular yaw rate is directly proportional to rolling reverse speed.
+          const steerAngleRad = steerFactor * 0.52;
+          
+          if (speedMps > 0.08) {
+            // Reversing yaw: steering right swings rear towards -X, front swings towards +X
+            const yawRate = (speedMps / wheelbase) * Math.sin(steerAngleRad) * 2.2;
+            sim.headingYaw += yawRate * dt;
+          }
+          // Smooth progressive self-aligning damping when reverse steering is centered
+          if (Math.abs(steerFactor) < 0.04) {
+            sim.headingYaw = THREE.MathUtils.damp(sim.headingYaw, 0, 3.2, dt);
+            if (Math.abs(sim.headingYaw) < 0.001) sim.headingYaw = 0;
+          }
+          sim.headingYaw = Math.max(-0.78, Math.min(0.78, sim.headingYaw));
+
+          // In reverse: vehicle rolls backward along its heading vector
+          sim.laneOffset -= Math.sin(sim.headingYaw) * speedMps * dt;
           sim.distanceTraveled = Math.max(0, sim.distanceTraveled - Math.cos(sim.headingYaw) * speedMps * dt);
         } else {
-          // FORWARD DRIVING TURNS with dynamic Ackermann steering agility:
-          // Low speed (0-25 km/h): high angular agility (up to 1.15 rad ~66 deg) for tight corners, parking bays, and motor park exit gate!
-          // High speed (>60 km/h): stable highway tracking (capped at ~0.38 rad ~22 deg) with damping
-          const speedRatio = Math.min(1.0, sim.speed / 60);
-          const maxTurnAngle = THREE.MathUtils.lerp(1.15, 0.38, speedRatio);
-          const targetHeadingYaw = -steerFactor * maxTurnAngle;
+          // NATURAL FORWARD ACKERMANN STEERING KINEMATICS:
+          // Dynamic speed-sensitive steering angle (agile in parking/stops, stable on highway)
+          const speedFactor = Math.min(1.0, sim.speed / 65);
+          const maxSteerAngle = THREE.MathUtils.lerp(0.56, 0.22, speedFactor);
+          const steerAngleRad = steerFactor * maxSteerAngle;
 
-          const turnRate = THREE.MathUtils.lerp(10.0, 6.5, speedRatio); // Heavy, smooth, satisfying bus steering
-          if (Math.abs(steerFactor) > 0.01) {
-            sim.headingYaw += (targetHeadingYaw - sim.headingYaw) * Math.min(1.0, turnRate * dt);
-          } else {
-            sim.headingYaw = THREE.MathUtils.damp(sim.headingYaw, 0, 7.5, dt);
-            if (Math.abs(sim.headingYaw) < 0.002) sim.headingYaw = 0;
+          if (speedMps > 0.08) {
+            // Forward yaw: turning right (steerFactor > 0) turns vehicle heading towards -X (negative yaw)
+            const yawRate = -(speedMps / wheelbase) * Math.sin(steerAngleRad) * 2.4;
+            sim.headingYaw += yawRate * dt;
           }
-          sim.headingYaw = Math.max(-1.25, Math.min(1.25, sim.headingYaw));
 
+          // Highway lane-centering assist (straightens the bus smoothly down the road when wheel is released)
+          if (Math.abs(steerFactor) < 0.04) {
+            sim.headingYaw = THREE.MathUtils.damp(sim.headingYaw, 0, 4.2, dt);
+            if (Math.abs(sim.headingYaw) < 0.001) sim.headingYaw = 0;
+          }
+          sim.headingYaw = Math.max(-0.85, Math.min(0.85, sim.headingYaw));
+
+          // Forward motion along heading vector
           sim.laneOffset += Math.sin(sim.headingYaw) * speedMps * dt;
           const currentlyOnShortcut = engineRef.current ? engineRef.current.isOnShortcutBranch() : false;
           const shortcutMult = currentlyOnShortcut ? 1.35 : 1.0;
@@ -1387,6 +1361,14 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           };
           walkInteractTargetRef.current = newTarget;
           setWalkInteractTarget(newTarget);
+        } else if (entities.nearbyPoliceStation && (entities.nearbyPoliceStation.dist < 18 || entities.nearbyPoliceStation.insideOffice)) {
+          const newTarget = {
+            type: 'POLICE_LASTMA' as const,
+            name: 'Police & LASTMA Command Desk',
+            data: entities.nearbyPoliceStation,
+          };
+          walkInteractTargetRef.current = newTarget;
+          setWalkInteractTarget(newTarget);
         } else if (entities.busDistance < 4.5) {
           const newTarget = {
             type: 'BUS' as const,
@@ -1425,6 +1407,16 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       } else if (activeShopRef.current && (!nearShop || sim.speed >= 6)) {
         activeShopRef.current = null;
         setActiveShop(null);
+      }
+
+      // 4B. Joint Police & LASTMA Compound Detection (Driving into compound or approaching gate)
+      const policeZone = engineRef.current ? engineRef.current.getIntersectingPoliceLastmaCompound() : null;
+      if (policeZone) {
+        if (!activePoliceCompound || activePoliceCompound.id !== policeZone.id) {
+          setActivePoliceCompound(policeZone);
+        }
+      } else if (activePoliceCompound) {
+        setActivePoliceCompound(null);
       }
 
       // Reverse Safety Beep & Mechanical Engine Sound (Clean 1.25s cadence, stops high forward revs)
@@ -1763,8 +1755,8 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         } catch {}
       }
 
-      // 6. Decoupled UI Telemetry at 10 Hz & Zustand Store Sync
-      if (telemetryAcc >= 0.1) {
+      // 6. Decoupled UI Telemetry at 4.5 Hz & Zustand Store Sync (Zero React Churn / Freezing)
+      if (telemetryAcc >= 0.22) {
         telemetryAcc = 0;
         setHudSpeed(Math.round(sim.speed));
         const calcRPM = inp.isEngineRunning ? Math.round(800 + (sim.speed / 85) * 3500) : 0;
@@ -1775,7 +1767,6 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         setCurrentDist(sim.distanceTraveled);
         setActiveJuncIndex(sim.activeJunctionIndex);
         setIsBoarding(sim.isBoarding);
-        setWheelVisualAngle(sim.steeringAngle);
 
         // Sync high-performance telemetry to Zustand store (Zero React re-render overhead!)
         useDanfoStore.getState().updateTelemetry({
@@ -1867,7 +1858,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       />
 
       {/* ═══════ CLEAN, UNCLUTTERED TOP BAR (ZERO DUPLICATES) ═══════ */}
-      <div className={`absolute top-0 left-0 right-0 z-40 pointer-events-auto transition-transform duration-300 ${showTopHUD ? 'translate-y-0' : '-translate-y-full'}`}>
+      <div className={`absolute top-0 left-0 right-0 z-[60] pointer-events-auto transition-transform duration-300 ${showTopHUD ? 'translate-y-0' : '-translate-y-full'}`}>
         <div className="flex items-center justify-between h-8 bg-stone-950/92 backdrop-blur-md border-b border-stone-800 shadow-lg px-2 sm:px-3 gap-2">
           {/* Left: Brand & Route Progress */}
           <div className="flex items-center gap-2 shrink-0">
@@ -1962,7 +1953,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         </div>
       </div>
       {/* Top toggle tab */}
-      <div className="absolute left-1/2 -translate-x-1/2 z-50 pointer-events-auto transition-all duration-300" style={{ top: showTopHUD ? 32 : 0 }}>
+      <div className="absolute left-1/2 -translate-x-1/2 z-[60] pointer-events-auto transition-all duration-300" style={{ top: showTopHUD ? 32 : 0 }}>
         <button onClick={() => setShowTopHUD(v => !v)}
           className="w-10 h-3.5 bg-stone-900/90 border border-stone-700/60 rounded-b-lg flex items-center justify-center text-stone-400 hover:text-white text-[7px]">
           {showTopHUD ? '▲' : '▼'}
@@ -1970,19 +1961,19 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       </div>
 
       {/* ═══════ DYNAMIC BANNERS ═══════ */}
-      {/* 📦 Active Waybill Delivery HUD Pill */}
+      {/* 📦 Active Waybill Delivery HUD Pill (Positioned cleanly on top-right, never obscuring center funds or meter) */}
       {gameState.activeDelivery && (
-        <div className="absolute top-12 left-4 z-40 bg-stone-950/90 border border-emerald-400/60 rounded-xl px-3 py-1.5 shadow-xl flex items-center gap-2.5 pointer-events-auto backdrop-blur-sm">
-          <span className="text-base">{gameState.activeDelivery.itemIcon || '📦'}</span>
-          <div>
-            <div className="text-[8px] font-mono uppercase text-emerald-400 font-black">ACTIVE WAYBILL DISPATCH</div>
-            <div className="text-[10px] font-bold text-white leading-tight">
+        <div className="absolute top-12 right-2 sm:right-4 z-40 bg-stone-950/90 border border-emerald-400/60 rounded-xl px-2.5 py-1 shadow-xl flex items-center gap-2 pointer-events-auto backdrop-blur-sm max-w-[240px] sm:max-w-xs">
+          <span className="text-sm">{gameState.activeDelivery.itemIcon || '📦'}</span>
+          <div className="min-w-0 flex-1">
+            <div className="text-[7.5px] font-mono uppercase text-emerald-400 font-black">ACTIVE WAYBILL</div>
+            <div className="text-[9px] font-bold text-white leading-tight truncate">
               {gameState.activeDelivery.itemName} ➔ <span className="text-amber-300">{gameState.activeDelivery.destinationName}</span>
             </div>
           </div>
-          <div className="text-right pl-2 border-l border-stone-800">
-            <div className="text-[10px] font-mono font-black text-emerald-300">₦{gameState.activeDelivery.rewardNaira.toLocaleString()}</div>
-            <div className="text-[8px] font-mono text-stone-400">
+          <div className="text-right pl-1.5 border-l border-stone-800 shrink-0">
+            <div className="text-[9px] font-mono font-black text-emerald-300">₦{gameState.activeDelivery.rewardNaira.toLocaleString()}</div>
+            <div className="text-[7.5px] font-mono text-stone-400">
               {Math.max(0, Math.round(gameState.activeDelivery.destinationMarkerMeters - currentDist))}m away
             </div>
           </div>
@@ -2139,6 +2130,15 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
               <span className="px-2 py-0.5 rounded bg-black/40 text-[10px] font-mono text-white">[E]</span>
             </button>
           )}
+          {walkInteractTarget.type === 'POLICE_LASTMA' && (
+            <button
+              onClick={() => setIsPoliceModalOpen(true)}
+              className="px-6 py-3 bg-gradient-to-r from-rose-700 via-stone-900 to-blue-800 hover:from-rose-600 hover:to-blue-700 active:scale-95 text-white font-black text-xs font-['Bungee'] rounded-2xl shadow-[0_8px_30px_rgba(225,29,72,0.7)] border-2 border-amber-300 flex items-center gap-2.5 animate-bounce tracking-wide"
+            >
+              <span>🚨 ENTER POLICE & LASTMA DESK (OFFICER ADEBAYO & MARSHAL BALOGUN)</span>
+              <span className="px-2 py-0.5 rounded bg-black/40 text-[10px] font-mono text-amber-300">[E]</span>
+            </button>
+          )}
           {walkInteractTarget.type === 'BUS' && (
             <button
               onClick={toggleStepDown}
@@ -2148,6 +2148,29 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
               <span className="px-1.5 py-0.5 rounded bg-black/30 text-[9px] font-mono text-stone-900">[E / F]</span>
             </button>
           )}
+        </div>
+      )}
+
+      {/* 🚔 Joint Police & LASTMA Compound Drive-in Prompt (When driving into compound or approaching gate) */}
+      {activePoliceCompound && !isSteppedDown && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-40 bg-stone-950/95 border-2 border-rose-500 rounded-2xl px-4 py-2 shadow-2xl flex items-center justify-between gap-3 pointer-events-auto max-w-sm w-[90vw] backdrop-blur-md animate-in fade-in">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="text-xl">🚔</span>
+            <div className="min-w-0 flex-1">
+              <div className="text-[9.5px] font-mono font-black text-rose-400 truncate">
+                ZONE 2 POLICE & LASTMA COMPOUND
+              </div>
+              <div className="text-[8px] text-stone-300 font-mono truncate">
+                Inside Joint Command Yard · Impound Bay & Charge Office
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={() => setIsPoliceModalOpen(true)}
+            className="px-2.5 py-1 bg-gradient-to-r from-rose-600 to-amber-500 hover:from-rose-500 hover:to-amber-400 text-white font-mono font-black text-[9px] rounded-xl shadow active:scale-95 shrink-0"
+          >
+            ENTER OFFICE
+          </button>
         </div>
       )}
 
@@ -2239,17 +2262,17 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
 
       {/* 🚌 OSHODI NPC BRT MEGA TERMINAL HUD BANNER */}
       {activeBrtStation && !activeGasStation && !activeMechanicCompound && (
-        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-40 pointer-events-auto w-[92vw] max-w-md bg-sky-950/95 border-2 border-sky-400 rounded-2xl p-2.5 shadow-2xl backdrop-blur-md">
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-40 pointer-events-auto w-[88vw] max-w-sm bg-sky-950/95 border-2 border-sky-400 rounded-2xl p-2 shadow-2xl backdrop-blur-md">
           <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-sky-500/25 border border-sky-400 flex items-center justify-center text-base shrink-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-7 h-7 rounded-lg bg-sky-500/25 border border-sky-400 flex items-center justify-center text-sm shrink-0">
                 🚌
               </div>
-              <div>
-                <div className="text-[9px] font-mono font-black text-sky-300 uppercase tracking-widest">
-                  LAMATA BUS RAPID TRANSIT • {activeBrtStation.activeBusCount} BLUE LONG BUSES
+              <div className="min-w-0">
+                <div className="text-[8px] font-mono font-black text-sky-300 uppercase tracking-widest truncate">
+                  LAMATA BRT • {activeBrtStation.activeBusCount} BLUE BUSES
                 </div>
-                <div className="text-xs font-black text-white font-['Bungee'] leading-tight">
+                <div className="text-[11px] font-black text-white font-['Bungee'] leading-tight truncate">
                   {activeBrtStation.name}
                 </div>
               </div>
@@ -2378,14 +2401,14 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
 
       {/* 🚧 3RD MAINLAND BRIDGE INTERCHANGE LOCKED ROADBLOCK BANNER (Around 760m - 805m) */}
       {Math.abs(currentDist - 778) < 32 && !activeGasStation && (
-        <div className="absolute top-12 left-1/2 -translate-x-1/2 z-40 pointer-events-none bg-emerald-950/95 border-2 border-amber-400 rounded-2xl px-4 py-1.5 shadow-2xl flex items-center gap-2.5 max-w-md w-[92vw]">
-          <span className="text-lg">🚧</span>
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-40 pointer-events-none bg-emerald-950/95 border border-amber-400 rounded-xl px-3 py-1 shadow-2xl flex items-center gap-2 max-w-xs w-[88vw] backdrop-blur-md">
+          <span className="text-sm">🚧</span>
           <div className="flex-1 min-w-0">
-            <div className="text-[9px] font-mono font-black text-amber-400 uppercase tracking-wider">
-              3RD MAINLAND BRIDGE INTERCHANGE (ADENIJl ADELE / OBALENDE)
+            <div className="text-[8px] font-mono font-black text-amber-400 uppercase tracking-wider truncate">
+              3RD MAINLAND BRIDGE INTERCHANGE
             </div>
-            <div className="text-[10px] text-white font-bold">
-              🔒 LOCKED FOR EXPANSION: Roadblock active on right turn-off. Stay on Main Expressway!
+            <div className="text-[8.5px] text-white font-bold leading-tight truncate">
+              Roadblock on turn-off · Stay on Main Expressway!
             </div>
           </div>
         </div>
@@ -2427,29 +2450,29 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         const seatsUsedCount = (gameState.bus.passengers || []).length;
 
         return (
-          <div className="absolute top-11 left-3 z-40 bg-stone-950/92 border border-amber-400/80 rounded-xl px-3 py-1.5 shadow-xl flex items-center gap-2.5 pointer-events-auto max-w-sm backdrop-blur-md">
-            <MapPin className="w-4 h-4 text-amber-400 animate-pulse shrink-0" />
+          <div className="absolute top-12 left-2 sm:left-3 z-40 bg-stone-950/92 border border-amber-400/80 rounded-xl px-2.5 py-1 shadow-xl flex items-center gap-2 pointer-events-auto max-w-[240px] sm:max-w-[270px] backdrop-blur-md">
+            <MapPin className="w-3.5 h-3.5 text-amber-400 animate-pulse shrink-0" />
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] font-mono font-black text-amber-400 truncate">🚏 {nearJ.name}</span>
-                <span className="text-[8px] font-mono text-emerald-400 shrink-0">({nearJ.waitingPassengersCount} wait)</span>
+              <div className="flex items-center gap-1">
+                <span className="text-[9px] font-mono font-black text-amber-400 truncate">🚏 {nearJ.name}</span>
+                <span className="text-[7.5px] font-mono text-emerald-400 shrink-0">({nearJ.waitingPassengersCount} wait)</span>
               </div>
-              <div className="text-[8px] text-stone-300 font-mono truncate">
+              <div className="text-[7.5px] text-stone-300 font-mono truncate">
                 Next: {nearJ.nextStopName} {dropOffsCount > 0 ? `· 🎯 ${dropOffsCount} drop` : ''}
               </div>
             </div>
             {['bustop-02-ikeja-along', 'bustop-06-maryland', 'bustop-10-oshodi', 'bustop-18-ojuelegba'].includes(nearJ.uid) && (
               <button
                 onClick={() => onOpenPosOrBank?.('POS_KIOSK')}
-                className="px-2 py-1 font-black text-[8px] font-['Bungee'] rounded-lg transition-transform active:scale-95 shadow shrink-0 bg-emerald-500 hover:bg-emerald-400 text-stone-950 flex items-center gap-1"
+                className="px-1.5 py-0.5 font-black text-[7.5px] font-['Bungee'] rounded-md transition-transform active:scale-95 shadow shrink-0 bg-emerald-500 hover:bg-emerald-400 text-stone-950 flex items-center gap-0.5"
                 title="Aunty POS Agent (Max ₦100,000)"
               >
-                <span>💳 POS (₦100k)</span>
+                <span>💳 POS</span>
               </button>
             )}
             <button
               onClick={toggleDoor}
-              className={`px-2 py-1 font-black text-[8px] font-['Bungee'] rounded-lg transition-transform active:scale-95 shadow shrink-0 ${
+              className={`px-1.5 py-0.5 font-black text-[7.5px] font-['Bungee'] rounded-md transition-transform active:scale-95 shadow shrink-0 ${
                 doorState === 'CLOSED'
                   ? 'bg-amber-400 text-stone-950 hover:bg-amber-300'
                   : 'bg-rose-500 text-white'
@@ -2909,8 +2932,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                       return;
                     }
                     if (inputsRef.current.gear === 'N' || inputsRef.current.gear === 'P') {
-                      setGear('D');
-                      inputsRef.current.gear = 'D';
+                      addFeedMessage('💡 Shift to D (Drive) or R (Reverse) to accelerate!');
                     }
                     inputsRef.current.brake = false;
                     setIsBrakePressed(false);
@@ -3267,7 +3289,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
         className="absolute bottom-[max(8px,env(safe-area-inset-bottom,4px))] right-2 sm:right-4 z-50 pointer-events-auto flex flex-col items-end"
       >
         <div className="flex items-end gap-2 sm:gap-2.5">
-          {!isSteppedDown ? (
+          {!isSteppedDown && !isDashHidden ? (
             <>
               {/* Vertical Gear Selector (R - N - D - P) cleanly nested */}
               <div className="relative flex flex-col bg-stone-950/95 border-2 border-stone-600 p-1 rounded-xl shadow-xl h-[92px] sm:h-[102px] w-8 sm:w-9 justify-between">
@@ -3364,8 +3386,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
                     return;
                   }
                   if (inputsRef.current.gear === 'N' || inputsRef.current.gear === 'P') {
-                    setGear('D');
-                    inputsRef.current.gear = 'D';
+                    addFeedMessage('💡 Shift to D (Drive) or R (Reverse) to accelerate!');
                   }
                   inputsRef.current.brake = false;
                   setIsBrakePressed(false);
@@ -3567,6 +3588,58 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           }}
         />
       )}
+
+      {/* 🚔 Joint Police & LASTMA Enforcement Command Modal */}
+      <PoliceLastmaModal
+        isOpen={isPoliceModalOpen}
+        onClose={() => setIsPoliceModalOpen(false)}
+        walletNaira={gameState.walletNaira}
+        impoundFineDue={impoundFineDue}
+        impoundReason={impoundReason || 'BLOCKING EXTENDED BUS STOP CURB'}
+        hasRoadClearancePass={hasRoadClearancePass}
+        onPayImpoundFine={(amount) => {
+          if (gameState.walletNaira < amount) {
+            addFeedMessage('⚠️ Insufficient cash to pay impound fine! Visit POS Lady or Bank.');
+            return;
+          }
+          soundEngine.playCoin();
+          setGameState((prev) => {
+            const nextWallet = prev.walletNaira - amount;
+            onUpdateSave?.({ walletNaira: nextWallet });
+            return { ...prev, walletNaira: nextWallet };
+          });
+          setImpoundFineDue(0);
+          setImpoundReason('');
+          addFeedMessage(`✅ IMPOUND RELEASED: Paid ₦${amount.toLocaleString()} fine to LASTMA! Vehicle cleared.`);
+        }}
+        onBuyRoadClearancePass={() => {
+          const cost = 25000;
+          if (gameState.walletNaira < cost) {
+            addFeedMessage('⚠️ Insufficient funds for Road Clearance Pass! Need ₦25,000.');
+            return;
+          }
+          soundEngine.playCoin();
+          setGameState((prev) => {
+            const nextWallet = prev.walletNaira - cost;
+            onUpdateSave?.({ walletNaira: nextWallet });
+            return { ...prev, walletNaira: nextWallet };
+          });
+          setHasRoadClearancePass(true);
+          addFeedMessage('🛡️ OFFICIAL ROAD CLEARANCE PASS ISSUED: Immune to LASTMA towing & fines for today!');
+        }}
+        onTriggerTestTow={() => {
+          if (!engineRef.current) return;
+          const res = engineRef.current.towPlayerVehicleToStation('ILLEGAL PARKING OUTSIDE EXTENDED BUS STOP', 12000);
+          if (res.success) {
+            soundEngine.playSiren(false);
+            setImpoundFineDue(res.fineNaira);
+            setImpoundReason('OBSTRUCTION & ILLEGAL CURB PARKING');
+            addFeedMessage('🚨 LASTMA HEAVY TOW TRUCK DISPATCHED: Your Danfo was towed to Zone 2 Impound Yard! Pay fine to release.');
+            setIsPoliceModalOpen(true);
+          }
+        }}
+        addFeedMessage={addFeedMessage}
+      />
     </div>
   );
 };

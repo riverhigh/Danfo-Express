@@ -28,7 +28,11 @@ import {
   Lock,
   RotateCw,
   ExternalLink,
-  Globe
+  Globe,
+  Megaphone,
+  Heart,
+  Share2,
+  MessageCircle
 } from 'lucide-react';
 
 interface PhoneModalProps {
@@ -52,7 +56,8 @@ type PhoneApp =
   | 'RIDE' 
   | 'GUIDE'
   | 'AGS'
-  | 'SOLAR_FIRST';
+  | 'SOLAR_FIRST'
+  | 'TUNDAHEADLOT';
 
 export const PhoneModal: React.FC<PhoneModalProps> = ({
   isOpen,
@@ -66,6 +71,14 @@ export const PhoneModal: React.FC<PhoneModalProps> = ({
   const [activeApp, setActiveApp] = useState<PhoneApp>('HOME');
   const [selectedMessage, setSelectedMessage] = useState<PhoneMessage | null>(null);
   const [iframeKey, setIframeKey] = useState<number>(0);
+  const [tundaLiked, setTundaLiked] = useState<Record<string, boolean>>({});
+  const [tundaLikesCount, setTundaLikesCount] = useState<Record<string, number>>({
+    'post-1': 24820,
+    'post-2': 19350,
+    'post-3': 38510,
+    'post-4': 42100,
+    'post-5': 55240,
+  });
 
   if (!isOpen) return null;
 
@@ -347,6 +360,24 @@ export const PhoneModal: React.FC<PhoneModalProps> = ({
                     <Sun className="w-7 h-7 text-yellow-100 drop-shadow-md" />
                   </div>
                   <span className="text-[11px] font-semibold text-stone-200 truncate max-w-[72px]">SolarFirst</span>
+                </button>
+
+                {/* 7. Tundaheadlot (Lagos Viral Blogger & Breaking News) */}
+                <button
+                  onClick={() => {
+                    soundEngine.playCoin();
+                    addFeedMessage('📢 Tundaheadlot: Loading latest Lagos viral news and street gist...');
+                    setActiveApp('TUNDAHEADLOT');
+                  }}
+                  className="flex flex-col items-center gap-1.5 active:scale-95 transition-transform group relative"
+                >
+                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-rose-600 via-orange-500 to-amber-500 border border-rose-400/60 group-hover:border-amber-300 flex items-center justify-center shadow-lg shadow-rose-950/60 relative overflow-hidden ring-1 ring-amber-400/40">
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/25 to-transparent pointer-events-none" />
+                    <Megaphone className="w-7 h-7 text-white drop-shadow-md" />
+                    <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-rose-500 border border-stone-900 animate-ping" />
+                    <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-rose-500 border border-stone-900" />
+                  </div>
+                  <span className="text-[11px] font-semibold text-stone-200 truncate max-w-[76px]">Tundaheadlot</span>
                 </button>
               </div>
 
@@ -991,6 +1022,187 @@ export const PhoneModal: React.FC<PhoneModalProps> = ({
                     <ExternalLink className="w-2.5 h-2.5" />
                   </a>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* ======================================================== */}
+          {/* TUNDAHEADLOT (LAGOS STREET BLOGGER & BREAKING GIST APP)  */}
+          {/* ======================================================== */}
+          {activeApp === 'TUNDAHEADLOT' && (
+            <div className="flex-1 flex flex-col bg-stone-950 text-white overflow-hidden">
+              {/* Blogger Top App Header */}
+              <div className="bg-stone-900 border-b border-stone-800 p-3 pt-2 flex items-center justify-between shrink-0 shadow-md">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setActiveApp('HOME')}
+                    className="p-1 rounded-full hover:bg-stone-800 text-stone-300 hover:text-white"
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-amber-500 via-rose-500 to-red-600 flex items-center justify-center text-sm font-black border border-amber-300">
+                      TH
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1">
+                        <span className="font-['Bungee'] text-xs text-amber-400 tracking-wide">TUNDAHEADLOT</span>
+                        <span className="w-3.5 h-3.5 rounded-full bg-blue-500 text-white flex items-center justify-center text-[8px] font-bold">✓</span>
+                      </div>
+                      <p className="text-[9px] text-stone-400 font-mono">@tundaheadlot • 5.4M Followers</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="px-2 py-0.5 rounded-full bg-rose-500/20 border border-rose-500/40 text-[9px] font-mono text-rose-300 flex items-center gap-1 font-bold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+                  LIVE GIST
+                </div>
+              </div>
+
+              {/* Blogger Bio Banner */}
+              <div className="bg-gradient-to-r from-stone-900 via-amber-950/40 to-stone-900 px-3 py-1.5 border-b border-stone-800 text-[9.5px] text-stone-300 flex items-center justify-between shrink-0">
+                <span>🔥 King of Lagos Street Gist • Followed by Davido, Burna Boy, MC Oluomo</span>
+                <span className="text-amber-400 font-mono text-[9px] font-bold">#1 BLOG IN 9JA</span>
+              </div>
+
+              {/* Feed Posts List */}
+              <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                {[
+                  {
+                    id: 'post-1',
+                    category: '🚨 CRIME & TRAFFIC',
+                    categoryColor: 'bg-rose-500/20 text-rose-400 border-rose-500/40',
+                    time: '12m ago • Victoria Island / Eko Hotel',
+                    title: 'Danfo driver hits pedestrian crossing Eko Hotel roundabout - LASTMA on scene!',
+                    content: 'WAAAHALA PRO MAX! A Danfo driver with slogan "NO KING AS GOD" allegedly lost brake while speeding and brushed a pedestrian crossing the Eko Hotel roundabout! LASTMA heavy-duty tow truck has arrived with sirens blaring, and the bus is currently being towed straight to the Joint Police & LASTMA Enforcement Command compound on the expressway! Driver is arguing that pedestrian was pressing phone while crossing.',
+                    badge: 'BREAKING',
+                    comments: [
+                      { user: '@eko_sharp_guy', text: 'Pedestrian sef go dey press TikTok for road! But Danfo drivers no dey get brake at all!' },
+                      { user: '@lastma_watcher', text: 'They don tow the bus to Zone 2 compound! Driver go pay heavy fine!' },
+                    ]
+                  },
+                  {
+                    id: 'post-2',
+                    category: '🚔 TASK FORCE RAID',
+                    categoryColor: 'bg-blue-500/20 text-blue-400 border-blue-500/40',
+                    time: '45m ago • Expressway Corridor',
+                    title: 'Joint Police & LASTMA Command impounds 14 commercial vehicles for picking outside extended bus stops!',
+                    content: 'The newly commissioned Joint Police & LASTMA Enforcement Command compound (Zone 2) along the expressway has launched a massive 24/7 clampdown! Officers wearing their authentic cream and wine uniforms impounded 14 Danfo buses and 3 private cars for one-way driving and blocking road curbs outside the extended 22-meter bus stops! Motorists can only bail impounded vehicles at the station counter for ₦15,000 fine.',
+                    badge: 'HOT GIST',
+                    comments: [
+                      { user: '@danfo_pilot_01', text: 'Those LASTMA officers in wine trousers don come again o! Make nobody pass one-way!' },
+                      { user: '@mama_titilayo', text: 'Good for them! Some drivers dey pack for middle of road dey load passenger!' }
+                    ]
+                  },
+                  {
+                    id: 'post-3',
+                    category: '🚏 STREET DRAMA',
+                    categoryColor: 'bg-amber-500/20 text-amber-400 border-amber-500/40',
+                    time: '2h ago • Oshodi Bus Stop',
+                    title: 'Agbero union fight scatters Oshodi bus stop over ₦100 ticket; 3 Keke tricycles blocked!',
+                    content: 'Commuters were stranded for over 40 minutes at Oshodi bus stop after agbero ticket boys engaged in a heated brawl over unpaid ₦100 loading levies! Agitated crowd spilled into the main expressway blocking traffic, while 3 Keke Napep tricycles were stuck at the curb. Conductor reportedly collected fare from 12 passengers and ran into the market!',
+                    badge: 'VIRAL',
+                    comments: [
+                      { user: '@oshodi_lord', text: 'Everyday na normal routine for Oshodi! Conductor run with money is a classic!' }
+                    ]
+                  },
+                  {
+                    id: 'post-4',
+                    category: '⛽ FUEL WATCH',
+                    categoryColor: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40',
+                    time: '4h ago • Maryland / Ikeja Along',
+                    title: 'Petrol pump price reaches ₦950/Litre; Danfo drivers announce new minimum fare of ₦800!',
+                    content: 'Fuel queues have stretched from Mobil filling station down to Maryland junction as pump price climbed to ₦950 per litre. Lagos Danfo drivers union Chairman has announced that transport fare from Ikeja Along to CMS is now ₦800 flat. "No enter our bus if you get ₦1,000 note without change!"',
+                    badge: 'TRENDING',
+                    comments: [
+                      { user: '@poor_commuter', text: 'My salary don finish for transport fare! God abeg save us!' }
+                    ]
+                  },
+                  {
+                    id: 'post-5',
+                    category: '🔥 COMEDY',
+                    categoryColor: 'bg-purple-500/20 text-purple-400 border-purple-500/40',
+                    time: '6h ago • Ojuelegba Bridge',
+                    title: 'Passenger jumps down from moving Danfo because conductor refused to return ₦200 change!',
+                    content: 'A hilarious video is trending showing a passenger jumping out of a moving Danfo bus at Ojuelegba bridge after shouting "Conductor, give me my change!" for 5 kilometers. The conductor threw a ₦200 note onto the road and the passenger picked it up while dusting his trousers!',
+                    badge: 'MEME',
+                    comments: [
+                      { user: '@funny_lagosian', text: 'Lagos no be place for the weak! He collect his complete ₦200!' }
+                    ]
+                  }
+                ].map((post) => {
+                  const isLiked = !!tundaLiked[post.id];
+                  const likes = tundaLikesCount[post.id] || 25000;
+
+                  return (
+                    <div key={post.id} className="bg-stone-900/90 border border-stone-800 rounded-2xl p-3 shadow-lg flex flex-col gap-2">
+                      {/* Post Header */}
+                      <div className="flex items-center justify-between text-[9px] font-mono">
+                        <span className={`px-2 py-0.5 rounded-full border text-[8.5px] font-black uppercase ${post.categoryColor}`}>
+                          {post.category}
+                        </span>
+                        <span className="text-stone-400">{post.time}</span>
+                      </div>
+
+                      {/* Title */}
+                      <h3 className="text-xs font-bold text-amber-300 leading-snug">
+                        {post.title}
+                      </h3>
+
+                      {/* Content */}
+                      <p className="text-[10px] text-stone-300 leading-relaxed">
+                        {post.content}
+                      </p>
+
+                      {/* Comment Preview */}
+                      <div className="bg-stone-950/80 rounded-xl p-2 border border-stone-800/80 space-y-1">
+                        <div className="text-[8.5px] font-mono text-stone-400 font-bold uppercase tracking-wider flex items-center gap-1">
+                          <MessageCircle className="w-2.5 h-2.5 text-stone-400" />
+                          Top Lagos Comments:
+                        </div>
+                        {post.comments.map((c, ci) => (
+                          <div key={ci} className="text-[9px] text-stone-300">
+                            <span className="font-bold text-amber-400">{c.user}: </span>
+                            <span>{c.text}</span>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="flex items-center justify-between pt-1 border-t border-stone-800/80 text-[10px] font-mono">
+                        <button
+                          onClick={() => {
+                            soundEngine.playCoin();
+                            setTundaLiked((prev) => ({ ...prev, [post.id]: !prev[post.id] }));
+                            setTundaLikesCount((prev) => ({
+                              ...prev,
+                              [post.id]: (prev[post.id] || 25000) + (isLiked ? -1 : 1),
+                            }));
+                          }}
+                          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all active:scale-95 ${
+                            isLiked
+                              ? 'bg-rose-500/20 border-rose-500 text-rose-300'
+                              : 'bg-stone-800/60 border-stone-700 text-stone-400 hover:text-white'
+                          }`}
+                        >
+                          <Heart className={`w-3 h-3 ${isLiked ? 'fill-rose-500 text-rose-500' : ''}`} />
+                          <span className="tabular-nums font-bold">{likes.toLocaleString()}</span>
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            soundEngine.playHorn(false);
+                            addFeedMessage(`📢 TUNDAHEADLOT SHARED: "${post.title}"`);
+                          }}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/40 text-amber-300 active:scale-95 text-[9px] font-bold"
+                        >
+                          <Share2 className="w-3 h-3" />
+                          <span>Share Gossip</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

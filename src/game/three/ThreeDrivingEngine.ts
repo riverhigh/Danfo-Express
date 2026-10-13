@@ -15,7 +15,8 @@ import {
   createBankCorporateTexture,
   createBankQueueDisplayTexture,
   createPosUmbrellaSignTexture,
-  createCustomCarShopTexture
+  createCustomCarShopTexture,
+  createPoliceLastmaSignTexture
 } from './textures';
 import { getCustomBillboards, createBillboardTexture, BillboardAd } from '../billboards';
 import { RoadManager, StreetNavigationTelemetry } from './RoadManager';
@@ -195,6 +196,17 @@ export class ThreeDrivingEngine {
   private bankQueueCustomers: THREE.Group[] = [];
   // 🎨 Custom Car & Slogan Shop Compound
   private customCarShopZone: { id: string; name: string; box: THREE.Box3; shopX: number; shopZ: number } | null = null;
+  // 🚔 Nigeria Police Force & LASTMA Joint Enforcement Command Compound
+  private policeLastmaCompoundZone: {
+    id: string;
+    name: string;
+    box: THREE.Box3;
+    officeBox: THREE.Box3;
+    compoundX: number;
+    compoundZ: number;
+    impoundBayX: number;
+    impoundBayZ: number;
+  } | null = null;
   private rearWindowSloganMesh: THREE.Mesh | null = null;
   private exhaustParticles: THREE.Points;
   private exhaustPositions: Float32Array;
@@ -346,6 +358,7 @@ export class ThreeDrivingEngine {
     this.setupCommercialBankBranch();
     this.setupPosUmbrellaLadies();
     this.setupCustomCarShop();
+    this.setupPoliceLastmaCompound();
 
     // 8. Overhead Highway Billboards (Flutterwave, OPay, Chowdeck, Custom Ads)
     this.setupBillboards();
@@ -453,6 +466,10 @@ export class ThreeDrivingEngine {
     // 13. Alaba Custom Danfo & Slogan Signwriter Drive-In Apron (z = 1430..1490 on Left +X side)
     if (z >= 1430 && z <= 1490) {
       maxX = Math.max(maxX, 21.5);
+    }
+    // 14. Nigeria Police Force & LASTMA Joint Enforcement Command Compound (z = 585..655 on Left +X side)
+    if (z >= 585 && z <= 655) {
+      maxX = Math.max(maxX, 28.5);
     }
 
     // 13. Modular RoadManager T-Junctions, 4-Way Intersections, Roundabouts & Active Market Side Streets
@@ -3526,6 +3543,281 @@ export class ThreeDrivingEngine {
   }
 
   /**
+   * 🚔 Builds the NIGERIA POLICE FORCE & LASTMA JOINT ENFORCEMENT COMMAND COMPOUND!
+   * Located at z = 620m on the Left (+X) side of the expressway.
+   * Features a big walled compound with security gates, two-wing charge station and LASTMA office,
+   * LASTMA officers in authentic cream shirts with wine lines and wine trousers,
+   * police officers in navy/black uniforms, parked police patrol cars, LASTMA heavy tow trucks,
+   * and an impound bay where towed vehicles are held!
+   */
+  private setupPoliceLastmaCompound() {
+    const compoundZ = 620;
+    const compoundX = 19.5;
+    const group = new THREE.Group();
+    group.position.set(compoundX, 0, compoundZ);
+
+    // 1. Tarmac Ground & Concrete Parking Bays (22m wide x 62m long)
+    const groundMat = new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.85 });
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(22, 62), groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.set(0, 0.03, 0);
+    group.add(ground);
+
+    // Curb edge marking at compound entrance
+    const curbMat = createCurbTexture();
+    const curbFront = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.18, 62), new THREE.MeshStandardMaterial({ map: curbMat }));
+    curbFront.position.set(-10.8, 0.09, 0);
+    group.add(curbFront);
+
+    // 2. High Concrete Perimeter Wall with Barbed Wire
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0x4b5563, roughness: 0.9 });
+
+    // Rear Wall (+X back edge)
+    const rearWall = new THREE.Mesh(new THREE.BoxGeometry(0.4, 3.2, 62), wallMat);
+    rearWall.position.set(10.8, 1.6, 0);
+    group.add(rearWall);
+
+    // Side Walls (-Z and +Z)
+    [-31, 31].forEach((wz) => {
+      const sideWall = new THREE.Mesh(new THREE.BoxGeometry(22, 3.2, 0.4), wallMat);
+      sideWall.position.set(0, 1.6, wz);
+      group.add(sideWall);
+    });
+
+    // Front Security Wall flanking the 22m drive-in entrance gate (-10.8 X)
+    [-21, 21].forEach((wz) => {
+      const frontWall = new THREE.Mesh(new THREE.BoxGeometry(0.4, 3.2, 20), wallMat);
+      frontWall.position.set(-10.8, 1.6, wz);
+      group.add(frontWall);
+    });
+
+    // 3. Security Entrance Archway & Signboard
+    [-10.5, 10.5].forEach((pz) => {
+      const archPillar = new THREE.Mesh(new THREE.BoxGeometry(0.9, 5.4, 0.9), wallMat);
+      archPillar.position.set(-10.8, 2.7, pz);
+      group.add(archPillar);
+    });
+
+    const archBeam = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.8, 22), wallMat);
+    archBeam.position.set(-10.8, 5.2, 0);
+    group.add(archBeam);
+
+    // Archway Master Signboard (Facing Expressway)
+    const signTex = createPoliceLastmaSignTexture();
+    const archSign = new THREE.Mesh(
+      new THREE.BoxGeometry(0.2, 2.2, 16.5),
+      new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.3 })
+    );
+    archSign.position.set(-10.95, 5.2, 0);
+    group.add(archSign);
+
+    // Security Boom Barrier (Yellow-Black stripes)
+    const barrierPost = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 1.2, 12), new THREE.MeshStandardMaterial({ color: 0x09090b }));
+    barrierPost.position.set(-9.8, 0.6, -9.5);
+    const barrierArm = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 8.5, 10), new THREE.MeshStandardMaterial({ color: 0xfacc15 }));
+    barrierArm.rotation.x = Math.PI / 2;
+    barrierArm.position.set(-9.8, 0.85, -5.2);
+    group.add(barrierPost, barrierArm);
+
+    // 4. Two-Wing Joint Command Station Building (Left wing Police, Right wing LASTMA)
+    const bldgWidth = 8.5;
+    const bldgLength = 32;
+    const bldgHeight = 6.2;
+    const bldgX = 5.8;
+
+    // Building body
+    const stationBldg = new THREE.Mesh(
+      new THREE.BoxGeometry(bldgWidth, bldgHeight, bldgLength),
+      new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.6 })
+    );
+    stationBldg.position.set(bldgX, bldgHeight / 2, 0);
+    group.add(stationBldg);
+
+    // Roof parapet
+    const roofParapet = new THREE.Mesh(
+      new THREE.BoxGeometry(bldgWidth + 0.4, 0.4, bldgLength + 0.4),
+      new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.5 })
+    );
+    roofParapet.position.set(bldgX, bldgHeight + 0.2, 0);
+    group.add(roofParapet);
+
+    // Left Wing (NPF Police) Fascia Banner (Blue)
+    const policeBanner = new THREE.Mesh(
+      new THREE.BoxGeometry(0.2, 1.2, 14),
+      new THREE.MeshStandardMaterial({ color: 0x1e3a8a, roughness: 0.4 })
+    );
+    policeBanner.position.set(bldgX - bldgWidth / 2 - 0.12, 4.8, -8);
+    group.add(policeBanner);
+
+    // Right Wing (LASTMA) Fascia Banner (Wine with Cream Trim)
+    const lastmaBanner = new THREE.Mesh(
+      new THREE.BoxGeometry(0.2, 1.2, 14),
+      new THREE.MeshStandardMaterial({ color: 0x881337, roughness: 0.4 })
+    );
+    lastmaBanner.position.set(bldgX - bldgWidth / 2 - 0.12, 4.8, 8);
+    group.add(lastmaBanner);
+
+    // Open Walk-In Entrance Porch & Doorway (Player can walk right inside!)
+    const porchFloor = new THREE.Mesh(
+      new THREE.BoxGeometry(3.5, 0.12, 6.0),
+      new THREE.MeshStandardMaterial({ color: 0x64748b })
+    );
+    porchFloor.position.set(bldgX - bldgWidth / 2 - 1.6, 0.06, 0);
+    group.add(porchFloor);
+
+    // Porch Canopy
+    const porchCanopy = new THREE.Mesh(
+      new THREE.BoxGeometry(3.5, 0.25, 6.0),
+      new THREE.MeshStandardMaterial({ color: 0x0f172a })
+    );
+    porchCanopy.position.set(bldgX - bldgWidth / 2 - 1.6, 3.8, 0);
+    group.add(porchCanopy);
+
+    // Inside Office Reception Counter
+    const deskMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.5 });
+    const desk = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.0, 4.5), deskMat);
+    desk.position.set(bldgX - 1.5, 0.5, 0);
+    group.add(desk);
+
+    // 5. OFFICERS:
+    // (a) LASTMA Marshal Balogun (Authentic Cream shirt with Wine lines & Wine trousers!)
+    const lastmaOfficer = new THREE.Group();
+    const lHead = new THREE.Mesh(new THREE.SphereGeometry(0.15, 10, 10), new THREE.MeshStandardMaterial({ color: 0x4a2c18 }));
+    lHead.position.y = 1.62;
+
+    // Peak Cap (Wine crown with cream band)
+    const lCap = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.17, 0.1, 12), new THREE.MeshStandardMaterial({ color: 0x881337 }));
+    lCap.position.y = 1.74;
+    const lCapVisor = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.03, 0.14), new THREE.MeshStandardMaterial({ color: 0x09090b }));
+    lCapVisor.position.set(0, 1.71, 0.1);
+
+    // Cream shirt body
+    const lTorso = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.62, 0.26), new THREE.MeshStandardMaterial({ color: 0xfef08a }));
+    lTorso.position.y = 1.18;
+
+    // Two vertical wine stripes down chest ("wine lines")
+    [-0.1, 0.1].forEach((lineX) => {
+      const lineMesh = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.60, 0.02), new THREE.MeshStandardMaterial({ color: 0x881337 }));
+      lineMesh.position.set(lineX, 1.18, 0.14);
+      lastmaOfficer.add(lineMesh);
+    });
+
+    // Wine shoulder epaulettes
+    [-0.2, 0.2].forEach((epX) => {
+      const epMesh = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.04, 0.18), new THREE.MeshStandardMaterial({ color: 0x881337 }));
+      epMesh.position.set(epX, 1.48, 0);
+      lastmaOfficer.add(epMesh);
+    });
+
+    // Wine Trousers
+    [-0.1, 0.1].forEach((lx) => {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.82, 0.18), new THREE.MeshStandardMaterial({ color: 0x881337 }));
+      leg.position.set(lx, 0.46, 0);
+      lastmaOfficer.add(leg);
+    });
+
+    lastmaOfficer.add(lHead, lCap, lCapVisor, lTorso);
+    lastmaOfficer.position.set(bldgX - 0.4, 0, 1.2);
+    lastmaOfficer.rotation.y = -Math.PI / 2;
+    group.add(lastmaOfficer);
+
+    // (b) Police Officer Adebayo (Navy/Black uniform with beret)
+    const policeOfficer = new THREE.Group();
+    const pHead = new THREE.Mesh(new THREE.SphereGeometry(0.15, 10, 10), new THREE.MeshStandardMaterial({ color: 0x3e2723 }));
+    pHead.position.y = 1.62;
+    const pBeret = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.17, 0.1, 10), new THREE.MeshStandardMaterial({ color: 0x0f172a }));
+    pBeret.position.set(0.02, 1.74, 0);
+    pBeret.rotation.z = -0.15;
+    const pTorso = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.62, 0.26), new THREE.MeshStandardMaterial({ color: 0x0f172a }));
+    pTorso.position.y = 1.18;
+    // Police badge
+    const pBadge = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.02), new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.8 }));
+    pBadge.position.set(-0.12, 1.35, 0.14);
+    policeOfficer.add(pBadge);
+    [-0.1, 0.1].forEach((lx) => {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.82, 0.18), new THREE.MeshStandardMaterial({ color: 0x09090b }));
+      leg.position.set(lx, 0.46, 0);
+      policeOfficer.add(leg);
+    });
+    policeOfficer.add(pHead, pBeret, pTorso);
+    policeOfficer.position.set(bldgX - 0.4, 0, -1.2);
+    policeOfficer.rotation.y = -Math.PI / 2;
+    group.add(policeOfficer);
+
+    // (c) Armed Police Officer by the Security Gate Barrier
+    const gateGuard = new THREE.Group();
+    const gHead = new THREE.Mesh(new THREE.SphereGeometry(0.15, 10, 10), new THREE.MeshStandardMaterial({ color: 0x3e2723 }));
+    gHead.position.y = 1.62;
+    const gBeret = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.17, 0.1, 10), new THREE.MeshStandardMaterial({ color: 0x0f172a }));
+    gBeret.position.set(0.02, 1.74, 0);
+    const gTorso = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.62, 0.26), new THREE.MeshStandardMaterial({ color: 0x0f172a }));
+    gTorso.position.y = 1.18;
+    [-0.1, 0.1].forEach((lx) => {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.82, 0.18), new THREE.MeshStandardMaterial({ color: 0x09090b }));
+      leg.position.set(lx, 0.46, 0);
+      gateGuard.add(leg);
+    });
+    gateGuard.add(gHead, gBeret, gTorso);
+    gateGuard.position.set(-8.5, 0, -8.2);
+    group.add(gateGuard);
+
+    // 6. PARKED VEHICLES IN COMPOUND YARD:
+    // (a) Police Patrol Hilux Truck #1
+    const policeTruck1 = this.createProceduralPoliceCar();
+    policeTruck1.position.set(-2.5, 0.08, -18);
+    policeTruck1.rotation.y = Math.PI / 2;
+    group.add(policeTruck1);
+
+    // (b) Police Patrol Hilux Truck #2
+    const policeTruck2 = this.createProceduralPoliceCar();
+    policeTruck2.position.set(-2.5, 0.08, -24);
+    policeTruck2.rotation.y = Math.PI / 2;
+    group.add(policeTruck2);
+
+    // (c) LASTMA Heavy Tow Truck
+    const lastmaTowTruck = this.createLastmaTowTruck();
+    lastmaTowTruck.position.set(-3.2, 0.08, 18);
+    lastmaTowTruck.rotation.y = -Math.PI / 2;
+    group.add(lastmaTowTruck);
+
+    // (d) Impounded Vehicles Bay (Chalk marked impounded civilian cars)
+    const impoundedBus = this.createProceduralDanfo(0xfacc15, 'IMPOUNDED: ONE-WAY');
+    impoundedBus.position.set(-3.5, 0.08, 24);
+    impoundedBus.rotation.y = -Math.PI / 2;
+    group.add(impoundedBus);
+
+    const impoundedSedan = this.createProceduralLuxuryCar(0xdc2626);
+    impoundedSedan.position.set(-3.5, 0.08, 12);
+    impoundedSedan.rotation.y = -Math.PI / 2;
+    group.add(impoundedSedan);
+
+    this.scene.add(group);
+
+    // Compound 3D Bounding Box
+    const minX = 10.8;
+    const maxX = 29.5;
+    const zoneBox = new THREE.Box3(
+      new THREE.Vector3(minX, -1.0, compoundZ - 31),
+      new THREE.Vector3(maxX, 8.0, compoundZ + 31)
+    );
+    const officeBox = new THREE.Box3(
+      new THREE.Vector3(compoundX + bldgX - bldgWidth / 2 - 2.5, -1.0, compoundZ - 8),
+      new THREE.Vector3(compoundX + bldgX + bldgWidth / 2 + 1.0, 7.0, compoundZ + 8)
+    );
+
+    this.policeLastmaCompoundZone = {
+      id: 'police-lastma-zone2',
+      name: 'Joint Police & LASTMA Enforcement Command (Zone 2)',
+      box: zoneBox,
+      officeBox,
+      compoundX,
+      compoundZ,
+      impoundBayX: compoundX - 3.5,
+      impoundBayZ: compoundZ + 24,
+    };
+  }
+
+  /**
    * Builds 3D Highway Overhead Gantries & Large Billboards for Brands & Custom Owner Ads
    */
   private setupBillboards() {
@@ -4732,15 +5024,15 @@ export class ThreeDrivingEngine {
   public syncJunctionShelters(junctions: JunctionStop[]) {
     if (this.junctionMeshes.length > 0) return;
 
-    // Shared geometries & materials for 20 Bus Stops (40 shelters, ~120 waiting commuters) -> Zero GLB memory spikes!
-    const roofGeo = new THREE.BoxGeometry(7, 0.25, 10);
+    // Shared geometries & materials for Extended Bus Stops (40 extended shelters, waiting & road-blocking commuters, parked kekes)
+    const roofGeo = new THREE.BoxGeometry(7, 0.25, 22);
     const roofMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.5 });
     const pillarGeo = new THREE.CylinderGeometry(0.12, 0.12, 3.8, 8);
     const pillarMat = new THREE.MeshStandardMaterial({ color: 0x57534e });
-    const benchGeo = new THREE.BoxGeometry(0.8, 0.5, 6);
+    const benchGeo = new THREE.BoxGeometry(0.8, 0.5, 14);
     const benchMat = new THREE.MeshStandardMaterial({ color: 0x78350f });
     const signBoardGeo = new THREE.BoxGeometry(0.1, 2.2, 4.4);
-    const stopBoxGeo = new THREE.PlaneGeometry(3.5, 12);
+    const stopBoxGeo = new THREE.PlaneGeometry(4.2, 24);
     const stopBoxMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0.35 });
 
     // Shared commuter character geometries & materials
@@ -4778,23 +5070,25 @@ export class ThreeDrivingEngine {
         const signX = 8.2 * sideMult;
         const stopBoxX = 5.8 * sideMult;
 
-        // Bus Stop Shelter Roof
+        // Extended Bus Stop Shelter Roof (22m length)
         const shelterRoof = new THREE.Mesh(roofGeo, roofMat);
         shelterRoof.position.set(shoulderX, 3.8, 0);
         shelterRoof.rotation.z = isLeft ? 0.05 : -0.05;
         group.add(shelterRoof);
 
-        [-4, 4].forEach((sz) => {
+        // 4 Support Pillars along the extended length
+        [-8, -2.6, 2.6, 8].forEach((sz) => {
           const pillar = new THREE.Mesh(pillarGeo, pillarMat);
           pillar.position.set(shoulderX, 1.9, sz);
           group.add(pillar);
         });
 
+        // Extended Commuter Bench (14m)
         const bench = new THREE.Mesh(benchGeo, benchMat);
         bench.position.set(benchX, 0.45, 0);
         group.add(bench);
 
-        // Bus Stop Signboard facing incoming traffic (Right side = Inbound Next Stop; Left side = Opposite Side Next Stop!)
+        // Bus Stop Signboard facing incoming traffic
         const directionalNextStop = isLeft
           ? junc.oppositeNextStopName || junc.destinationTag
           : junc.nextStopName || junc.destinationTag;
@@ -4809,20 +5103,20 @@ export class ThreeDrivingEngine {
         }
         group.add(signMesh);
 
-        // Yellow striped road curb stop-box on road edge
+        // Extended Yellow Striped Road Curb Stop-Box (24m)
         const stopBox = new THREE.Mesh(stopBoxGeo, stopBoxMat);
         stopBox.rotation.x = -Math.PI / 2;
         stopBox.position.set(stopBoxX, 0.02, 0);
         group.add(stopBox);
 
-        // Fast Shared-Geometry 3D Waiting Commuters on Sidewalk
+        // 🚏 Fast Shared-Geometry 3D Waiting Commuters on Sidewalk
         const commuterCount = Math.min(3, Math.max(1, Math.round(junc.waitingPassengersCount / sidesToBuild.length)));
         for (let p = 0; p < commuterCount; p++) {
           const pGroup = new THREE.Group();
           (pGroup as any)._isNpc = true;
 
           const pX = shoulderX + sideMult * ((p % 2) * 1.5);
-          const pZ = -2.5 + p * 2.2;
+          const pZ = -5.0 + p * 4.2;
           pGroup.position.set(pX, 0.12, pZ);
           pGroup.rotation.y = isLeft ? Math.PI / 2 : -Math.PI / 2;
           pGroup.userData = { origX: pX, origZ: pZ, isLeft, boarded: false };
@@ -4847,6 +5141,49 @@ export class ThreeDrivingEngine {
           group.add(pGroup);
           passengers.push(pGroup);
         }
+
+        // 🚶 SOME COMMUTERS BLOCKING THE ROAD AT THE BUS STOP! (Spilling onto the asphalt curb)
+        const roadBlockerCount = 3;
+        for (let b = 0; b < roadBlockerCount; b++) {
+          const bGroup = new THREE.Group();
+          (bGroup as any)._isNpc = true;
+
+          // Road blocker stands right on the curb / outer lane edge (stopBoxX)
+          const bX = (stopBoxX + 0.6 * sideMult) + sideMult * ((b % 2) * 0.4);
+          const bZ = -6 + b * 5.5;
+          bGroup.position.set(bX, 0.12, bZ);
+          bGroup.rotation.y = isLeft ? Math.PI / 2 : -Math.PI / 2;
+          bGroup.userData = { origX: bX, origZ: bZ, isLeft, isBlockingRoad: true, boarded: false };
+
+          const shirtMat = shirtMats[(jIdx * 4 + b + 3) % shirtMats.length];
+          const head = new THREE.Mesh(headGeo, skinMat);
+          head.position.y = 1.54;
+          const torso = new THREE.Mesh(torsoGeo, shirtMat);
+          torso.position.y = 1.12;
+          const legL = new THREE.Mesh(legGeo, pantsMat);
+          legL.position.set(-0.1, 0.44, 0);
+          const legR = new THREE.Mesh(legGeo, pantsMat);
+          legR.position.set(0.1, 0.44, 0);
+          bGroup.add(head, torso, legL, legR);
+
+          // Waving arm hailing the incoming Danfo bus
+          const arm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.48, 0.12), shirtMat);
+          arm.position.set(-sideMult * 0.24, 1.25, 0.12);
+          arm.rotation.x = -0.7;
+          bGroup.add(arm);
+
+          group.add(bGroup);
+          passengers.push(bGroup);
+        }
+
+        // 🛺 3 MORE KEKE TRICYCLES PARKED & QUEUEING AT THE EXTENDED BUS STOP
+        const kekeSlogans = ['ALAFIA', 'NO SHAKING', 'LAGOS WARRIOR'];
+        [-7.5, 0, 7.5].forEach((kz, kIdx) => {
+          const keke = this.createProceduralKeke(kekeSlogans[kIdx % kekeSlogans.length]);
+          keke.position.set(shoulderX + sideMult * 3.5, 0.08, kz);
+          keke.rotation.y = isLeft ? Math.PI : 0;
+          group.add(keke);
+        });
       });
 
       // 3D Delivery Waybill Floating Beacon above stop
@@ -5773,6 +6110,88 @@ export class ThreeDrivingEngine {
     return this.createProceduralLuxuryCar(colorHex);
   }
 
+  // 7b. LASTMA HEAVY-DUTY TOW TRUCK (WINE & CREAM WITH REAR TOW CRANE BOOM)
+  public createLastmaTowTruck(): THREE.Group {
+    const truck = new THREE.Group();
+    const wineMat = new THREE.MeshStandardMaterial({ color: 0x881337, roughness: 0.35, metalness: 0.3 });
+    const creamMat = new THREE.MeshStandardMaterial({ color: 0xfef08a, roughness: 0.4 });
+    const darkFrameMat = new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 0.8 });
+    const chromeMat = new THREE.MeshStandardMaterial({ color: 0xd4d4d8, metalness: 0.85, roughness: 0.2 });
+    const glassMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.1, transparent: true, opacity: 0.75 });
+    const tireMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.85 });
+    const yellowHazardMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.3 });
+    const amberBeaconMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b });
+
+    const truckW = 2.4;
+    const truckL = 6.8;
+    const tireR = 0.48;
+
+    // Chassis frame
+    const chassis = new THREE.Mesh(new THREE.BoxGeometry(truckW * 0.9, 0.45, truckL), darkFrameMat);
+    chassis.position.set(0, tireR + 0.25, 0);
+    truck.add(chassis);
+
+    // Front Cab (LASTMA Wine color)
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(truckW, 1.45, 2.4), wineMat);
+    cab.position.set(0, tireR + 1.05, 1.9);
+    truck.add(cab);
+
+    // Cream Side Stripes on Cab Doors ("LASTMA TOW UNIT")
+    [-truckW / 2 - 0.01, truckW / 2 + 0.01].forEach((sx) => {
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.32, 2.2), creamMat);
+      stripe.position.set(sx, tireR + 1.05, 1.9);
+      truck.add(stripe);
+    });
+
+    // Windshield
+    const ws = new THREE.Mesh(new THREE.BoxGeometry(truckW * 0.88, 0.72, 0.05), glassMat);
+    ws.position.set(0, tireR + 1.35, 3.12);
+    truck.add(ws);
+
+    // Amber Rotating Warning Beacon on Cab Roof
+    const beacon = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.25, 12), amberBeaconMat);
+    beacon.position.set(0, tireR + 1.9, 1.9);
+    truck.add(beacon);
+
+    // Rear Flatbed Tow Platform (Steel diamond plate)
+    const bed = new THREE.Mesh(new THREE.BoxGeometry(truckW, 0.22, 4.2), darkFrameMat);
+    bed.position.set(0, tireR + 0.55, -1.2);
+    truck.add(bed);
+
+    // Heavy Tow Crane Boom & Winch
+    const boomPost = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.16, 1.8, 10), yellowHazardMat);
+    boomPost.position.set(0, tireR + 1.4, -0.6);
+    truck.add(boomPost);
+
+    const boomArm = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.24, 2.8), yellowHazardMat);
+    boomArm.rotation.x = -0.45;
+    boomArm.position.set(0, tireR + 2.0, -1.8);
+    truck.add(boomArm);
+
+    // Tow Cable & Hook
+    const hook = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.04, 8, 12, Math.PI * 1.5), chromeMat);
+    hook.position.set(0, tireR + 1.1, -3.1);
+    truck.add(hook);
+
+    // Wheels (6 wheels: 2 front, 4 rear duals)
+    const wheelGeo = new THREE.CylinderGeometry(tireR, tireR, 0.32, 16);
+    wheelGeo.rotateZ(Math.PI / 2);
+    [
+      [-truckW / 2, 2.0],
+      [truckW / 2, 2.0],
+      [-truckW / 2, -1.2],
+      [truckW / 2, -1.2],
+      [-truckW / 2, -2.3],
+      [truckW / 2, -2.3],
+    ].forEach(([wx, wz]) => {
+      const wheel = new THREE.Mesh(wheelGeo, tireMat);
+      wheel.position.set(wx, tireR, wz);
+      truck.add(wheel);
+    });
+
+    return truck;
+  }
+
   // 8. PROCEDURAL DANFO BUS (RIVAL TRANSPORTER)
   public createProceduralDanfo(colorHex: number = 0xfacc15, slogan: string = 'No King as God'): THREE.Group {
     const bus = new THREE.Group();
@@ -5902,6 +6321,7 @@ export class ThreeDrivingEngine {
       // Lane -5.8 (Right Outer Commuter & BRT Lane: ~10.5 - 11.5 m/s)
       { type: 'BRT', lane: -5.8, z: 68, speed: 10.8, name: 'BRT Oshodi-TBS 01', slogan: 'BRT 101 • OSHODI ➔ TBS / CMS' },
       { type: 'DANFO', lane: -5.8, z: 120, speed: 11.2, name: 'Jagaban Express', slogan: 'No King as God' },
+      { type: 'KEKE', lane: -5.8, z: 155, speed: 10.7, name: 'Ikeja Keke Maruwa', slogan: 'NO WEAPON' },
       { type: 'BRT', lane: -5.8, z: 185, speed: 11.0, name: 'BRT Ketu Express', slogan: 'BRT 102 • OSHODI ➔ IKORODU' },
       { type: 'KEKE', lane: -5.8, z: 250, speed: 10.6, name: 'Obalende Trike', slogan: 'NO CONDITION PERMANENT' },
       { type: 'BRT', lane: -5.8, z: 320, speed: 11.4, name: 'BRT Abule-Egba', slogan: 'BRT 103 • OSHODI ➔ ABULE-EGBA' },
@@ -5926,6 +6346,7 @@ export class ThreeDrivingEngine {
       { type: 'DANFO', lane: 2.0, z: 140, speed: 15.0, name: 'Alhaji Agbaje', slogan: 'Face Your Front' },
       { type: 'LUXURY_CAR', lane: 2.0, z: 210, speed: 16.0, color: 0xd4af37, name: 'Champagne Gold Lexus ES' },
       { type: 'BRT', lane: 2.0, z: 285, speed: 14.8, name: 'BRT CMS Terminal', slogan: 'BRT 104 • OSHODI ➔ LEKKI / AJAH' },
+      { type: 'KEKE', lane: 2.0, z: 325, speed: 11.2, name: 'Yaba Commercial Trike', slogan: 'GOD FIRST' },
       { type: 'DISPATCH_BIKE', lane: 2.0, z: 360, speed: 15.8, boxColor: 0xea580c, brand: 'CHOWDECK' },
       { type: 'LUXURY_CAR', lane: 2.0, z: 435, speed: 16.2, color: 0x064e3b, name: 'Emerald Benz E-Class' },
       { type: 'DANFO', lane: 2.0, z: 510, speed: 15.2, name: 'Ojuelegba Storm', slogan: 'OLUWA NISHOLA' },
@@ -5939,6 +6360,7 @@ export class ThreeDrivingEngine {
       { type: 'SUV', lane: 5.8, z: 310, speed: 12.5, color: 0xf8fafc, name: 'Pearl White G-Wagon' },
       { type: 'DISPATCH_BIKE', lane: 5.8, z: 385, speed: 12.4, boxColor: 0xdc2626, brand: 'MAX.NG' },
       { type: 'POLICE', lane: 5.8, z: 460, speed: 12.6, name: 'Highway Patrol 04' },
+      { type: 'KEKE', lane: 5.8, z: 495, speed: 10.8, name: 'Ojuelegba Maruwa', slogan: 'EKO ONI BAJE' },
       { type: 'KEKE', lane: 5.8, z: 535, speed: 11.0, name: 'CMS Tricycle', slogan: 'GRACE OF GOD' },
       { type: 'DANFO', lane: 5.8, z: 610, speed: 12.0, name: 'Bariga Flyer', slogan: 'NO WEAPON' },
       { type: 'BRT', lane: 5.8, z: 680, speed: 11.6, name: 'BRT Costain Line', slogan: 'BRT 110 • OSHODI ➔ COSTAIN' },
@@ -7098,7 +7520,9 @@ export class ThreeDrivingEngine {
     this.miniMapCamera.up.set(0, 0, 1);
     this.miniMapCamera.lookAt(this.busRoot.position.x, 0, this.busRoot.position.z);
 
-    this.mirrorRenderTick = (this.mirrorRenderTick + 1) % 6;
+    // 17. THROTTLED REAR MIRRORS & SATELLITE HUD PASS
+    // Spread across 24 frames so GPU never flushes WebGL pipeline more than once every 8 frames (Eliminates frame drops & hangs)
+    this.mirrorRenderTick = (this.mirrorRenderTick + 1) % 24;
 
     if (
       !isSteppedDown &&
@@ -7151,7 +7575,7 @@ export class ThreeDrivingEngine {
         } catch {}
       }
 
-      if (this.rightMirrorCanvas && this.mirrorRenderTick === 2) {
+      if (this.rightMirrorCanvas && this.mirrorRenderTick === 8) {
         const rightPos = new THREE.Vector3(-1.28, 2.15, 2.05)
           .applyQuaternion(this.busRoot.quaternion)
           .add(this.busRoot.position);
@@ -7191,7 +7615,7 @@ export class ThreeDrivingEngine {
     }
 
     // 17b. Render Top-Down Orthographic Mini-Map Pass (using renderer.setViewport & copying to Top-Right Mini-Map HUD)
-    if (this.miniMapCanvas && fullW > 200 && fullH > 200 && this.mirrorRenderTick === 4) {
+    if (this.miniMapCanvas && fullW > 200 && fullH > 200 && this.mirrorRenderTick === 16) {
       const mmSize = 180;
       const dpr = this.renderer.getPixelRatio();
       const srcMm = Math.round(mmSize * dpr);
@@ -7280,6 +7704,7 @@ export class ThreeDrivingEngine {
     nearbyPosLady: { id: string; name: string; junctionName: string; x: number; z: number; dist: number } | null;
     nearbyCustomCarShop: { id: string; name: string; x: number; z: number; dist: number } | null;
     nearbyMarketVendor: { id: string; name: string; specialty: string; x: number; z: number; dist: number } | null;
+    nearbyPoliceStation: { id: string; name: string; dist: number; insideOffice: boolean } | null;
     busDistance: number;
   } {
     const p = this.driverWalkPos;
@@ -7385,6 +7810,23 @@ export class ThreeDrivingEngine {
       }
     }
 
+    // 🚔 Joint Nigeria Police Force & LASTMA Compound check
+    let nearbyPolice: { id: string; name: string; dist: number; insideOffice: boolean } | null = null;
+    if (this.policeLastmaCompoundZone) {
+      const cX = this.policeLastmaCompoundZone.compoundX;
+      const cZ = this.policeLastmaCompoundZone.compoundZ;
+      const dist = Math.hypot(p.x - cX, p.z - cZ);
+      const isInside = this.policeLastmaCompoundZone.officeBox.containsPoint(p);
+      if (dist < 32 || isInside) {
+        nearbyPolice = {
+          id: this.policeLastmaCompoundZone.id,
+          name: 'LASTMA Marshal Balogun & Officer Adebayo',
+          dist,
+          insideOffice: isInside || dist < 12.0,
+        };
+      }
+    }
+
     return {
       nearbyGasAttendant: nearbyGas,
       nearbyMechanic: nearbyMech,
@@ -7392,6 +7834,7 @@ export class ThreeDrivingEngine {
       nearbyPosLady: nearbyPos,
       nearbyCustomCarShop: nearbyCustom,
       nearbyMarketVendor: nearbyVendor,
+      nearbyPoliceStation: nearbyPolice,
       busDistance: busDist,
     };
   }
@@ -7410,6 +7853,64 @@ export class ThreeDrivingEngine {
       return { id: this.customCarShopZone.id, name: this.customCarShopZone.name };
     }
     return null;
+  }
+
+  public getIntersectingPoliceLastmaCompound(): {
+    id: string;
+    name: string;
+    insideOffice: boolean;
+    isInsideCompound: boolean;
+  } | null {
+    if (!this.policeLastmaCompoundZone) return null;
+    const pos = this.wasSteppedDown ? this.driverWalkPos : (this.busRoot ? this.busRoot.position : null);
+    if (!pos) return null;
+
+    const isInsideCompound = this.policeLastmaCompoundZone.box.containsPoint(pos);
+    const insideOffice = this.policeLastmaCompoundZone.officeBox.containsPoint(pos);
+
+    if (isInsideCompound || insideOffice) {
+      return {
+        id: this.policeLastmaCompoundZone.id,
+        name: this.policeLastmaCompoundZone.name,
+        insideOffice,
+        isInsideCompound,
+      };
+    }
+    return null;
+  }
+
+  public towPlayerVehicleToStation(reason: string = 'TRAFFIC VIOLATION', fineNaira: number = 12000): {
+    success: boolean;
+    message: string;
+    fineNaira: number;
+  } {
+    if (!this.policeLastmaCompoundZone || !this.busRoot) {
+      return { success: false, message: 'Compound not ready', fineNaira };
+    }
+
+    const bayX = this.policeLastmaCompoundZone.impoundBayX;
+    const bayZ = this.policeLastmaCompoundZone.impoundBayZ - 6.0;
+
+    this.busRoot.position.set(bayX, 0.1, bayZ);
+    this.busRoot.rotation.set(0, -Math.PI / 2, 0);
+
+    if (this.chassisBody) {
+      this.chassisBody.position.set(bayX, 1.2, bayZ);
+      this.chassisBody.velocity.set(0, 0, 0);
+      this.chassisBody.angularVelocity.set(0, 0, 0);
+    }
+
+    this.driverWalkPos.set(bayX - 2.0, 0, bayZ);
+    if (this.driverCharacterGroup) {
+      this.driverCharacterGroup.position.set(bayX - 2.0, 0, bayZ);
+    }
+
+    soundEngine.playSiren();
+    return {
+      success: true,
+      message: `🚨 VEHICLE IMPOUNDED: Your Danfo was towed to the Joint Police & LASTMA Compound for ${reason}! Fine: ₦${fineNaira.toLocaleString()}`,
+      fineNaira,
+    };
   }
 
   public setVehicleSlogan(slogan: string) {

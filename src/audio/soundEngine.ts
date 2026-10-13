@@ -125,6 +125,36 @@ class DanfoSoundEngine {
   }
 
   /**
+   * Police & LASTMA Emergency Patrol / Tow Siren (Authentic dual-pitch wail)
+   */
+  public playSiren(isYelp: boolean = false) {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sawtooth';
+    const lowFreq = isYelp ? 650 : 440;
+    const highFreq = isYelp ? 980 : 880;
+
+    osc.frequency.setValueAtTime(lowFreq, t);
+    osc.frequency.linearRampToValueAtTime(highFreq, t + 0.35);
+    osc.frequency.linearRampToValueAtTime(lowFreq, t + 0.7);
+
+    gain.gain.setValueAtTime(0.25, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.85);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(t);
+    osc.stop(t + 0.9);
+  }
+
+  /**
    * Bus rear boot door lifting up or closing ("KPAA-CHUCK")
    */
   public playBootDoorSound(isOpen: boolean) {
