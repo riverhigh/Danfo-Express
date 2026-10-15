@@ -629,3 +629,100 @@ export function createPoliceLastmaSignTexture(
 
   return new THREE.CanvasTexture(canvas);
 }
+
+export function createHighwayGantrySignTexture(
+  mainDest: string = 'THIRD MAINLAND BRIDGE • CMS • VI',
+  leftDest: string = 'IKORODU / OJOTA',
+  rightDest: string = 'AIRPORT RD / IKEJA ALONG'
+): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d')!;
+
+  // Federal Ministry of Works / Lagos State Highway Green
+  ctx.fillStyle = '#065f46';
+  ctx.fillRect(0, 0, 1024, 256);
+
+  // Reflective white border
+  ctx.strokeStyle = '#f8fafc';
+  ctx.lineWidth = 10;
+  ctx.strokeRect(10, 10, 1004, 236);
+
+  // Left Section (Exit left)
+  ctx.fillStyle = '#f8fafc';
+  ctx.font = '900 24px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('↖ ' + leftDest, 36, 68);
+
+  // Center Main Expressway Section
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#facc15';
+  ctx.font = '900 36px sans-serif';
+  ctx.fillText('↑ ' + mainDest, 512, 110);
+  ctx.font = 'bold 22px sans-serif';
+  ctx.fillStyle = '#e2e8f0';
+  ctx.fillText('LAGOS–IBADAN EXPRESSWAY CORRIDOR • TOLL FREE', 512, 155);
+
+  // Right Section (Exit right)
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#f8fafc';
+  ctx.font = '900 24px sans-serif';
+  ctx.fillText(rightDest + ' ↗', 988, 68);
+
+  // Bottom hazard / distance stripe
+  ctx.fillStyle = '#047857';
+  ctx.fillRect(16, 185, 992, 50);
+  ctx.fillStyle = '#facc15';
+  ctx.font = '800 20px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('🚦 MAINTAIN 50 KM/H SPEED LIMIT • COMPLY WITH TRAFFIC SIGNALS', 512, 218);
+
+  return new THREE.CanvasTexture(canvas);
+}
+
+export function createRoundaboutSignTexture(
+  name: string = 'MARYLAND INDEPENDENCE ROUNDABOUT'
+): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d')!;
+
+  // Blue traffic circle background
+  ctx.fillStyle = '#1d4ed8';
+  ctx.fillRect(0, 0, 512, 256);
+
+  // White border
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 8;
+  ctx.strokeRect(8, 8, 496, 240);
+
+  // White circulating arrows symbol
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 10;
+  ctx.beginPath();
+  ctx.arc(256, 105, 45, 0, Math.PI * 1.8);
+  ctx.stroke();
+
+  // Arrowhead
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.moveTo(295, 68);
+  ctx.lineTo(315, 62);
+  ctx.lineTo(305, 84);
+  ctx.closePath();
+  ctx.fill();
+
+  // Roundabout title
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '900 22px sans-serif';
+  ctx.fillText(name.toUpperCase(), 256, 185);
+
+  ctx.fillStyle = '#facc15';
+  ctx.font = 'bold 16px sans-serif';
+  ctx.fillText('YIELD TO TRAFFIC ON ROUNDABOUT RING', 256, 220);
+
+  return new THREE.CanvasTexture(canvas);
+}

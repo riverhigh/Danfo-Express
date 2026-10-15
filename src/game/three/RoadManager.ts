@@ -1,5 +1,13 @@
 import * as THREE from 'three';
-import { createAsphaltTexture, createSignboardTexture } from './textures';
+import {
+  createAsphaltTexture,
+  createSignboardTexture,
+  createHighwayGantrySignTexture,
+  createRoundaboutSignTexture,
+  createCurbTexture,
+} from './textures';
+import { TrafficLightSystem, TrafficLightTelemetry } from './TrafficLightSystem';
+import { WaypointGraph } from './WaypointGraph';
 
 export type RoadTileType =
   | 'STRAIGHT_EXPRESSWAY'
@@ -7,7 +15,9 @@ export type RoadTileType =
   | 'T_JUNCTION_LEFT'
   | 'FOUR_WAY_INTERSECTION'
   | 'ROUNDABOUT'
-  | 'MARKET_SIDE_STREET';
+  | 'EXPRESSWAY_INTERCHANGE'
+  | 'MARKET_SIDE_STREET'
+  | 'BUS_STOP_BAY';
 
 export type StreetCorridor = 'MAIN_EXPRESSWAY' | 'RIGHT_MARKET_STREET' | 'LEFT_MARKET_STREET';
 
@@ -44,6 +54,7 @@ export interface StreetNavigationTelemetry {
   upcomingTurnLabel: string;
   upcomingTurnDistanceM: number;
   raycastGroundHit: boolean;
+  trafficLightAhead?: TrafficLightTelemetry | null;
 }
 
 /**
@@ -75,6 +86,8 @@ export class RoadManager {
 
   private currentCorridor: StreetCorridor = 'MAIN_EXPRESSWAY';
   private despawnedTilesTotal: number = 0;
+  private trafficLights: TrafficLightSystem;
+  private waypointGraph: WaypointGraph;
   private lastTelemetry: StreetNavigationTelemetry = {
     currentTileKey: '0:0',
     currentTileType: 'STRAIGHT_EXPRESSWAY',
@@ -89,10 +102,13 @@ export class RoadManager {
     upcomingTurnLabel: 'Continue Straight on Expressway',
     upcomingTurnDistanceM: 100,
     raycastGroundHit: true,
+    trafficLightAhead: null,
   };
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
+    this.trafficLights = new TrafficLightSystem(this.scene);
+    this.waypointGraph = new WaypointGraph();
     const asphaltTex = createAsphaltTexture();
 
     this.sharedAsphaltMat = new THREE.MeshStandardMaterial({
@@ -175,6 +191,23 @@ export class RoadManager {
       return { type: 'MARKET_SIDE_STREET', streetName: 'Lagos Inner Abeg Market Street (Left)' };
     }
 
+    // Dedicated Bus Stop Pull-Off Bays with indented side-lane geometry & passenger platforms
+    if (gridZ === 4 || gridZ === 15 || gridZ === 25 || gridZ === 35 || gridZ === 45 || gridZ === 55 || gridZ === 65) {
+      const bayNames: Record<number, string> = {
+        4: 'Cement / Mangoro Bus Stop Bay',
+        15: 'Maryland Terminal Bus Stop Bay',
+        25: 'Anthony Village Bus Stop Bay',
+        35: 'Oshodi Interchange Bus Stop Bay',
+        45: 'Palmgrove Bus Stop Bay',
+        55: 'Yaba Tech Bus Stop Bay',
+        65: 'Costain Commercial Bus Stop Bay',
+      };
+      return {
+        type: 'BUS_STOP_BAY',
+        streetName: bayNames[gridZ] || 'Lagos BRT & Danfo Bus Stop Bay',
+      };
+    }
+
     // Main Corridor (gridX === 0): Mix of Straight Expressway, T-Junctions, 4-Way Intersections & Roundabouts
     if (gridZ === 7 || gridZ === 16 || gridZ === 26 || gridZ === 36) {
       return {
@@ -208,10 +241,19 @@ export class RoadManager {
         type: 'ROUNDABOUT',
         streetName:
           gridZ === 18
-            ? 'Maryland Independence Roundabout'
+            ? 'Maryland Independence Market Roundabout'
             : gridZ === 38
-            ? 'Oshodi / Anthony Roundabout Node'
-            : 'Costain Roundabout',
+            ? 'Oshodi Central Interchange & Market Roundabout'
+            : 'Costain Commercial Roundabout',
+      };
+    }
+    if (gridZ === 28 || gridZ === 62) {
+      return {
+        type: 'EXPRESSWAY_INTERCHANGE',
+        streetName:
+          gridZ === 28
+            ? 'Anthony Village / Gbagada Expressway Flyover Interchange'
+            : 'Ojuelegba / Stadium Major Flyover Interchange',
       };
     }
 
@@ -233,7 +275,11 @@ export class RoadManager {
   /**
    * 1. FRONT SPAWNER & 3. 150-METER REAR MIRROR BUFFER LOOP
    */
-  public update(playerX: number, playerZ: number): StreetNavigationTelemetry {
+  public update(playerX: number, playerZ: number, dt: number = 0.016): StreetNavigationTelemetry {
+    // 0. Update 3D Traffic Light system & retrieve light telemetry ahead of player
+    this.trafficLights.update(dt);
+    const trafficLightAhead = this.trafficLights.getPlayerTelemetry(playerZ);
+
     const currentGridZ = Math.round(playerZ / RoadManager.TILE_SIZE);
 
     // Calculate grid Z range: keep [-3 tiles (-150m mirror buffer) .. +5 tiles (+250m front spawner)]
@@ -255,6 +301,7 @@ export class RoadManager {
         mainSpec.type === 'T_JUNCTION_RIGHT' ||
         mainSpec.type === 'FOUR_WAY_INTERSECTION' ||
         mainSpec.type === 'ROUNDABOUT' ||
+        mainSpec.type === 'EXPRESSWAY_INTERCHANGE' ||
         (centerZ >= 300 && centerZ <= 900) ||
         (centerZ >= 1250 && centerZ <= 2200);
 
@@ -264,6 +311,7 @@ export class RoadManager {
         mainSpec.type === 'T_JUNCTION_LEFT' ||
         mainSpec.type === 'FOUR_WAY_INTERSECTION' ||
         mainSpec.type === 'ROUNDABOUT' ||
+        mainSpec.type === 'EXPRESSWAY_INTERCHANGE' ||
         (centerZ >= 600 && centerZ <= 1150) ||
         (centerZ >= 2250 && centerZ <= 2950);
 
@@ -387,6 +435,7 @@ export class RoadManager {
       upcomingTurnLabel,
       upcomingTurnDistanceM,
       raycastGroundHit: raycastHit,
+      trafficLightAhead,
     };
 
     return this.lastTelemetry;
@@ -394,6 +443,14 @@ export class RoadManager {
 
   public getTelemetry(): StreetNavigationTelemetry {
     return this.lastTelemetry;
+  }
+
+  public getTrafficLightSystem(): TrafficLightSystem {
+    return this.trafficLights;
+  }
+
+  public getWaypointGraph(): WaypointGraph {
+    return this.waypointGraph;
   }
 
   /**
@@ -406,12 +463,14 @@ export class RoadManager {
       this.tiles.has(`-1:${gz}`) ||
       spec.type === 'T_JUNCTION_RIGHT' ||
       spec.type === 'FOUR_WAY_INTERSECTION' ||
-      spec.type === 'ROUNDABOUT';
+      spec.type === 'ROUNDABOUT' ||
+      spec.type === 'EXPRESSWAY_INTERCHANGE';
     const hasLeftTile =
       this.tiles.has(`1:${gz}`) ||
       spec.type === 'T_JUNCTION_LEFT' ||
       spec.type === 'FOUR_WAY_INTERSECTION' ||
-      spec.type === 'ROUNDABOUT';
+      spec.type === 'ROUNDABOUT' ||
+      spec.type === 'EXPRESSWAY_INTERCHANGE';
     return { canTurnRight: hasRightTile, canTurnLeft: hasLeftTile };
   }
 
@@ -520,7 +579,12 @@ export class RoadManager {
             new THREE.Vector3(dirSign < 0 ? -8 : 24, 6, worldZ + 18)
           ),
         });
+        // Register with active 3D Traffic Light System
+        this.trafficLights.registerJunction(key, streetName, worldZ, 16, 3, 14);
       } else if (type === 'FOUR_WAY_INTERSECTION') {
+        // Register with active 3D Traffic Light System
+        this.trafficLights.registerJunction(key, streetName, worldZ, 14, 3, 14);
+
         // 4-Way Crossroad Aprons on BOTH Left (+X) and Right (-X)
         [-1, 1].forEach((dirSign) => {
           const crossArm = new THREE.Mesh(
@@ -562,20 +626,460 @@ export class RoadManager {
           group.add(stripe);
         }
       } else if (type === 'ROUNDABOUT') {
-        // Circular Lagos Roundabout Feature with Green Kerb Island & Monument
-        const curbRing = new THREE.Mesh(
-          new THREE.CylinderGeometry(2.6, 2.8, 0.32, 20),
-          new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.7 })
-        );
-        curbRing.position.set(0, 0.16, 0);
-        group.add(curbRing);
+        // ==========================================================
+        // 🌀 CHAOTIC LAGOS MARKET ROUNDABOUT PREFAB
+        // Wide circular asphalt ring, yellow/black hazard curbs, central monument
+        // & clocktower, rotating 3-sided high-rise billboard pylons, street vendors
+        // with colorful tarps, hawkers carrying Gala/Lacasera trays, parked yellow
+        // Keke Marwas, and signalized approach entry slip lanes!
+        // ==========================================================
+        this.trafficLights.registerJunction(key, streetName, worldZ, 14, 3, 14);
 
-        const obelisk = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.35, 0.65, 3.8, 8),
-          new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.4 })
+        // 1. Broad Circular Roundabout Asphalt Apron Slab
+        const ringApron = new THREE.Mesh(
+          new THREE.PlaneGeometry(38.0, 48.0),
+          this.sharedAsphaltMat
         );
-        obelisk.position.set(0, 2.0, 0);
-        group.add(obelisk);
+        ringApron.rotation.x = -Math.PI / 2;
+        ringApron.position.y = 0.012;
+        group.add(ringApron);
+
+        // 2. Center Green Grass Island
+        const islandRadius = 7.2;
+        const grassIsland = new THREE.Mesh(
+          new THREE.CylinderGeometry(islandRadius, islandRadius + 0.3, 0.42, 28),
+          new THREE.MeshStandardMaterial({ color: 0x166534, roughness: 0.85 })
+        );
+        grassIsland.position.set(0, 0.21, 0);
+        group.add(grassIsland);
+
+        // 3. Lagos Hazard Curb Ring (Yellow and Black Checkers)
+        const curbTex = createCurbTexture();
+        const curbMat = new THREE.MeshStandardMaterial({
+          map: curbTex,
+          roughness: 0.7,
+        });
+        const curbCylinder = new THREE.Mesh(
+          new THREE.CylinderGeometry(islandRadius + 0.12, islandRadius + 0.35, 0.45, 28, 1, true),
+          curbMat
+        );
+        curbCylinder.position.set(0, 0.23, 0);
+        group.add(curbCylinder);
+
+        // 4. Central Lagos Landmark: 3-Tiered Monument & Clocktower
+        const monumentBase = new THREE.Mesh(
+          new THREE.BoxGeometry(4.2, 0.8, 4.2),
+          this.sharedWeatheredWallMat
+        );
+        monumentBase.position.set(0, 0.6, 0);
+        group.add(monumentBase);
+
+        const clockTower = new THREE.Mesh(
+          new THREE.BoxGeometry(2.4, 4.6, 2.4),
+          new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.8 })
+        );
+        clockTower.position.set(0, 3.2, 0);
+        group.add(clockTower);
+
+        // Clock Faces on 4 sides
+        const clockMat = new THREE.MeshBasicMaterial({ color: 0xfef08a });
+        [-1.22, 1.22].forEach((cx) => {
+          const face = new THREE.Mesh(new THREE.CircleGeometry(0.65, 16), clockMat);
+          face.position.set(cx, 4.4, 0);
+          face.rotation.y = cx > 0 ? Math.PI / 2 : -Math.PI / 2;
+          group.add(face);
+        });
+        [-1.22, 1.22].forEach((cz) => {
+          const face = new THREE.Mesh(new THREE.CircleGeometry(0.65, 16), clockMat);
+          face.position.set(0, 4.4, cz);
+          face.rotation.y = cz > 0 ? 0 : Math.PI;
+          group.add(face);
+        });
+
+        // Golden Obelisk Spire & Green-White-Green Nigerian Flag Ribbon
+        const spire = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.2, 0.9, 4.8, 4),
+          new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.3, metalness: 0.6 })
+        );
+        spire.position.set(0, 7.8, 0);
+        group.add(spire);
+
+        const flagRibbon = new THREE.Mesh(
+          new THREE.BoxGeometry(2.5, 0.35, 2.5),
+          new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.5 })
+        );
+        flagRibbon.position.set(0, 5.7, 0);
+        group.add(flagRibbon);
+
+        // 5. Overhead High-Rise 3-Sided Advertising Billboard Pylon
+        const billboardTex = createSignboardTexture('PEAK MILK • STRONGER EVERY DAY', '#1e3a8a');
+        const billboardPanel = new THREE.Mesh(
+          new THREE.BoxGeometry(0.15, 2.2, 4.5),
+          new THREE.MeshBasicMaterial({ map: billboardTex })
+        );
+        billboardPanel.position.set(0, 10.6, 0);
+        billboardPanel.rotation.y = Math.PI / 4;
+        group.add(billboardPanel);
+
+        // 6. Roundabout Blue Directional Signposts
+        const rSignTex = createRoundaboutSignTexture(streetName);
+        const rSignMesh = new THREE.Mesh(
+          new THREE.BoxGeometry(0.1, 1.8, 3.2),
+          new THREE.MeshBasicMaterial({ map: rSignTex })
+        );
+        rSignMesh.position.set(10.5, 2.2, -18.0);
+        group.add(rSignMesh);
+
+        // 7. Market Hustle & Chaotic Stalls along Perimeter
+        const stallOffsets = [
+          { x: -14.5, z: -12.0, colorIdx: 0 },
+          { x: -15.2, z: 8.0, colorIdx: 1 },
+          { x: 14.8, z: -10.0, colorIdx: 2 },
+          { x: 15.5, z: 12.0, colorIdx: 3 },
+          { x: -13.8, z: 18.0, colorIdx: 4 },
+          { x: 14.0, z: 19.0, colorIdx: 5 },
+        ];
+
+        stallOffsets.forEach((st) => {
+          // Table
+          const table = new THREE.Mesh(
+            new THREE.BoxGeometry(1.8, 0.8, 2.2),
+            this.sharedWoodTableMat
+          );
+          table.position.set(st.x, 0.4, st.z);
+          group.add(table);
+
+          // Colorful Tarp Canopy
+          const tarp = new THREE.Mesh(
+            new THREE.ConeGeometry(1.8, 0.9, 4),
+            this.sharedTarpMats[st.colorIdx % this.sharedTarpMats.length]
+          );
+          tarp.position.set(st.x, 2.1, st.z);
+          group.add(tarp);
+
+          // Plantain / fruit crates on table
+          const crate = new THREE.Mesh(
+            new THREE.BoxGeometry(0.65, 0.35, 0.8),
+            new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.9 })
+          );
+          crate.position.set(st.x, 0.95, st.z);
+          group.add(crate);
+        });
+
+        // 8. Parked Yellow Bajaj Keke Marwa Waiting Staging Bay
+        const kekeGroup = new THREE.Group();
+        kekeGroup.position.set(-11.5, 0, -2.5);
+        kekeGroup.rotation.y = -Math.PI / 6;
+        const kekeBody = new THREE.Mesh(
+          new THREE.BoxGeometry(1.4, 1.3, 2.4),
+          new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.5 })
+        );
+        kekeBody.position.y = 0.85;
+        const kekeCanopy = new THREE.Mesh(
+          new THREE.BoxGeometry(1.35, 0.2, 2.2),
+          new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 0.8 })
+        );
+        kekeCanopy.position.y = 1.6;
+        kekeGroup.add(kekeBody, kekeCanopy);
+        group.add(kekeGroup);
+
+        // 9. Street Hawkers near pedestrian crossings
+        [-8.5, 8.5].forEach((hx, idx) => {
+          const hawker = new THREE.Group();
+          hawker.position.set(hx, 0, idx === 0 ? -14 : 14);
+          const body = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.25, 0.3, 1.4, 8),
+            new THREE.MeshStandardMaterial({ color: idx === 0 ? 0xd97706 : 0x2563eb })
+          );
+          body.position.y = 0.7;
+          const head = new THREE.Mesh(
+            new THREE.SphereGeometry(0.18, 8, 8),
+            new THREE.MeshStandardMaterial({ color: 0x451a03 })
+          );
+          head.position.y = 1.5;
+          // Gala Sausage roll & drink tray on head
+          const tray = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.48, 0.48, 0.08, 12),
+            new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.6 })
+          );
+          tray.position.y = 1.72;
+          hawker.add(body, head, tray);
+          group.add(hawker);
+        });
+
+        // 10. Turnoff Triggers linking to Left & Right Market Corridors
+        [-1, 1].forEach((dirSign) => {
+          turnoffBoxes.push({
+            targetCorridor: dirSign < 0 ? 'RIGHT_MARKET_STREET' : 'LEFT_MARKET_STREET',
+            direction: dirSign < 0 ? 'RIGHT' : 'LEFT',
+            label: streetName,
+            box: new THREE.Box3(
+              new THREE.Vector3(dirSign < 0 ? -25 : 8, -1, worldZ - 20),
+              new THREE.Vector3(dirSign < 0 ? -8 : 25, 6, worldZ + 20)
+            ),
+          });
+        });
+      } else if (type === 'EXPRESSWAY_INTERCHANGE') {
+        // ==========================================================
+        // 🌉 MAJOR EXPRESSWAY FLYOVER INTERCHANGE PREFAB
+        // Heavy reinforced concrete bridge overpass (height 7.5m), support piers
+        // with hazard chevrons, curving on/off ramps, giant green highway
+        // directional gantry ("THIRD MAINLAND BRIDGE • CMS • AIRPORT"),
+        // overhead traffic lights for each lane, and strict stop lines!
+        // ==========================================================
+        this.trafficLights.registerJunction(key, streetName, worldZ, 16, 3, 14);
+
+        // 1. Reinforced Concrete Support Piers on Sidewalks (x = -10.5m & +10.5m)
+        [-10.4, 10.4].forEach((px) => {
+          const pier = new THREE.Mesh(
+            new THREE.BoxGeometry(1.6, 7.6, 3.4),
+            this.sharedWeatheredWallMat
+          );
+          pier.position.set(px, 3.8, 0);
+          group.add(pier);
+
+          // Yellow/Black Hazard Warning Stripe at pier base
+          const pierCurb = new THREE.Mesh(
+            new THREE.BoxGeometry(1.8, 1.2, 3.6),
+            new THREE.MeshStandardMaterial({ map: createCurbTexture(), roughness: 0.6 })
+          );
+          pierCurb.position.set(px, 0.6, 0);
+          group.add(pierCurb);
+        });
+
+        // 2. Heavy Flyover Bridge Deck crossing perpendicular across the expressway
+        const bridgeWidth = 11.5;
+        const bridgeLength = 44.0;
+        const bridgeHeight = 7.4;
+
+        const bridgeSlab = new THREE.Mesh(
+          new THREE.BoxGeometry(bridgeLength, 1.1, bridgeWidth),
+          this.sharedWeatheredWallMat
+        );
+        bridgeSlab.position.set(0, bridgeHeight, 0);
+        group.add(bridgeSlab);
+
+        // Flyover Deck Tarmac Surface
+        const flyoverTarmac = new THREE.Mesh(
+          new THREE.PlaneGeometry(bridgeLength, bridgeWidth - 0.8),
+          this.sharedAsphaltMat
+        );
+        flyoverTarmac.rotation.x = -Math.PI / 2;
+        flyoverTarmac.position.set(0, bridgeHeight + 0.56, 0);
+        group.add(flyoverTarmac);
+
+        // Flyover Concrete Jersey Parapet Barriers
+        [-bridgeWidth / 2 + 0.2, bridgeWidth / 2 - 0.2].forEach((pz) => {
+          const parapet = new THREE.Mesh(
+            new THREE.BoxGeometry(bridgeLength, 0.95, 0.35),
+            this.sharedConcreteDividerMat
+          );
+          parapet.position.set(0, bridgeHeight + 0.98, pz);
+          group.add(parapet);
+        });
+
+        // 3. Overhead Static Vehicles on Flyover Bridge
+        // Commercial Trailer Truck on top deck
+        const truckGroup = new THREE.Group();
+        truckGroup.position.set(-6.0, bridgeHeight + 0.56, -2.5);
+        const truckCab = new THREE.Mesh(
+          new THREE.BoxGeometry(2.4, 2.2, 2.0),
+          new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.6 })
+        );
+        truckCab.position.set(-2.0, 1.1, 0);
+        const truckTrailer = new THREE.Mesh(
+          new THREE.BoxGeometry(6.5, 2.8, 2.2),
+          new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.5 })
+        );
+        truckTrailer.position.set(2.8, 1.4, 0);
+        truckGroup.add(truckCab, truckTrailer);
+        group.add(truckGroup);
+
+        // Commuter Express Car on top deck
+        const carMesh = new THREE.Mesh(
+          new THREE.BoxGeometry(3.6, 1.2, 1.6),
+          new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.4 })
+        );
+        carMesh.position.set(8.5, bridgeHeight + 1.2, 2.2);
+        group.add(carMesh);
+
+        // 4. Ground-Level Curving On-Ramps and Off-Ramps (Connecting to service lanes)
+        [-1, 1].forEach((dirSign) => {
+          const rampApron = new THREE.Mesh(
+            new THREE.PlaneGeometry(16.5, 26.0),
+            this.sharedSideStreetMat
+          );
+          rampApron.rotation.x = -Math.PI / 2;
+          rampApron.position.set(dirSign * 15.2, 0.035, 0);
+          group.add(rampApron);
+
+          turnoffBoxes.push({
+            targetCorridor: dirSign < 0 ? 'RIGHT_MARKET_STREET' : 'LEFT_MARKET_STREET',
+            direction: dirSign < 0 ? 'RIGHT' : 'LEFT',
+            label: dirSign < 0 ? 'Exit to Service Lane / Alausa' : 'Merge to Flyover On-Ramp',
+            box: new THREE.Box3(
+              new THREE.Vector3(dirSign < 0 ? -25 : 8, -1, worldZ - 20),
+              new THREE.Vector3(dirSign < 0 ? -8 : 25, 6, worldZ + 20)
+            ),
+          });
+        });
+
+        // 5. Massive Green Lagos State Highway Overhead Gantry (spanning 4 lanes)
+        const gantryGroup = new THREE.Group();
+        gantryGroup.position.set(0, 0, -14.5);
+
+        // Gantry Steel Pylons
+        [-10.2, 10.2].forEach((gx) => {
+          const pole = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.18, 0.22, 6.6, 10),
+            this.sharedConcreteDividerMat
+          );
+          pole.position.set(gx, 3.3, 0);
+          gantryGroup.add(pole);
+        });
+
+        // Gantry Crossbar
+        const crossbar = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.14, 0.14, 21.0, 10),
+          this.sharedConcreteDividerMat
+        );
+        crossbar.rotation.z = Math.PI / 2;
+        crossbar.position.set(0, 6.3, 0);
+        gantryGroup.add(crossbar);
+
+        // Green Highway Directional Signboard
+        const gantrySignTex = createHighwayGantrySignTexture(
+          'THIRD MAINLAND BRIDGE • CMS • VI',
+          'IKORODU / GBAGADA',
+          'AIRPORT ROAD / IKEJA'
+        );
+        const gantrySignBoard = new THREE.Mesh(
+          new THREE.BoxGeometry(18.0, 2.5, 0.14),
+          new THREE.MeshBasicMaterial({ map: gantrySignTex })
+        );
+        gantrySignBoard.position.set(0, 4.8, 0);
+        gantryGroup.add(gantrySignBoard);
+
+        group.add(gantryGroup);
+
+        // 6. White Stop Line across the 4 lanes on tarmac
+        const stopLine = new THREE.Mesh(
+          new THREE.PlaneGeometry(18.8, 0.8),
+          new THREE.MeshBasicMaterial({ color: 0xf8fafc })
+        );
+        stopLine.rotation.x = -Math.PI / 2;
+        stopLine.position.set(0, 0.045, -13.5);
+        group.add(stopLine);
+        // ==========================================================
+        // DEDICATED BUS-STOP PULL-OFF BAY PREFAB
+        // Indented side-lane tarmac, deceleration taper, shelter terminal,
+        // hazard curbs, route map, and waiting commuter benches
+        // ==========================================================
+        const bayWidth = 5.2;
+        const bayLength = 34.0;
+        const bayCenterX = 12.4;
+
+        // 1. Indented Bus Bay Asphalt Slab
+        const baySlab = new THREE.Mesh(
+          new THREE.PlaneGeometry(bayWidth, bayLength),
+          this.sharedAsphaltMat
+        );
+        baySlab.rotation.x = -Math.PI / 2;
+        baySlab.position.set(bayCenterX, 0.015, 0);
+        group.add(baySlab);
+
+        // 2. Deceleration Entry Taper (tapering from 9.8m to 15.0m)
+        const entryTaper = new THREE.Mesh(
+          new THREE.PlaneGeometry(bayWidth, 10.0),
+          this.sharedAsphaltMat
+        );
+        entryTaper.rotation.x = -Math.PI / 2;
+        entryTaper.rotation.z = -0.32;
+        entryTaper.position.set(11.2, 0.014, -20.0);
+        group.add(entryTaper);
+
+        // 3. Acceleration Merge Exit Taper
+        const exitTaper = new THREE.Mesh(
+          new THREE.PlaneGeometry(bayWidth, 10.0),
+          this.sharedAsphaltMat
+        );
+        exitTaper.rotation.x = -Math.PI / 2;
+        exitTaper.rotation.z = 0.32;
+        exitTaper.position.set(11.2, 0.014, 20.0);
+        group.add(exitTaper);
+
+        // 4. Yellow Diagonal Hazard Hatch Markings on Bay Tarmac
+        for (let hz = -12; hz <= 12; hz += 4.5) {
+          const hatch = new THREE.Mesh(
+            new THREE.PlaneGeometry(0.35, 4.2),
+            new THREE.MeshBasicMaterial({ color: 0xfacc15 })
+          );
+          hatch.rotation.x = -Math.PI / 2;
+          hatch.rotation.z = 0.65;
+          hatch.position.set(bayCenterX, 0.038, hz);
+          group.add(hatch);
+        }
+
+        // 5. Modern LAMATA / BRT Sheltered Commuter Terminal
+        const shelterGroup = new THREE.Group();
+        shelterGroup.position.set(15.8, 0, 0);
+
+        const platform = new THREE.Mesh(
+          new THREE.BoxGeometry(3.2, 0.35, 20.0),
+          this.sharedWeatheredWallMat
+        );
+        platform.position.set(0, 0.175, 0);
+        shelterGroup.add(platform);
+
+        const canopyRoof = new THREE.Mesh(
+          new THREE.CylinderGeometry(2.4, 2.4, 16.0, 16, 1, false, 0, Math.PI),
+          new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.4, side: THREE.DoubleSide })
+        );
+        canopyRoof.rotation.z = Math.PI / 2;
+        canopyRoof.rotation.y = Math.PI / 2;
+        canopyRoof.position.set(0, 2.6, 0);
+        shelterGroup.add(canopyRoof);
+
+        [-6.0, 0, 6.0].forEach((pz) => {
+          const pillar = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.08, 0.08, 2.6, 8),
+            this.sharedConcreteDividerMat
+          );
+          pillar.position.set(0.9, 1.3, pz);
+          shelterGroup.add(pillar);
+        });
+
+        const bench = new THREE.Mesh(
+          new THREE.BoxGeometry(0.7, 0.45, 8.5),
+          this.sharedWoodTableMat
+        );
+        bench.position.set(0.3, 0.5, 0);
+        shelterGroup.add(bench);
+
+        // Lagos Bus Stop Pole Sign
+        const busStopPole = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.06, 0.06, 3.2, 8),
+          this.sharedConcreteDividerMat
+        );
+        busStopPole.position.set(-1.2, 1.6, -8.5);
+        const busSign = new THREE.Mesh(
+          new THREE.BoxGeometry(0.08, 1.1, 0.8),
+          new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.5 })
+        );
+        busSign.position.set(-1.2, 2.8, -8.5);
+        shelterGroup.add(busStopPole, busSign);
+
+        group.add(shelterGroup);
+
+        // Mini-map layer-1 beacon
+        const mmBay = new THREE.Mesh(
+          new THREE.PlaneGeometry(bayWidth, bayLength),
+          new THREE.MeshBasicMaterial({ color: 0x22c55e })
+        );
+        mmBay.rotation.x = -Math.PI / 2;
+        mmBay.position.set(bayCenterX, 0.35, 0);
+        mmBay.layers.set(1);
+        group.add(mmBay);
       }
     } else {
       // ==========================================================

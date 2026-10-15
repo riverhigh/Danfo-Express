@@ -6899,7 +6899,7 @@ export class ThreeDrivingEngine {
     // ========================================================
     const busZ = this.busRoot.position.z;
     if (this.roadManager) {
-      this.roadManager.update(this.busRoot.position.x, busZ);
+      this.roadManager.update(this.busRoot.position.x, busZ, dt);
     }
 
     // Retain road & building segments up to 220m behind center (160m behind front edge!) so Side Mirrors never lose reflections!
@@ -7079,6 +7079,33 @@ export class ThreeDrivingEngine {
       u.laneChangeCooldown = Math.max(0, (u.laneChangeCooldown || 0) - dt);
       let desiredSpeed = u.baseSpeed || 10.5;
 
+      // 0. TRAFFIC LIGHT ENFORCEMENT: NPCs must ALWAYS follow the rules!
+      if (this.roadManager) {
+        const lightInstruction = this.roadManager
+          .getTrafficLightSystem()
+          .getStoppingInstruction(t.position.z, true);
+
+        if (lightInstruction.mustStop) {
+          const distToStop = lightInstruction.targetStopZ - t.position.z;
+          if (distToStop > -2.5 && distToStop < 48) {
+            u.isWaitingAtRedLight = true;
+            u.laneChangeCooldown = 4.0; // Freeze lane switching while stopping or queued at red light
+            if (distToStop <= 0.6) {
+              // Completely halted at stop line: zero speed and clamp position
+              desiredSpeed = 0;
+              u.currentSpeed = 0;
+              t.position.z = Math.min(t.position.z, lightInstruction.targetStopZ);
+            } else {
+              // Smooth deceleration towards stop line
+              const approachTargetSpeed = Math.min(desiredSpeed, Math.max(0, (distToStop - 0.4) * 0.42));
+              desiredSpeed = approachTargetSpeed;
+            }
+          }
+        } else {
+          u.isWaitingAtRedLight = false;
+        }
+      }
+
       // 1. Check Player Ahead in Same/Adjacent Lane (so NPCs never rear-end the player!)
       const distToPlayerAhead = busZ - t.position.z;
       const latDistToPlayer = Math.abs(t.position.x - this.busRoot.position.x);
@@ -7128,31 +7155,49 @@ export class ThreeDrivingEngine {
         const leaderU = closestLeader.userData;
         const minSafeGap = halfL + (leaderU?.halfL || 2.4) + 3.5;
 
-        if (u.laneChangeCooldown <= 0 && closestLeaderDz > minSafeGap + 2.0) {
-          const currLaneIdx = lanes.reduce((best, l, idx) => Math.abs(l - u.targetLaneX) < Math.abs(lanes[best] - u.targetLaneX) ? idx : best, 0);
-          const candidateIndices = [currLaneIdx - 1, currLaneIdx + 1].filter(idx => idx >= 0 && idx < lanes.length);
-          for (const cIdx of candidateIndices) {
-            if (isLaneSpotClear(lanes[cIdx], t.position.z + 3, i, 16)) {
-              u.targetLaneX = lanes[cIdx];
-              u.laneChangeCooldown = 3.2;
-              break;
+        // If leader is stopped at a red light, follower queues neatly behind without erratic lane changes
+        if (leaderU?.isWaitingAtRedLight) {
+          u.isWaitingAtRedLight = true;
+          u.laneChangeCooldown = 4.0;
+          const distToLeader = closestLeaderDz - minSafeGap;
+          if (distToLeader <= 0.8) {
+            desiredSpeed = 0;
+            u.currentSpeed = 0;
+            t.position.z = Math.min(t.position.z, closestLeader.position.z - minSafeGap);
+          } else {
+            desiredSpeed = Math.min(desiredSpeed, Math.max(0, distToLeader * 0.45));
+          }
+        } else {
+          if (u.laneChangeCooldown <= 0 && closestLeaderDz > minSafeGap + 2.0) {
+            const currLaneIdx = lanes.reduce((best, l, idx) => Math.abs(l - u.targetLaneX) < Math.abs(lanes[best] - u.targetLaneX) ? idx : best, 0);
+            const candidateIndices = [currLaneIdx - 1, currLaneIdx + 1].filter(idx => idx >= 0 && idx < lanes.length);
+            for (const cIdx of candidateIndices) {
+              if (isLaneSpotClear(lanes[cIdx], t.position.z + 3, i, 16)) {
+                u.targetLaneX = lanes[cIdx];
+                u.laneChangeCooldown = 3.2;
+                break;
+              }
             }
           }
-        }
 
-        const leaderSpeed = leaderU?.currentSpeed ?? 8.5;
-        if (closestLeaderDz < minSafeGap + 2.0) {
-          desiredSpeed = 0;
-        } else if (closestLeaderDz < minSafeGap + 8.0) {
-          desiredSpeed = Math.min(desiredSpeed, leaderSpeed * 0.75);
-        } else {
-          desiredSpeed = Math.min(desiredSpeed, leaderSpeed * 0.95);
+          const leaderSpeed = leaderU?.currentSpeed ?? 8.5;
+          if (closestLeaderDz < minSafeGap + 2.0) {
+            desiredSpeed = 0;
+          } else if (closestLeaderDz < minSafeGap + 8.0) {
+            desiredSpeed = Math.min(desiredSpeed, leaderSpeed * 0.75);
+          } else {
+            desiredSpeed = Math.min(desiredSpeed, leaderSpeed * 0.95);
+          }
         }
       }
 
       // Smooth Speed Lerp (faster braking response when obstacle ahead)
       const accelRate = desiredSpeed < (u.currentSpeed || 0) ? 8.5 : 2.8;
       u.currentSpeed = THREE.MathUtils.lerp(u.currentSpeed || desiredSpeed, desiredSpeed, Math.min(1.0, dt * accelRate));
+
+      if (u.isWaitingAtRedLight && desiredSpeed === 0) {
+        u.currentSpeed = 0;
+      }
 
       // Smooth Lane Steer (only steer into targetLaneX if side is clear of immediate overlap)
       const targetLaneX = u.targetLaneX !== undefined ? u.targetLaneX : t.position.x;
@@ -7478,6 +7523,16 @@ export class ThreeDrivingEngine {
     };
   }
 
+  public getTrafficLightTelemetry() {
+    if (!this.roadManager) return null;
+    return this.roadManager.getTelemetry().trafficLightAhead || null;
+  }
+
+  public getStreetTelemetry() {
+    if (!this.roadManager) return null;
+    return this.roadManager.getTelemetry();
+  }
+
   public getBusPosition(): { x: number; y: number; z: number } {
     return {
       x: this.busRoot ? this.busRoot.position.x : 0,
@@ -7761,6 +7816,22 @@ export class ThreeDrivingEngine {
       this.driverWalkPos.z - this.busRoot.position.z
     );
     return targetYaw - this.walkBaseYaw;
+  }
+
+  public teleportDanfo(targetX: number, targetZ: number) {
+    if (!this.busRoot) return;
+    this.busRoot.position.set(targetX, 0.1, targetZ);
+    this.busRoot.rotation.set(0, 0, 0);
+    if (this.rapierPhysics && this.rapierPhysics.isReady()) {
+      this.rapierPhysics.teleport(targetX, 0.85, targetZ, 0);
+    }
+    this.driverWalkPos.set(targetX - 2.0, 0, targetZ);
+    if (this.driverCharacterGroup) {
+      this.driverCharacterGroup.position.set(targetX - 2.0, 0, targetZ);
+    }
+    if (this.roadManager) {
+      this.roadManager.update(targetX, targetZ, 0.016);
+    }
   }
 
   public dispose() {
