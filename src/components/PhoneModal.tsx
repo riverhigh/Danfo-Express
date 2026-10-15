@@ -937,94 +937,107 @@ export const PhoneModal: React.FC<PhoneModalProps> = ({
           {/* ======================================================== */}
           {/* APP 9 & 10: WEB-VIEW ROUTED APPS (AGS & SOLARFIRST) */}
           {/* ======================================================== */}
-          {(activeApp === 'AGS' || activeApp === 'SOLAR_FIRST') && (
-            <div className="flex-1 bg-stone-950 flex flex-col overflow-hidden">
-              {/* IN-PHONE NAVIGATION BAR */}
-              <div className="h-12 border-b border-stone-800 bg-stone-900/95 backdrop-blur px-3 flex items-center justify-between gap-2 shrink-0 z-30">
-                {/* Back Arrow '<' to return to the phone's app home screen */}
-                <button
-                  onClick={() => setActiveApp('HOME')}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-stone-800 hover:bg-stone-700 active:scale-95 text-stone-200 border border-stone-700 text-xs font-bold transition-all shadow-sm shrink-0"
-                  title="Return to Phone Home Screen"
-                  aria-label="Back to home screen"
-                >
-                  <ChevronLeft className="w-4 h-4 text-amber-400 -mr-0.5" />
-                  <span className="font-mono text-sm leading-none font-black text-amber-400">&lt;</span>
-                  <span className="text-[11px] text-stone-300 ml-0.5">Home</span>
-                </button>
+          {/* ======================================================== */}
+          {/* APP 9 & 10: WEB-VIEW ROUTED APPS (AGS & SOLARFIRST) */}
+          {/* ======================================================== */}
+          {(activeApp === 'AGS' || activeApp === 'SOLAR_FIRST') && (() => {
+            const isAgs = activeApp === 'AGS';
+            const realDomain = isAgs ? 'myags.school' : 'getsolarfirst.com';
+            const targetUrl = isAgs ? 'https://www.myags.school' : 'https://getsolarfirst.com';
+            const proxiedUrl = `/api/proxy-site?url=${encodeURIComponent(targetUrl)}`;
 
-                {/* In-Phone Browser Address & Routing Display */}
-                <div className="flex-1 min-w-0 bg-stone-950/90 border border-stone-800 rounded-xl px-2.5 py-1 flex items-center justify-between gap-1 shadow-inner">
-                  <div className="flex items-center gap-1.5 min-w-0 truncate">
-                    <Lock className="w-3 h-3 text-emerald-400 shrink-0" />
-                    <span className="text-[11px] font-mono text-stone-200 truncate font-semibold">
-                      {activeApp === 'AGS' ? 'myags.school' : 'getsolarfirst.com'}
-                    </span>
+            return (
+              <div className="flex-1 bg-stone-950 flex flex-col overflow-hidden">
+                {/* IN-PHONE NAVIGATION BAR */}
+                <div className="h-12 border-b border-stone-800 bg-stone-900/95 backdrop-blur px-3 flex items-center justify-between gap-2 shrink-0 z-30">
+                  {/* Back Arrow '<' to return to the phone's app home screen */}
+                  <button
+                    onClick={() => setActiveApp('HOME')}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-stone-800 hover:bg-stone-700 active:scale-95 text-stone-200 border border-stone-700 text-xs font-bold transition-all shadow-sm shrink-0"
+                    title="Return to Phone Home Screen"
+                    aria-label="Back to home screen"
+                  >
+                    <ChevronLeft className="w-4 h-4 text-amber-400 -mr-0.5" />
+                    <span className="font-mono text-sm leading-none font-black text-amber-400">&lt;</span>
+                    <span className="text-[11px] text-stone-300 ml-0.5">Home</span>
+                  </button>
+
+                  {/* In-Phone Browser Address & Routing Display */}
+                  <div className="flex-1 min-w-0 bg-stone-950/90 border border-stone-800 rounded-xl px-2.5 py-1 flex items-center justify-between gap-1 shadow-inner">
+                    <div className="flex items-center gap-1.5 min-w-0 truncate">
+                      <Lock className="w-3 h-3 text-emerald-400 shrink-0" />
+                      <span className="text-[11px] font-mono text-stone-200 truncate font-semibold">
+                        {realDomain}
+                      </span>
+                      <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 text-[9px] font-bold border border-emerald-500/30">
+                        LIVE
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-0.5 shrink-0">
+                      <button
+                        onClick={() => setIframeKey((k) => k + 1)}
+                        className="p-1 text-stone-400 hover:text-white rounded transition-colors"
+                        title="Reload Page"
+                      >
+                        <RotateCw className="w-3 h-3" />
+                      </button>
+                      <a
+                        href={targetUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-1 text-stone-400 hover:text-amber-400 rounded transition-colors"
+                        title="Open in new window"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-0.5 shrink-0">
-                    <button
-                      onClick={() => setIframeKey((k) => k + 1)}
-                      className="p-1 text-stone-400 hover:text-white rounded transition-colors"
-                      title="Reload Page"
-                    >
-                      <RotateCw className="w-3 h-3" />
-                    </button>
+
+                  {/* Global 'X Close' button to exit phone completely */}
+                  <button
+                    onClick={onClose}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-rose-950/80 hover:bg-rose-900 active:scale-95 text-rose-200 border border-rose-800/70 text-xs font-bold transition-all shadow-sm shrink-0"
+                    title="Exit Phone Completely"
+                    aria-label="Close phone"
+                  >
+                    <X className="w-3.5 h-3.5 text-rose-300" />
+                    <span className="text-[11px]">Close</span>
+                  </button>
+                </div>
+
+                {/* Embedded Iframe View Container (Using Local Proxy to Strip X-Frame-Options) */}
+                <div className="flex-1 relative flex flex-col bg-stone-900 overflow-hidden">
+                  <iframe
+                    key={iframeKey}
+                    src={proxiedUrl}
+                    title={isAgs ? 'AGS School Portal' : 'SolarFirst Clean Energy'}
+                    className="w-full flex-1 border-0 bg-white"
+                    sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+                    allow="fullscreen; autoplay; clipboard-write; encrypted-media"
+                  />
+
+                  {/* In-Phone View Status Ribbon */}
+                  <div className="h-7 bg-stone-950 border-t border-stone-800 px-3 flex items-center justify-between text-[10px] text-stone-400 shrink-0 select-none">
+                    <div className="flex items-center gap-1.5 truncate">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                      <span className="truncate">
+                        {isAgs ? '🎓 All Good Schools (AGS) Official Portal' : '☀️ SolarFirst Clean Energy & Inverters'}
+                      </span>
+                    </div>
                     <a
-                      href={activeApp === 'AGS' ? 'https://www.myags.school' : 'https://www.getsolarfirst.com'}
+                      href={targetUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="p-1 text-stone-400 hover:text-amber-400 rounded transition-colors"
-                      title="Open in new window"
+                      className="text-amber-400 hover:text-amber-300 flex items-center gap-1 shrink-0 font-medium font-mono"
                     >
-                      <ExternalLink className="w-3 h-3" />
+                      <span>Direct Web</span>
+                      <ExternalLink className="w-2.5 h-2.5" />
                     </a>
                   </div>
                 </div>
-
-                {/* Global 'X Close' button to exit phone completely */}
-                <button
-                  onClick={onClose}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-rose-950/80 hover:bg-rose-900 active:scale-95 text-rose-200 border border-rose-800/70 text-xs font-bold transition-all shadow-sm shrink-0"
-                  title="Exit Phone Completely"
-                  aria-label="Close phone"
-                >
-                  <X className="w-3.5 h-3.5 text-rose-300" />
-                  <span className="text-[11px]">Close</span>
-                </button>
               </div>
-
-              {/* Embedded Iframe View Container */}
-              <div className="flex-1 relative flex flex-col bg-white overflow-hidden">
-                <iframe
-                  key={iframeKey}
-                  src={activeApp === 'AGS' ? 'https://www.myags.school' : 'https://www.getsolarfirst.com'}
-                  title={activeApp === 'AGS' ? 'AGS School Portal' : 'SolarFirst Clean Energy'}
-                  className="w-full flex-1 border-0 bg-white"
-                  sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
-                  allow="fullscreen; autoplay; clipboard-write; encrypted-media"
-                />
-
-                {/* In-Phone View Status Ribbon */}
-                <div className="h-7 bg-stone-950 border-t border-stone-800 px-3 flex items-center justify-between text-[10px] text-stone-400 shrink-0 select-none">
-                  <div className="flex items-center gap-1.5 truncate">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-                    <span className="truncate">
-                      {activeApp === 'AGS' ? '🎓 AGS Education Portal' : '☀️ SolarFirst Clean Solar Solutions'}
-                    </span>
-                  </div>
-                  <a
-                    href={activeApp === 'AGS' ? 'https://www.myags.school' : 'https://www.getsolarfirst.com'}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-amber-400 hover:text-amber-300 flex items-center gap-1 shrink-0 font-medium font-mono"
-                  >
-                    <span>Direct Web</span>
-                    <ExternalLink className="w-2.5 h-2.5" />
-                  </a>
-                </div>
-              </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* ======================================================== */}
           {/* TUNDAHEADLOT (LAGOS STREET BLOGGER & BREAKING GIST APP)  */}

@@ -87,8 +87,8 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
   const [doorState, setDoorState] = useState<DoorState>(gameState.bus.doorState || 'CLOSED');
   const [bootState, setBootState] = useState<'OPEN' | 'CLOSED'>('CLOSED');
   const [isSteppedDown, setIsSteppedDown] = useState<boolean>(false);
-  const [walkThirdPerson, setWalkThirdPerson] = useState<boolean>(true);
-  const walkThirdPersonRef = useRef<boolean>(true);
+  const [walkThirdPerson, setWalkThirdPerson] = useState<boolean>(false);
+  const walkThirdPersonRef = useRef<boolean>(false);
   const [turnSignal, setTurnSignal] = useState<'OFF' | 'LEFT' | 'RIGHT'>('OFF');
   const [hazardLights, setHazardLights] = useState<boolean>(false);
   const [wipersActive, setWipersActive] = useState<boolean>(false);
@@ -515,14 +515,7 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
     }
 
     if (simRef.current.isSteppedDown) {
-      const nextWalk3P = !walkThirdPersonRef.current;
-      walkThirdPersonRef.current = nextWalk3P;
-      setWalkThirdPerson(nextWalk3P);
-      addFeedMessage(
-        nextWalk3P
-          ? '📷 WALK CAMERA: 3rd-Person On-Foot View (Driver + Danfo Bus)'
-          : '📷 WALK CAMERA: 1st-Person Eye View'
-      );
+      addFeedMessage('👁️ Walk Mode: Immersive First-Person eye view active.');
       return;
     }
 
@@ -573,15 +566,15 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
       walkJoyRef.current.x = 0;
       walkJoyRef.current.y = 0;
       setWalkJoyVisual({ x: 0, y: 0 });
-      walkThirdPersonRef.current = true;
-      setWalkThirdPerson(true);
+      walkThirdPersonRef.current = false;
+      setWalkThirdPerson(false);
 
       if (simRef.current.doorState === 'CLOSED') {
         setDoorState('OPEN');
         simRef.current.doorState = 'OPEN';
         soundEngine.playDoorSlide(true);
       }
-      // Reset walk look angles so camera frames the 3D Driver Character and yellow Danfo bus directly!
+      // Reset walk look angles so camera points ahead from eye level
       lookRef.current.yaw = 0;
       lookRef.current.pitch = -0.04;
 
@@ -1881,13 +1874,11 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           {/* Right: Essential Utilities (Boost, Phone, Home, End shift) */}
           <div className="flex items-center gap-1.5 shrink-0">
             {isSteppedDown && (
-              <button
-                onClick={cycleCameraMode}
-                title="Switch Camera (V)"
-                className="px-2 py-0.5 rounded border border-sky-500/70 bg-sky-950/80 text-sky-300 font-mono font-black text-[8.5px]"
+              <span
+                className="px-2 py-0.5 rounded border border-emerald-500/70 bg-emerald-950/80 text-emerald-300 font-mono font-black text-[8.5px]"
               >
-                {walkThirdPerson ? '🎥 3RD' : '👁️ 1ST'}
-              </button>
+                👁️ 1ST VIEW
+              </span>
             )}
             {isSteppedDown && (
               <button
@@ -3459,12 +3450,11 @@ export const ThreeDrivingSimulator: React.FC<ThreeDrivingSimulatorProps> = ({
           {/* ON-FOOT VEHICLE & STREET INTERACTION BAR (When Stepped Down) */}
           <div className="absolute top-11 left-1/2 -translate-x-1/2 z-50 pointer-events-auto flex items-center gap-1.5 bg-stone-950/95 border-2 border-amber-400 rounded-full px-3 py-1 shadow-2xl backdrop-blur-md">
             <span className="text-[9px] font-mono font-black text-amber-400 hidden sm:inline">🚶 ON FOOT:</span>
-            <button
-              onClick={cycleCameraMode}
-              className="px-2 py-0.5 bg-sky-900/80 hover:bg-sky-800 text-sky-200 border border-sky-400/60 rounded-full text-[9px] font-mono font-bold active:scale-95"
+            <span
+              className="px-2.5 py-0.5 bg-emerald-950/90 text-emerald-300 border border-emerald-500/60 rounded-full text-[9px] font-mono font-bold flex items-center gap-1 shadow-sm"
             >
-              {walkThirdPerson ? '🎥 3RD VIEW' : '👁️ 1ST VIEW'}
-            </button>
+              👁️ 1ST PERSON EYE VIEW
+            </span>
             <button
               onClick={() => {
                 if (engineRef.current) {

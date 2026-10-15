@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import * as CANNON from 'cannon-es';
+import { RapierPhysicsEngine } from '../physics/RapierPhysicsEngine';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { CameraViewMode, BusUpgrades, JunctionStop, DoorState, GasStationBay, RoadsideShop, DeliveryJob } from '../../types/game';
@@ -135,11 +135,8 @@ export class ThreeDrivingEngine {
   }> = [];
   private renderer: THREE.WebGLRenderer;
 
-  // Cannon-es Physics World & Raycast Vehicle
-  private world!: CANNON.World;
-  private groundBody!: CANNON.Body;
-  private chassisBody!: CANNON.Body;
-  private vehicle!: CANNON.RaycastVehicle;
+  // High-Performance Rapier.js (WASM) Physics Engine & Vehicle Controller
+  private rapierPhysics!: RapierPhysicsEngine;
 
   // 3D Player Bus
   private busRoot: THREE.Group;
@@ -803,131 +800,30 @@ export class ThreeDrivingEngine {
   }
 
   /**
-   * Cannon.js / cannon-es physics setup for realistic Lagos Danfo driving dynamics
+   * Rapier.js (WASM) physics setup for realistic Lagos Danfo driving dynamics
    */
   private setupPhysics() {
-    // 1. Create a new CANNON.World() with gravity set to -9.82 on the Y-axis
-    this.world = new CANNON.World();
-    this.world.gravity.set(0, -9.82, 0);
-
-    // 1b. High-Friction Tire & Road Contact Materials (Prevents 'sliding on ice' during sharp turns)
-    const groundMat = new CANNON.Material('groundMaterial');
-    const tireMat = new CANNON.Material('tireMaterial');
-    const tireGroundContact = new CANNON.ContactMaterial(groundMat, tireMat, {
-      friction: 9.5,
-      restitution: 0.0,
-      contactEquationStiffness: 1e8,
-      contactEquationRelaxation: 3,
-    });
-    this.world.addContactMaterial(tireGroundContact);
-    this.world.defaultContactMaterial.friction = 8.5;
-    this.world.defaultContactMaterial.restitution = 0.0;
-
-    // 2. Create a static CANNON.Body with a CANNON.Plane shape to serve as the physical ground matching our road mesh
-    const groundShape = new CANNON.Plane();
-    this.groundBody = new CANNON.Body({
-      mass: 0,
-      shape: groundShape,
-      type: CANNON.Body.STATIC,
-      material: groundMat,
-    });
-    // Rotate plane so normal points +Y (up)
-    this.groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
-    this.world.addBody(this.groundBody);
-    this.groundBody.updateAABB();
-
-    // 2b. Explicit Cannon-es static ground slabs under Branching Shortcut Coordinates & Gas Station Pull-Off Bays
-    const shortcutGroundCoords: Array<[number, number, number, number]> = [
-      [-18.5, 590, 16, 540],  // Shortcut #1: Allen Ave (z = 340..840, x < 0)
-      [18.5, 880, 16, 480],   // Shortcut #2: Toyin St / Alausa (z = 660..1100, x > 0)
-      [-18.5, 1540, 16, 560], // Shortcut #3: Mushin / Ladipo (z = 1280..1800, x < 0)
-      [18.5, 2600, 16, 600],  // Shortcut #4: Surulere / Bode Thomas (z = 2320..2880, x > 0)
-      [-14.5, 210, 14, 60],   // Gas Station #1 Pull-Off Bay (z = 210)
-      [14.5, 520, 14, 60],    // Gas Station #2 Pull-Off Bay (z = 520)
-      [14.5, 1750, 14, 60],   // Gas Station #3 Pull-Off Bay (z = 1750)
-    ];
-    shortcutGroundCoords.forEach(([gx, gz, widthX, lengthZ]) => {
-      const slabShape = new CANNON.Box(new CANNON.Vec3(widthX / 2, 0.25, lengthZ / 2));
-      const slabBody = new CANNON.Body({
-        mass: 0,
-        type: CANNON.Body.STATIC,
-        shape: slabShape,
-        material: groundMat,
+    RapierPhysicsEngine.getInstance().then((engine) => {
+      this.rapierPhysics = engine;
+      // Add shortcut ground colliders & gas stations into Rapier WASM world
+      const shortcutGroundCoords: Array<[number, number, number, number]> = [
+        [-18.5, 590, 16, 540],  // Shortcut #1: Allen Ave (z = 340..840, x < 0)
+        [18.5, 880, 16, 480],   // Shortcut #2: Toyin St / Alausa (z = 660..1100, x > 0)
+        [-18.5, 1540, 16, 560], // Shortcut #3: Mushin / Ladipo (z = 1280..1800, x < 0)
+        [18.5, 2600, 16, 600],  // Shortcut #4: Surulere / Bode Thomas (z = 2320..2880, x > 0)
+        [-14.5, 210, 14, 60],   // Gas Station #1 Pull-Off Bay (z = 210)
+        [14.5, 520, 14, 60],    // Gas Station #2 Pull-Off Bay (z = 520)
+        [14.5, 1750, 14, 60],   // Gas Station #3 Pull-Off Bay (z = 1750)
+      ];
+      shortcutGroundCoords.forEach(([gx, gz, widthX, lengthZ]) => {
+        this.rapierPhysics.addStaticBoxCollider(gx, -0.25, gz, widthX / 2, 0.25, lengthZ / 2);
       });
-      slabBody.position.set(gx, -0.25, gz);
-      this.world.addBody(slabBody);
+      // Safety highway barriers
+      this.rapierPhysics.addStaticBoxCollider(-30.5, 2.0, 0, 1.2, 2.5, 25000);
+      this.rapierPhysics.addStaticBoxCollider(30.5, 2.0, 0, 1.2, 2.5, 25000);
+    }).catch((err) => {
+      console.warn('Rapier physics setup warning:', err);
     });
-
-    // Outer safety barriers placed outside the shortcut and gas station corridors
-    const barrierShape = new CANNON.Box(new CANNON.Vec3(1.2, 2.5, 50000));
-    const leftBarrier = new CANNON.Body({ mass: 0, type: CANNON.Body.STATIC, shape: barrierShape });
-    leftBarrier.position.set(-30.5, 2.0, 0);
-    this.world.addBody(leftBarrier);
-
-    const rightBarrier = new CANNON.Body({ mass: 0, type: CANNON.Body.STATIC, shape: barrierShape });
-    rightBarrier.position.set(30.5, 2.0, 0);
-    this.world.addBody(rightBarrier);
-
-    // 3. Implement a CANNON.RaycastVehicle setup for our Danfo bus with LOWERED CENTER OF MASS
-    const chassisShape = new CANNON.Box(new CANNON.Vec3(1.06, 0.85, 2.45));
-    this.chassisBody = new CANNON.Body({ mass: 1500, material: tireMat });
-    // Offset chassis collision box +0.35m upwards relative to the body origin so the effective Center of Mass sits 0.35m lower!
-    this.chassisBody.addShape(chassisShape, new CANNON.Vec3(0, 0.35, 0));
-    this.chassisBody.position.set(0, 0.85, 0);
-    // CRITICAL: Strictly lock pitch (X) and roll (Z) so vehicle CANNOT flip or tip during fast turns!
-    this.chassisBody.angularFactor.set(0, 1, 0);
-    this.chassisBody.angularDamping = 0.85;
-    this.chassisBody.linearDamping = 0.08;
-    this.world.addBody(this.chassisBody);
-
-    this.vehicle = new CANNON.RaycastVehicle({
-      chassisBody: this.chassisBody,
-      indexRightAxis: 0,
-      indexUpAxis: 1,
-      indexForwardAxis: 2,
-    });
-
-    // Configure 4 physical wheels with FIRM suspension stiffness, strong damping, high frictionSlip, and zero roll influence
-    const wheelOptions = {
-      radius: 0.42,
-      directionLocal: new CANNON.Vec3(0, -1, 0),
-      suspensionStiffness: 58,     // Firmer springs to prevent violent weight transfer
-      suspensionRestLength: 0.32,  // Planted stance
-      frictionSlip: 28.0,          // High lateral tire friction so tires bite into turns without sliding on ice
-      dampingRelaxation: 5.4,      // Firm rebound damping so chassis stabilizes immediately after a turn
-      dampingCompression: 5.8,     // Firm compression damping
-      maxSuspensionForce: 250000,
-      rollInfluence: 0.0,          // Zero roll influence so suspension cannot tilt or flip the bus
-      axleLocal: new CANNON.Vec3(1, 0, 0),
-      chassisConnectionPointLocal: new CANNON.Vec3(0, 0, 0),
-      maxSuspensionTravel: 0.22,
-      customSlidingRotationalSpeed: -30,
-      useCustomSlidingRotationalSpeed: true,
-    };
-
-    // 4 physical wheels: Front-Left, Front-Right, Rear-Left, Rear-Right
-    this.vehicle.addWheel({
-      ...wheelOptions,
-      chassisConnectionPointLocal: new CANNON.Vec3(1.05, -0.15, 1.6),
-      isFrontWheel: true,
-    });
-    this.vehicle.addWheel({
-      ...wheelOptions,
-      chassisConnectionPointLocal: new CANNON.Vec3(-1.05, -0.15, 1.6),
-      isFrontWheel: true,
-    });
-    this.vehicle.addWheel({
-      ...wheelOptions,
-      chassisConnectionPointLocal: new CANNON.Vec3(1.05, -0.15, -1.6),
-      isFrontWheel: false,
-    });
-    this.vehicle.addWheel({
-      ...wheelOptions,
-      chassisConnectionPointLocal: new CANNON.Vec3(-1.05, -0.15, -1.6),
-      isFrontWheel: false,
-    });
-
-    this.vehicle.addToWorld(this.world);
   }
 
   private normalizeVehicleModel(model: THREE.Group, _path: string) {
@@ -6488,75 +6384,12 @@ export class ThreeDrivingEngine {
     }
 
     // ========================================================
-    // 2. CANNON-ES RAYCAST VEHICLE DRIVING CONTROLS & PHYSICS
+    // 2. RAPIER (WASM) RAYCAST VEHICLE DRIVING CONTROLS & PHYSICS
     // ========================================================
-    const maxSteerRad = 0.52; // ~30 deg responsive max wheel lock
-    // steeringWheelAngleDeg: -90 (left) to +90 (right)
     const steerNorm = Math.max(-1.0, Math.min(1.0, (steeringWheelAngleDeg || 0) / 90));
-
-    // In Cannon RaycastVehicle with axleLocal=(1,0,0) and forward=+Z:
-    // Negative steer rotates wheels right (+X), positive rotates left (-X).
-    const vehicleSteer = -steerNorm * maxSteerRad;
-    this.vehicle.setSteeringValue(vehicleSteer, 0);
-    this.vehicle.setSteeringValue(vehicleSteer, 1);
-
-    if (isEngineRunning && !isSteppedDown) {
-      if (gear === 'D' || gear === 'L') {
-        const topSpeedMps = gear === 'L' ? 16 : 28; // ~58 km/h or ~100 km/h
-        const forceMult = gear === 'L' ? 1.4 : 1.0;
-        const driveForce = throttle > 0 ? (-4200 * throttle * forceMult) : 0;
-        for (let i = 0; i < 4; i++) {
-          this.vehicle.applyEngineForce(driveForce, i);
-        }
-        // Direct snappy arcade throttle assist to guarantee instant acceleration response
-        if (throttle > 0) {
-          const currentFwdSpeed = this.chassisBody.velocity.z;
-          if (currentFwdSpeed < topSpeedMps) {
-            this.chassisBody.velocity.z = Math.min(topSpeedMps, currentFwdSpeed + 18 * dt * throttle * forceMult);
-          }
-        }
-      } else if (gear === 'R') {
-        const revForce = throttle > 0 ? (3500 * throttle) : 0;
-        for (let i = 0; i < 4; i++) {
-          this.vehicle.applyEngineForce(revForce, i);
-        }
-        if (throttle > 0) {
-          const currentRevSpeed = this.chassisBody.velocity.z;
-          if (currentRevSpeed > -9) {
-            this.chassisBody.velocity.z = Math.max(-9, currentRevSpeed - 14 * dt * throttle);
-          }
-        }
-      } else {
-        for (let i = 0; i < 4; i++) {
-          this.vehicle.applyEngineForce(0, i);
-        }
-      }
-    } else {
-      for (let i = 0; i < 4; i++) {
-        this.vehicle.applyEngineForce(0, i);
-      }
-    }
-
-    // Responsive braking & deceleration physics
-    if (isBraking || gear === 'P' || !isEngineRunning) {
-      const brakeForce = isBraking ? 200 : (gear === 'P' ? 450 : 60);
-      for (let i = 0; i < 4; i++) {
-        this.vehicle.setBrake(brakeForce, i);
-      }
-      this.chassisBody.velocity.z *= Math.pow(0.06, dt);
-      this.chassisBody.velocity.x *= Math.pow(0.06, dt);
-    } else {
-      const rollingResistance = throttle > 0 ? 0 : 5;
-      for (let i = 0; i < 4; i++) {
-        this.vehicle.setBrake(rollingResistance, i);
-      }
-      if (throttle <= 0) {
-        this.chassisBody.velocity.z *= Math.pow(0.92, dt);
-      }
-    }
-
-    // TIGHT 'DR. DRIVING' LATERAL VELOCITY DAMPENING & ACKERMANN KINEMATICS (Zero Ice-Sliding!)
     const turnDir = gear === 'R' ? -1 : 1;
+
+    // Obstacle and curb collision detection along Lagos corridor
     const collisionCheck = this.resolveVehicleObstacleCollisions(
       laneOffsetMeters,
       roadDistanceTraveled,
@@ -6577,76 +6410,67 @@ export class ThreeDrivingEngine {
       }
     }
 
-    // Step Cannon-es physics world & cancel out any local lateral sideways velocity slide
-    this.world.step(1 / 60, Math.min(dt, 0.05), 2);
-    const localForwardX = Math.sin(this.busHeadingYaw);
-    const localForwardZ = Math.cos(this.busHeadingYaw);
-    const localRightX = Math.cos(this.busHeadingYaw);
-    const localRightZ = -Math.sin(this.busHeadingYaw);
-    const lateralSlideSpeed =
-      this.chassisBody.velocity.x * localRightX + this.chassisBody.velocity.z * localRightZ;
-    // Artificial sideways velocity dampening (cancels out lateral drift immediately)
-    const dampedLateral = lateralSlideSpeed * Math.pow(0.0005, dt);
+    if (this.rapierPhysics && this.rapierPhysics.isReady()) {
+      // Connect gas, brake, and steering inputs directly to WASM Rapier rigid body
+      this.rapierPhysics.updateInputs(
+        throttle,
+        isBraking,
+        steeringWheelAngleDeg,
+        gear,
+        isEngineRunning && !isSteppedDown,
+        dt,
+        targetX,
+        targetZ
+      );
+      this.rapierPhysics.step(dt);
+      const telemetry = this.rapierPhysics.getTelemetry();
 
-    // Direct synchronization of physics chassis & visual 3D bus
-    this.chassisBody.position.x = targetX;
-    this.busRoot.position.x = targetX;
-    this.chassisBody.position.z = targetZ;
-    this.busRoot.position.z = targetZ;
-    this.chassisBody.velocity.x =
-      isEngineRunning ? speedMps * localForwardX + dampedLateral * localRightX : 0;
-    this.chassisBody.velocity.z =
-      isEngineRunning ? speedMps * localForwardZ + dampedLateral * localRightZ : 0;
+      this.busRoot.position.x = telemetry.x;
+      this.busRoot.position.z = telemetry.z;
+      this.busRoot.position.y = 0.85;
 
-    // Strict upright stabilization for chassis height
-    if (this.chassisBody.position.y < 0.4 || this.chassisBody.position.y > 1.2 || isNaN(this.chassisBody.position.y)) {
-      this.chassisBody.position.y = 0.85;
-      this.chassisBody.velocity.y = 0;
-    }
-    this.busRoot.position.y = 0.85;
+      this.smoothedSteerNorm = THREE.MathUtils.lerp(
+        this.smoothedSteerNorm,
+        steerNorm,
+        Math.min(1.0, dt * 22.0)
+      );
 
-    // Smoothly interpolate steering angle & firm suspension banking roll/pitch
-    this.smoothedSteerNorm = THREE.MathUtils.lerp(
-      this.smoothedSteerNorm,
-      steerNorm,
-      Math.min(1.0, dt * 22.0)
-    );
-
-    // Snappy, responsive 'Dr. Driving' cornering yaw with zero post-turn drift
-    if (params.headingYaw !== undefined) {
-      this.busHeadingYaw = THREE.MathUtils.lerp(this.busHeadingYaw, params.headingYaw, Math.min(1.0, dt * 26.0));
-    } else if (speedMps > 0.05 && !isSteppedDown) {
-      if (Math.abs(this.smoothedSteerNorm) > 0.02) {
-        const targetYaw = -this.smoothedSteerNorm * 0.42 * turnDir;
-        this.busHeadingYaw = THREE.MathUtils.lerp(this.busHeadingYaw, targetYaw, Math.min(1.0, dt * 14.0));
-      } else {
-        this.busHeadingYaw *= Math.pow(0.0008, dt);
+      if (params.headingYaw !== undefined) {
+        this.busHeadingYaw = THREE.MathUtils.lerp(this.busHeadingYaw, params.headingYaw, Math.min(1.0, dt * 26.0));
+      } else if (speedMps > 0.05 && !isSteppedDown) {
+        if (Math.abs(this.smoothedSteerNorm) > 0.02) {
+          const targetYaw = -this.smoothedSteerNorm * 0.42 * turnDir;
+          this.busHeadingYaw = THREE.MathUtils.lerp(this.busHeadingYaw, targetYaw, Math.min(1.0, dt * 14.0));
+        } else {
+          this.busHeadingYaw *= Math.pow(0.0008, dt);
+        }
+        this.busHeadingYaw = Math.max(-0.46, Math.min(0.46, this.busHeadingYaw));
       }
-      this.busHeadingYaw = Math.max(-0.46, Math.min(0.46, this.busHeadingYaw));
-    }
 
-    // Firm suspension banking roll (reduced roll due to lowered CoM and stiffened springs)
-    const speedFactorForRoll = Math.min(1.0, speedMps / 14.0);
-    const targetBodyRoll = this.smoothedSteerNorm * speedFactorForRoll * 0.012;
-    this.smoothedBodyRoll = THREE.MathUtils.lerp(this.smoothedBodyRoll, targetBodyRoll, Math.min(1.0, dt * 18.0));
+      this.smoothedBodyRoll = THREE.MathUtils.lerp(this.smoothedBodyRoll, telemetry.bodyRoll, Math.min(1.0, dt * 18.0));
+      this.smoothedBodyPitch = THREE.MathUtils.lerp(this.smoothedBodyPitch, telemetry.bodyPitch, Math.min(1.0, dt * 16.0));
 
-    const targetBodyPitch = isBraking && speedMps > 1 ? 0.009 : (throttle > 0.1 && speedMps > 1 ? -0.005 : 0);
-    this.smoothedBodyPitch = THREE.MathUtils.lerp(this.smoothedBodyPitch, targetBodyPitch, Math.min(1.0, dt * 16.0));
+      this.busRoot.rotation.order = 'YXZ';
+      this.busRoot.rotation.y = this.busHeadingYaw;
+      this.busRoot.rotation.z = this.smoothedBodyRoll;
+      this.busRoot.rotation.x = this.smoothedBodyPitch;
+    } else {
+      this.busRoot.position.x = targetX;
+      this.busRoot.position.z = targetZ;
+      this.busRoot.position.y = 0.85;
 
-    this.busRoot.rotation.order = 'YXZ';
-    this.busRoot.rotation.y = this.busHeadingYaw;
-    this.busRoot.rotation.z = this.smoothedBodyRoll;
-    this.busRoot.rotation.x = this.smoothedBodyPitch;
+      this.smoothedSteerNorm = THREE.MathUtils.lerp(
+        this.smoothedSteerNorm,
+        steerNorm,
+        Math.min(1.0, dt * 22.0)
+      );
 
-    const uprightQuat = new THREE.Quaternion().setFromEuler(
-      new THREE.Euler(this.smoothedBodyPitch, this.busHeadingYaw, this.smoothedBodyRoll, 'YXZ')
-    );
-    this.chassisBody.quaternion.set(uprightQuat.x, uprightQuat.y, uprightQuat.z, uprightQuat.w);
-    this.chassisBody.angularVelocity.set(0, 0, 0);
+      if (params.headingYaw !== undefined) {
+        this.busHeadingYaw = THREE.MathUtils.lerp(this.busHeadingYaw, params.headingYaw, Math.min(1.0, dt * 26.0));
+      }
 
-    // Update wheel transforms: Decoupled Steering Knuckle (Y) + Inner Spin Hub (X) -> ZERO WHEEL WOBBLE!
-    for (let i = 0; i < this.vehicle.wheelInfos.length; i++) {
-      this.vehicle.updateWheelTransform(i);
+      this.busRoot.rotation.order = 'YXZ';
+      this.busRoot.rotation.y = this.busHeadingYaw;
     }
 
     // Outer knuckle strictly handles Y-axis steering yaw: Turning left steers toward +X (left of road)
@@ -6923,45 +6747,19 @@ export class ThreeDrivingEngine {
 
       // Update 3D Driver Character position & limb swing
       if (this.driverCharacterGroup) {
-        this.driverCharacterGroup.visible = activeWalk3P;
-        this.driverCharacterGroup.position.set(this.driverWalkPos.x, 0, this.driverWalkPos.z);
-        this.driverCharacterGroup.rotation.y = this.driverFacingYaw;
-        const limbs = this.driverCharacterGroup.userData;
-        const swing = joyMag > 0.04 ? Math.sin(this.driverWalkAnimTimer) * 0.55 : 0;
-        if (limbs?.leftLeg) limbs.leftLeg.rotation.x = swing;
-        if (limbs?.rightLeg) limbs.rightLeg.rotation.x = -swing;
-        if (limbs?.leftArm) limbs.leftArm.rotation.x = -swing * 0.8;
-        if (limbs?.rightArm) limbs.rightArm.rotation.x = swing * 0.8;
+        // WALK MODE MUST NOT SHOW THE PLAYER - STRICT FIRST PERSON ONLY!
+        this.driverCharacterGroup.visible = false;
       }
 
-      if (activeWalk3P) {
-        // 3RD-PERSON ON-FOOT VIEW: Shows both the 3D Driver Character AND the parked yellow Danfo bus!
-        const followDist = 3.6;
-        const followHeight = 2.15;
-        const camX = this.driverWalkPos.x + Math.sin(yaw) * followDist;
-        const camZ = this.driverWalkPos.z + Math.cos(yaw) * followDist;
-        const camY = Math.max(0.9, followHeight + Math.sin(pitch) * 1.8);
-        this.camera.position.set(camX, camY, camZ);
-        this.camera.lookAt(
-          new THREE.Vector3(
-            this.driverWalkPos.x - Math.sin(yaw) * 2.2,
-            1.35 - Math.sin(pitch) * 1.2,
-            this.driverWalkPos.z - Math.cos(yaw) * 2.2
-          )
-        );
-        this.camera.fov = 65;
-        this.camera.updateProjectionMatrix();
-      } else {
-        // 1ST-PERSON ON-FOOT EYE VIEW
-        const headBob = joyMag > 0.06 ? Math.sin(this.driverWalkAnimTimer * 1.4) * 0.035 : 0;
-        this.camera.position.set(this.driverWalkPos.x, 1.68 + headBob, this.driverWalkPos.z);
-        this.camera.rotation.order = 'YXZ';
-        this.camera.rotation.y = yaw;
-        this.camera.rotation.x = pitch;
-        this.camera.rotation.z = 0;
-        this.camera.fov = 68;
-        this.camera.updateProjectionMatrix();
-      }
+      // STRICT 1ST-PERSON ON-FOOT EYE VIEW
+      const headBob = joyMag > 0.06 ? Math.sin(this.driverWalkAnimTimer * 1.4) * 0.035 : 0;
+      this.camera.position.set(this.driverWalkPos.x, 1.70 + headBob, this.driverWalkPos.z);
+      this.camera.rotation.order = 'YXZ';
+      this.camera.rotation.y = yaw;
+      this.camera.rotation.x = pitch;
+      this.camera.rotation.z = 0;
+      this.camera.fov = 70;
+      this.camera.updateProjectionMatrix();
     } else {
       this.wasSteppedDown = false;
       if (this.driverCharacterGroup) {
@@ -7164,7 +6962,9 @@ export class ThreeDrivingEngine {
           if (Math.abs(dx) < 2.2 && Math.abs(dz) < minSafeZ) {
             if (dz < 0) {
               this.busRoot.position.z = veh.group.position.z - minSafeZ;
-              this.chassisBody.position.z = this.busRoot.position.z;
+              if (this.rapierPhysics && this.rapierPhysics.isReady()) {
+                this.rapierPhysics.setVehicleTransform(this.busRoot.position.x, 0.85, this.busRoot.position.z, this.busHeadingYaw);
+              }
             } else {
               veh.group.position.z = this.busRoot.position.z - minSafeZ;
             }
@@ -7457,17 +7257,19 @@ export class ThreeDrivingEngine {
           const playerPushX = pushSign * (overlapX * 0.7 + 0.08);
           const npcPushX = -pushSign * (overlapX * 0.3 + 0.05);
           this.busRoot.position.x = Math.max(-8.8, Math.min(8.8, this.busRoot.position.x + playerPushX));
-          this.chassisBody.position.x = this.busRoot.position.x;
+          if (this.rapierPhysics && this.rapierPhysics.isReady()) {
+            this.rapierPhysics.setVehicleTransform(this.busRoot.position.x, 0.85, this.busRoot.position.z, this.busHeadingYaw);
+          }
           npc.position.x = Math.max(-7.8, Math.min(7.8, npc.position.x + npcPushX));
-          this.chassisBody.velocity.z *= 0.82;
         } else {
           // Longitudinal impact (front/rear bumper)
           if (dz < 0) {
             // Player hit rear of NPC ahead: clamp player behind NPC and transfer momentum
             this.busRoot.position.z = npc.position.z - minZ;
-            this.chassisBody.position.z = this.busRoot.position.z;
+            if (this.rapierPhysics && this.rapierPhysics.isReady()) {
+              this.rapierPhysics.setVehicleTransform(this.busRoot.position.x, 0.85, this.busRoot.position.z, this.busHeadingYaw);
+            }
             const npcSpd = un?.currentSpeed || 8.0;
-            this.chassisBody.velocity.z = Math.min(this.chassisBody.velocity.z, npcSpd * 0.75);
             if (un) un.currentSpeed = Math.max(un.currentSpeed || 8, speedMps * 0.9 + 2.0);
           } else {
             // NPC behind player: push NPC back behind player
@@ -7661,23 +7463,18 @@ export class ThreeDrivingEngine {
    * Physics getters for HUD telemetry and simulation synchronization
    */
   public getPhysicalSpeedKmH(): number {
-    if (!this.chassisBody || !this.chassisBody.velocity || isNaN(this.chassisBody.velocity.length())) return 0;
-    return Math.round(this.chassisBody.velocity.length() * 3.6);
+    if (!this.rapierPhysics || !this.rapierPhysics.isReady()) return 0;
+    return this.rapierPhysics.getTelemetry().speedKmH;
   }
 
   public getPhysicsChassis(): { position: THREE.Vector3; speedKmH: number } {
-    if (!this.chassisBody) {
-      return { position: new THREE.Vector3(), speedKmH: 0 };
+    if (!this.rapierPhysics || !this.rapierPhysics.isReady()) {
+      return { position: new THREE.Vector3(this.busRoot.position.x, 0.85, this.busRoot.position.z), speedKmH: 0 };
     }
-    const x = isNaN(this.chassisBody.position.x) ? 0 : this.chassisBody.position.x;
-    const y = isNaN(this.chassisBody.position.y) ? 0.85 : this.chassisBody.position.y;
-    const z = isNaN(this.chassisBody.position.z) ? 0 : this.chassisBody.position.z;
-    const spd = (this.chassisBody.velocity && !isNaN(this.chassisBody.velocity.length()))
-      ? Math.round(this.chassisBody.velocity.length() * 3.6)
-      : 0;
+    const t = this.rapierPhysics.getTelemetry();
     return {
-      position: new THREE.Vector3(x, y, z),
-      speedKmH: spd,
+      position: new THREE.Vector3(t.x, t.y, t.z),
+      speedKmH: t.speedKmH,
     };
   }
 
@@ -7894,10 +7691,8 @@ export class ThreeDrivingEngine {
     this.busRoot.position.set(bayX, 0.1, bayZ);
     this.busRoot.rotation.set(0, -Math.PI / 2, 0);
 
-    if (this.chassisBody) {
-      this.chassisBody.position.set(bayX, 1.2, bayZ);
-      this.chassisBody.velocity.set(0, 0, 0);
-      this.chassisBody.angularVelocity.set(0, 0, 0);
+    if (this.rapierPhysics && this.rapierPhysics.isReady()) {
+      this.rapierPhysics.teleport(bayX, 0.85, bayZ, -Math.PI / 2);
     }
 
     this.driverWalkPos.set(bayX - 2.0, 0, bayZ);
